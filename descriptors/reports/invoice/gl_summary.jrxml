@@ -5,6 +5,7 @@
 	<property name="ireport.y" value="0"/>
 	<parameter name="date" class="java.util.Date"/>
 	<parameter name="entity_id" class="java.lang.Integer"/>
+	<parameter name="child_entities" class="java.util.List"/>
 	<queryString>
 		<![CDATA[select
             it.description,
@@ -17,10 +18,10 @@
             inner join item_type it on it.id = itm.type_id
             inner join base_user u on u.id = i.user_id
         where
-             u.entity_id = 1
+            (u.entity_id = $P{entity_id} or $X{IN, u.entity_id, child_entities})  
             and i.deleted = 0
             and i.is_review = 0
-            and i.create_datetime = '2006-07-26'
+            and i.create_datetime = $P{date}
         group by it.description;]]>
 	</queryString>
 	<field name="description" class="java.lang.String"/>

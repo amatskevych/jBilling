@@ -24,6 +24,8 @@ import java.util.Date;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
 import javax.persistence.FetchType;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
@@ -32,8 +34,8 @@ import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.Table;
 import javax.persistence.TableGenerator;
-import javax.persistence.Transient;
 import javax.persistence.Version;
+import javax.persistence.Transient;
 
 import com.sapienter.jbilling.server.process.BillingProcessConfigurationWS;
 import com.sapienter.jbilling.server.user.db.CompanyDTO;
@@ -58,47 +60,47 @@ public class BillingProcessConfigurationDTO implements Serializable {
     private Integer daysForRetry;
     private Integer daysForReport;
     private int reviewStatus;
-    private int periodValue;
     private int dueDateUnitId;
     private int dueDateValue;
     private Integer dfFm;
     private Integer onlyRecurring;
     private Integer invoiceDateProcess;
-    private Integer autoPayment;
     private int maximumPeriods;
     private int autoPaymentApplication;
     private int versionNum;
+    private Boolean lastDayOfMonth = false;
+    private ProratingType proratingType;
 
     public BillingProcessConfigurationDTO() {
     }
 
     public BillingProcessConfigurationDTO(int id, PeriodUnitDTO periodUnitDTO,
             Date nextRunDate, Integer generateReport, int reviewStatus,
-            int periodValue, int dueDateUnitId, int dueDateValue,
-            Integer onlyRecurring, Integer invoiceDateProcess, Integer autoPayment,
-            int maximumPeriods, int autoPaymentApplication) {
+            int dueDateUnitId, int dueDateValue,
+            Integer onlyRecurring, Integer invoiceDateProcess,
+            int maximumPeriods, int autoPaymentApplication, boolean lastDayOfMonth, ProratingType proratingType) {
         this.id = id;
         this.periodUnitDTO = periodUnitDTO;
         this.nextRunDate = nextRunDate;
         this.generateReport = generateReport;
         this.reviewStatus = reviewStatus;
-        this.periodValue = periodValue;
         this.dueDateUnitId = dueDateUnitId;
         this.dueDateValue = dueDateValue;
         this.onlyRecurring = onlyRecurring;
         this.invoiceDateProcess = invoiceDateProcess;
-        this.autoPayment = autoPayment;
         this.maximumPeriods = maximumPeriods;
         this.autoPaymentApplication = autoPaymentApplication;
+        this.lastDayOfMonth = lastDayOfMonth;
+        this.proratingType = proratingType;
     }
 
     public BillingProcessConfigurationDTO(int id, PeriodUnitDTO periodUnitDTO,
             CompanyDTO entity, Date nextRunDate, Integer generateReport,
             Integer retries, Integer daysForRetry, Integer daysForReport,
-            int reviewStatus, int periodValue, int dueDateUnitId,
+            int reviewStatus, int dueDateUnitId,
             int dueDateValue, Integer dfFm, Integer onlyRecurring,
-            Integer invoiceDateProcess, Integer autoPayment, int maximumPeriods,
-            int autoPaymentApplication) {
+            Integer invoiceDateProcess, int maximumPeriods,
+            int autoPaymentApplication, boolean lastDayOfMonth, ProratingType proratingType) {
         this.id = id;
         this.periodUnitDTO = periodUnitDTO;
         this.entity = entity;
@@ -108,15 +110,15 @@ public class BillingProcessConfigurationDTO implements Serializable {
         this.daysForRetry = daysForRetry;
         this.daysForReport = daysForReport;
         this.reviewStatus = reviewStatus;
-        this.periodValue = periodValue;
         this.dueDateUnitId = dueDateUnitId;
         this.dueDateValue = dueDateValue;
         this.dfFm = dfFm;
         this.onlyRecurring = onlyRecurring;
         this.invoiceDateProcess = invoiceDateProcess;
-        this.autoPayment = autoPayment;
         this.maximumPeriods = maximumPeriods;
         this.autoPaymentApplication = autoPaymentApplication;
+        this.lastDayOfMonth = lastDayOfMonth;
+        this.proratingType = proratingType;
     }
 
     public BillingProcessConfigurationDTO(BillingProcessConfigurationWS ws, CompanyDTO entity, PeriodUnitDTO unit) {
@@ -129,15 +131,15 @@ public class BillingProcessConfigurationDTO implements Serializable {
         this.daysForRetry = ws.getDaysForRetry();
         this.daysForReport = ws.getDaysForReport();
         this.reviewStatus = ws.getReviewStatus();
-        this.periodValue = ws.getPeriodValue();
         this.dueDateUnitId = ws.getDueDateUnitId();
         this.dueDateValue = ws.getDueDateValue();
         this.dfFm = ws.getDfFm();
         this.onlyRecurring = ws.getOnlyRecurring();
         this.invoiceDateProcess = ws.getInvoiceDateProcess();
-        this.autoPayment = ws.getAutoPayment();
         this.maximumPeriods = ws.getMaximumPeriods();
-        this.autoPaymentApplication = ws.getAutoPaymentApplication();                        
+        this.autoPaymentApplication = ws.getAutoPaymentApplication();  
+        this.lastDayOfMonth = ws.isLastDayOfMonth();
+        this.proratingType = ProratingType.getProratingTypeByOptionText(ws.getProratingType());
     }
 
     @Id
@@ -150,7 +152,7 @@ public class BillingProcessConfigurationDTO implements Serializable {
     public void setId(int id) {
         this.id = id;
     }
-
+    
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "period_unit_id", nullable = false)
     public PeriodUnitDTO getPeriodUnit() {
@@ -225,15 +227,6 @@ public class BillingProcessConfigurationDTO implements Serializable {
         this.reviewStatus = reviewStatus;
     }
 
-    @Column(name = "period_value", nullable = false)
-    public int getPeriodValue() {
-        return this.periodValue;
-    }
-
-    public void setPeriodValue(int periodValue) {
-        this.periodValue = periodValue;
-    }
-
     @Column(name = "due_date_unit_id", nullable = false)
     public int getDueDateUnitId() {
         return this.dueDateUnitId;
@@ -278,16 +271,7 @@ public class BillingProcessConfigurationDTO implements Serializable {
     public void setInvoiceDateProcess(Integer invoiceDateProcess) {
         this.invoiceDateProcess = invoiceDateProcess;
     }
-
-    @Column(name = "auto_payment", nullable = false)
-    public Integer getAutoPayment() {
-        return this.autoPayment;
-    }
-
-    public void setAutoPayment(Integer autoPayment) {
-        this.autoPayment = autoPayment;
-    }
-
+    
     @Column(name = "maximum_periods", nullable = false)
     public int getMaximumPeriods() {
         return this.maximumPeriods;
@@ -316,8 +300,28 @@ public class BillingProcessConfigurationDTO implements Serializable {
         this.versionNum = versionNum;
     }
 
-    @Transient
+    @Column(name = "last_day_of_month", nullable = false)
+    public Boolean getLastDayOfMonth() {
+		return lastDayOfMonth;
+	}
+
+	public void setLastDayOfMonth(Boolean lastDayOfMonth) {
+		this.lastDayOfMonth = lastDayOfMonth;
+	}
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "prorating_type", length = 50)
+	public ProratingType getProratingType() {
+		return proratingType;
+	}
+
+	public void setProratingType(ProratingType proratingType) {
+		this.proratingType = proratingType;
+	}
+
+	@Transient
     public void setPeriodUnitId(Integer id) {
-        setPeriodUnit(new PeriodUnitDAS().find(id));
-    }
+    	setPeriodUnit(new PeriodUnitDAS().find(id));
+     }
+
 }

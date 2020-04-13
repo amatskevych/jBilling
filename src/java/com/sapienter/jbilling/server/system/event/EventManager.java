@@ -23,6 +23,7 @@ import java.util.Hashtable;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.order.event.NewActiveUntilEvent;
 import com.sapienter.jbilling.server.payment.event.EndProcessPaymentEvent;
@@ -44,7 +45,7 @@ import com.sapienter.jbilling.server.user.event.SubscriptionStatusEventProcessor
  * @author Emiliano Conde
  */
 public final class EventManager {
-    private static final Logger LOG = Logger.getLogger(EventManager.class); 
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(EventManager.class)); 
 
     // this represents the subscriptions of processors to events
     static Hashtable<Class, Class[]> subscriptions;
@@ -84,7 +85,6 @@ public final class EventManager {
 
     public static final void process(Event event){
         LOG.debug("processing event " + event);
-        
         // always call the general event processor
         new InternalEventProcessor().process(event);
 

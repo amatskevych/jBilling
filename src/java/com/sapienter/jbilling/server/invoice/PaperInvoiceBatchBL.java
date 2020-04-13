@@ -26,7 +26,7 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
+import java.util.Iterator;
 import java.util.List;
 
 import org.apache.log4j.Logger;
@@ -40,6 +40,7 @@ import com.lowagie.text.pdf.PdfCopy;
 import com.lowagie.text.pdf.PdfImportedPage;
 import com.lowagie.text.pdf.PdfReader;
 import com.lowagie.text.pdf.SimpleBookmark;
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.process.db.PaperInvoiceBatchDTO;
@@ -56,9 +57,13 @@ import com.sapienter.jbilling.server.util.audit.EventLogger;
  */
 public class PaperInvoiceBatchBL {
     private PaperInvoiceBatchDTO batch = null;
-    private static final Logger LOG = Logger.getLogger(PaperInvoiceBatchBL.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaperInvoiceBatchBL.class));
     private EventLogger eLogger = null;
     private PaperInvoiceBatchDAS batchHome = null;
+
+    /** The maximum safe number of invoices to be batched.  */
+    public static final Integer MAX_RESULTS = 10000;
+
 
     public PaperInvoiceBatchBL(Integer batchId) {
         init();
@@ -97,10 +102,11 @@ public class PaperInvoiceBatchBL {
         BillingProcessBL process = new BillingProcessBL(processId);
         batch = process.getEntity().getPaperInvoiceBatch();
         if (batch == null) {
-            PreferenceBL preference = new PreferenceBL();
-            preference.set(process.getEntity().getEntity().getId(), 
-                    Constants.PREFERENCE_PAPER_SELF_DELIVERY);
-            batch = batchHome.create(new Integer(0), preference.getEntity().getIntValue());
+            Integer preferencePaperSelfDelivery = 
+            	PreferenceBL.getPreferenceValueAsIntegerOrZero(
+            		process.getEntity().getEntity().getId(), 
+            		Constants.PREFERENCE_PAPER_SELF_DELIVERY);
+            batch = batchHome.create(new Integer(0), preferencePaperSelfDelivery);
             process.getEntity().setPaperInvoiceBatch(batch);
         }
         return batch;
@@ -144,7 +150,7 @@ public class PaperInvoiceBatchBL {
     public void compileInvoiceFiles(String destination, String prefix,
             Integer entityId, Integer[] invoices)
             throws DocumentException, IOException {
-        
+
         String filePrefix = Util.getSysProp("base_dir") + "invoices/"
                 + entityId + "-";
         String outFile = destination + prefix + "-batch.pdf";
@@ -202,16 +208,17 @@ public class PaperInvoiceBatchBL {
             LOG.warn("document == null");
         }
 
-        LOG.debug("PDF batch file is ready " + outFile);
+        LOG.debug("PDF batch file is ready %s", outFile);
     }
 
     
     public void sendEmail() {
         Integer entityId = batch.getProcess().getEntity().getId();
         
-        PreferenceBL prefBL = new PreferenceBL();
-        prefBL.set(entityId, Constants.PREFERENCE_PAPER_SELF_DELIVERY);
-        Boolean selfDelivery = new Boolean(prefBL.getInt() == 1);
+        int preferencePaperSelfDelivery = 
+        	PreferenceBL.getPreferenceValueAsIntegerOrZero(entityId, Constants.PREFERENCE_PAPER_SELF_DELIVERY);
+        
+        Boolean selfDelivery = new Boolean(preferencePaperSelfDelivery == 1);
         // If the entity doesn't want to delivery the invoices, then
         // sapienter has to. Entity 1 is always sapienter.
         Integer pritingEntity;
@@ -227,7 +234,47 @@ public class PaperInvoiceBatchBL {
         } catch (Exception e) {
             LOG.error("Could no send the email with the paper invoices " +
                     "for entity " + entityId, e);
-        } 
+        }
+    }
+
+    public String generateBatchPdf(List<InvoiceDTO> invoices, Integer entityId)
+            throws SQLException,
+            SessionInternalError, DocumentException,
+            IOException {
+        String realPath = Util.getSysProp("base_dir") + "invoices" + File.separator;
+
+        Iterator<InvoiceDTO> iterator = invoices.iterator();
+        NotificationBL notif = new NotificationBL();
+        List<Integer> invoicesIdsList = new ArrayList<Integer>();
+
+        int generated = 0;
+        while (iterator.hasNext()) {
+            Integer invoiceId = iterator.next().getId();
+            InvoiceBL invoice = new InvoiceBL(invoiceId);
+            LOG.debug("Generating paper invoice %d", invoiceId);
+            notif.generatePaperInvoiceAsFile(invoice.getEntity());
+            invoicesIdsList.add(invoiceId);
+
+            // no more than 1000 invoices at a time, please
+            generated++;
+            if (generated >= 1000) break;
+        }
+
+        if (generated > 0) {
+            // merge all these files into a single one
+            String hash = String.valueOf(System.currentTimeMillis());
+            Integer[] invoicesIds = new Integer[invoicesIdsList.size()];
+            invoicesIdsList.toArray(invoicesIds);
+            compileInvoiceFiles(realPath,
+                    entityId + "-" + hash,
+                    entityId,
+                    invoicesIds);
+
+            return entityId + "-" + hash + "-batch.pdf";
+        } else {
+            // there was no rows in that query ...
+            return null;
+        }
     }
     
     public String generateFile(CachedRowSet cachedRowSet, Integer entityId, 
@@ -241,7 +288,7 @@ public class PaperInvoiceBatchBL {
         while (cachedRowSet.next()) {
             Integer invoiceId = new Integer(cachedRowSet.getInt(1));
             InvoiceBL invoice = new InvoiceBL(invoiceId);
-            LOG.debug("Generating paper invoice " + invoiceId);
+            LOG.debug("Generating paper invoice %d", invoiceId);
             notif.generatePaperInvoiceAsFile(invoice.getEntity());
             invoices.add(invoiceId);
             

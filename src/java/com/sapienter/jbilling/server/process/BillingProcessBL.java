@@ -22,6 +22,7 @@ package com.sapienter.jbilling.server.process;
 
 import java.math.BigDecimal;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
 import java.util.Date;
@@ -29,31 +30,42 @@ import java.util.Enumeration;
 import java.util.GregorianCalendar;
 import java.util.Hashtable;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.List;
-
-import com.sapienter.jbilling.server.process.event.InvoicesGeneratedEvent;
-import org.apache.log4j.Logger;
+import java.util.Map;
 
 import javax.sql.rowset.CachedRowSet;
 
+import org.apache.log4j.Logger;
+import org.hibernate.ScrollableResults;
+import org.joda.time.DateTime;
+import org.joda.time.Interval;
+import org.springframework.dao.EmptyResultDataAccessException;
+
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.invoice.InvoiceBL;
-import com.sapienter.jbilling.server.invoice.NewInvoiceDTO;
+import com.sapienter.jbilling.server.invoice.NewInvoiceContext;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDAS;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
+import com.sapienter.jbilling.server.invoice.db.InvoiceLineDTO;
 import com.sapienter.jbilling.server.invoice.db.InvoiceStatusDAS;
 import com.sapienter.jbilling.server.item.CurrencyBL;
 import com.sapienter.jbilling.server.list.ResultList;
 import com.sapienter.jbilling.server.order.OrderBL;
+import com.sapienter.jbilling.server.order.OrderProcessWS;
+import com.sapienter.jbilling.server.order.OrderStatusFlag;
 import com.sapienter.jbilling.server.order.TimePeriod;
+import com.sapienter.jbilling.server.order.db.OrderChangeDTO;
 import com.sapienter.jbilling.server.order.db.OrderDAS;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
+import com.sapienter.jbilling.server.order.db.OrderLineDTO;
 import com.sapienter.jbilling.server.order.db.OrderProcessDAS;
 import com.sapienter.jbilling.server.order.db.OrderProcessDTO;
+import com.sapienter.jbilling.server.order.db.OrderStatusDAS;
 import com.sapienter.jbilling.server.order.event.OrderAddedOnInvoiceEvent;
 import com.sapienter.jbilling.server.order.event.OrderToInvoiceEvent;
+import com.sapienter.jbilling.server.order.event.ProcessTaxLineOnInvoiceEvent;
 import com.sapienter.jbilling.server.payment.IPaymentSessionBean;
 import com.sapienter.jbilling.server.payment.PaymentBL;
 import com.sapienter.jbilling.server.payment.db.PaymentMethodDAS;
@@ -65,20 +77,30 @@ import com.sapienter.jbilling.server.pluggableTask.OrderPeriodTask;
 import com.sapienter.jbilling.server.pluggableTask.TaskException;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskManager;
-import com.sapienter.jbilling.server.process.db.*;
+import com.sapienter.jbilling.server.process.db.BatchProcessInfoDAS;
+import com.sapienter.jbilling.server.process.db.BatchProcessInfoDTO;
+import com.sapienter.jbilling.server.process.db.BillingProcessDAS;
+import com.sapienter.jbilling.server.process.db.BillingProcessDTO;
+import com.sapienter.jbilling.server.process.db.BillingProcessFailedUserDAS;
+import com.sapienter.jbilling.server.process.db.ProcessRunDAS;
+import com.sapienter.jbilling.server.process.db.ProcessRunDTO;
+import com.sapienter.jbilling.server.process.db.ProcessRunStatusDAS;
+import com.sapienter.jbilling.server.process.db.ProcessRunTotalDTO;
+import com.sapienter.jbilling.server.process.db.ProcessRunUserDAS;
+import com.sapienter.jbilling.server.process.event.AboutToGenerateInvoices;
+import com.sapienter.jbilling.server.process.event.InvoicesGeneratedEvent;
 import com.sapienter.jbilling.server.system.event.EventManager;
 import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.user.db.CustomerDTO;
 import com.sapienter.jbilling.server.user.db.UserDTO;
+import com.sapienter.jbilling.server.util.CalendarUtils;
 import com.sapienter.jbilling.server.util.Constants;
+import com.sapienter.jbilling.server.util.Context;
 import com.sapienter.jbilling.server.util.MapPeriodToCalendar;
 import com.sapienter.jbilling.server.util.PreferenceBL;
 import com.sapienter.jbilling.server.util.audit.EventLogger;
 import com.sapienter.jbilling.server.util.db.CurrencyDAS;
 import com.sapienter.jbilling.server.util.db.CurrencyDTO;
-import com.sapienter.jbilling.server.util.Context;
-import java.util.ArrayList;
-import org.springframework.dao.EmptyResultDataAccessException;
 
 public class BillingProcessBL extends ResultList
         implements ProcessSQL {
@@ -87,7 +109,7 @@ public class BillingProcessBL extends ResultList
     private BillingProcessDTO billingProcess = null;
     private ProcessRunDAS processRunHome = null;
     private ProcessRunDTO processRun = null;
-    private static final Logger LOG = Logger.getLogger(BillingProcessBL.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(BillingProcessBL.class));
     private EventLogger eLogger = null;
 
     public BillingProcessBL(Integer billingProcessId) {
@@ -118,7 +140,7 @@ public class BillingProcessBL extends ResultList
 
     public ProcessRunDTO getProcessRun() {
         return processRun;
-    }    
+    }
 
     public BillingProcessDAS getHome() {
         return billingProcessDas;
@@ -143,14 +165,14 @@ public class BillingProcessBL extends ResultList
     }
 
     public Integer create(BillingProcessDTO dto) {
-        // create the record 
+        // create the record
         billingProcess = billingProcessDas.create(dto.getEntity(),
                 dto.getBillingDate(), dto.getPeriodUnit().getId(),
                 dto.getPeriodValue(), dto.getRetriesToDo());
         billingProcess.setIsReview(dto.getIsReview());
         processRun = processRunHome.create(
                 billingProcess, dto.getBillingDate(), 0,
-                new ProcessRunStatusDAS().find(Constants.PROCESS_RUN_STATUS_RINNING));        
+                new ProcessRunStatusDAS().find(Constants.PROCESS_RUN_STATUS_RINNING));
 
         if (dto.getIsReview() == 1) {
             ConfigurationBL config = new ConfigurationBL(dto.getEntity().getId());
@@ -158,6 +180,12 @@ public class BillingProcessBL extends ResultList
         }
 
         return billingProcess.getId();
+    }
+
+
+    public InvoiceDTO generateInvoice(Integer orderId, Integer invoiceId, Integer executorUserId)
+            throws PluggableTaskException, SessionInternalError, SQLException {
+        return generateInvoice(orderId, invoiceId, null, executorUserId);
     }
 
     /**
@@ -168,27 +196,27 @@ public class BillingProcessBL extends ResultList
      * @throws PluggableTaskException
      * @throws SessionInternalError
      */
-    public InvoiceDTO generateInvoice(Integer orderId,
-            Integer invoiceId)
+    public InvoiceDTO generateInvoice(Integer orderId, Integer invoiceId, NewInvoiceContext template, Integer executorUserId)
             throws PluggableTaskException, SessionInternalError,
             SQLException {
         InvoiceDTO retValue = null;
         // find the order
         OrderBL order = new OrderBL(orderId);
         // define some data
-        Integer entityId = order.getEntity().getUser().getEntity().getId();
+        Integer entityId = order.getDTO().getUser().getEntity().getId();
         ConfigurationBL config = new ConfigurationBL(entityId);
         int maxPeriods = config.getEntity().getMaximumPeriods();
         boolean paymentApplication = config.getEntity().
                 getAutoPaymentApplication() == 1;
         // The user could be the parent of a sub-account
-        Integer userId = findUserId(order.getEntity());
+        Integer userId = findUserId(order.getDTO());
         Date processDate = Calendar.getInstance().getTime();
         processDate = Util.truncateDate(processDate);
+
         // create the my invoice
-        NewInvoiceDTO newInvoice = new NewInvoiceDTO();
+        NewInvoiceContext newInvoice = new NewInvoiceContext();
         newInvoice.setDate(processDate);
-        newInvoice.setIsReview(new Integer(0));
+        newInvoice.setIsReview(0);
         // find the due date that applies
         TimePeriod period = order.getDueDate();
         newInvoice.setDueDatePeriod(period);
@@ -196,14 +224,24 @@ public class BillingProcessBL extends ResultList
         // overdue invoices
         newInvoice.setCarriedBalance(BigDecimal.ZERO);
         newInvoice.setInvoiceStatus(new InvoiceStatusDAS().find(Constants.INVOICE_STATUS_UNPAID));
+        // set meta fields
+        if (template != null) {
+            newInvoice.setMetaFields(template.getMetaFields());
+            LOG.debug("Set meta fields from template: %s", newInvoice.getMetaFields());
+        }
 
+        if(invoiceId!=null){
+            // it is an order going into an existing invoice
+            InvoiceBL invoice = new InvoiceBL(invoiceId);
+            // then new Invoice must be populated with currency before order processing.
+            newInvoice.setCurrency(invoice.getEntity().getCurrency());
+        }
         try {
-            // put the order in the invoice using all the pluggable taks stuff
-            addOrderToInvoice(entityId, order.getEntity(), newInvoice,
+            // put the order in the invoice using all the pluggable task stuff
+            addOrderToInvoice(entityId, order.getDTO(), newInvoice,
                     processDate, maxPeriods);
-
             // this means that the user is trying to generate an invoice from
-            // an order that the configurated tasks have rejected. Therefore
+            // an order that the configured tasks have rejected. Therefore
             // either this is the case an generating this invoice doesn't make
             // sense, or some business rules in the tasks have to be changed
             // (probably with a personalized task for this entity)
@@ -213,19 +251,17 @@ public class BillingProcessBL extends ResultList
 
             // process events before orders added to invoice
             processOrderToInvoiceEvents(newInvoice, entityId);
-
             // generate the invoice lines
             composeInvoice(entityId, userId, newInvoice);
-
             // process events after orders added to invoice
             processOrderAddedOnInvoiceEvents(newInvoice, entityId);
-
+            processTaxesAndPenalties(newInvoice, entityId, userId);
             // put the resulting invoice in the database
             if (invoiceId == null) {
                 // it is a new invoice from a singe order
                 retValue = generateDBInvoice(userId, newInvoice, null,
-                        Constants.ORDER_PROCESS_ORIGIN_MANUAL);
-                // try to get this new invioce paid by previously unlinked 
+                        Constants.ORDER_PROCESS_ORIGIN_MANUAL, executorUserId);
+                // try to get this new invioce paid by previously unlinked
                 // payments
                 if (paymentApplication) {
                     PaymentBL pBL = new PaymentBL();
@@ -235,14 +271,22 @@ public class BillingProcessBL extends ResultList
                 // it is an order going into an existing invoice
                 InvoiceBL invoice = new InvoiceBL(invoiceId);
                 boolean isUnpaid = invoice.getEntity().getToProcess() == 1;
-                invoice.update(newInvoice);
+
+                LOG.debug("Calling update with new invoice... meta fields = %s", newInvoice.getMetaFields());
+                invoice.update(entityId, newInvoice);
+
+
                 retValue = invoice.getEntity();
                 createOrderProcess(newInvoice, retValue, null,
-                        Constants.ORDER_PROCESS_ORIGIN_MANUAL);
-                eLogger.info(entityId, userId, invoiceId,
-                        EventLogger.MODULE_INVOICE_MAINTENANCE,
-                        EventLogger.INVOICE_ORDER_APPLIED,
-                        Constants.TABLE_INVOICE);
+                        Constants.ORDER_PROCESS_ORIGIN_MANUAL, executorUserId);
+                
+                if (executorUserId != null) {
+                	eLogger.audit(executorUserId, userId, 
+            		Constants.TABLE_INVOICE, invoiceId,
+                	EventLogger.MODULE_INVOICE_MAINTENANCE,
+                	EventLogger.INVOICE_ORDER_APPLIED, null, null, null);
+            	}
+                
                 // if the invoice is now not payable, take the user
                 // out of ageing
                 if (isUnpaid && retValue.getToProcess() == 0) {
@@ -264,25 +308,37 @@ public class BillingProcessBL extends ResultList
             generatedEvent.getInvoiceIds().add(retValue.getId());
             EventManager.process(generatedEvent);
         }
-
         return retValue;
     }
 
+    /**
+     * Generates an invoice for a user using the given billing process details.
+     *
+     * @param process billing process to generate an invoice for
+     * @param dueDatePeriod optional due date period for this invoice. If null, due date will be calculated based
+     *                      on the order and/or customer due date period.
+     * @param user user to generate an invoice for
+     * @param isReview true if generating a review invoice
+     * @param onlyRecurring true if only recurring orders should be invoiced. if false, all orders will be included.
+     * @param executorUserId user to use for event logging.
+     * @return array of generated invoices
+     * @throws SessionInternalError
+     */
     public InvoiceDTO[] generateInvoice(
-            BillingProcessDTO process, UserDTO user,
-            boolean isReview, boolean onlyRecurring)
+            BillingProcessDTO process, TimePeriod dueDatePeriod, UserDTO user,
+            boolean isReview, boolean onlyRecurring, Integer executorUserId)
             throws SessionInternalError {
 
         Integer userId = user.getUserId();
         Integer entityId = user.getEntity().getId();
 
         // get the configuration
-        boolean useProcessDateForInvoice = true;
+        boolean useCustomerNextInvoiceDateForInvoice = true;
         int maximumPeriods = 1;
-        boolean paymentApplication = false;
+        boolean paymentApplication = false; 
         try {
             ConfigurationBL config = new ConfigurationBL(process.getEntity().getId());
-            useProcessDateForInvoice = config.getEntity().getInvoiceDateProcess() == 1;
+            useCustomerNextInvoiceDateForInvoice = config.getEntity().getInvoiceDateProcess() == 1;
             maximumPeriods = config.getEntity().getMaximumPeriods();
             paymentApplication = config.getEntity().getAutoPaymentApplication() == 1;
         } catch (Exception e) {
@@ -292,37 +348,44 @@ public class BillingProcessBL extends ResultList
         // this contains the generated invoices, one per due date
         // found in the applicable purchase orders.
         // The key is the object TimePeriod
-        Hashtable<TimePeriod, NewInvoiceDTO> newInvoices = new Hashtable<TimePeriod, NewInvoiceDTO>();
+        Hashtable<TimePeriod, NewInvoiceContext> newInvoices = new Hashtable<TimePeriod, NewInvoiceContext>();
         InvoiceDTO[] retValue = null;
 
-        LOG.debug("In generateInvoice for user " + userId + " process date:" + process.getBillingDate());
+        LOG.debug("Firing About to Generate Invoices event.");
+        
+        AboutToGenerateInvoices event = new AboutToGenerateInvoices(entityId, userId);
+        EventManager.process(event);
+        
+        LOG.debug("In generateInvoice for user %s process date: %s", userId, process.getBillingDate());
 
         /*
          * Go through the orders first
          * This method will recursively call itself to find sub-accounts in any
          * level
          */
-        boolean includedOrders = processOrdersForUser(user, entityId, process,
-                                                      isReview, onlyRecurring, useProcessDateForInvoice,
+        boolean includedOrders = processOrdersForUser(user, entityId, process, dueDatePeriod,
+                                                      isReview, onlyRecurring, useCustomerNextInvoiceDateForInvoice,
                                                       maximumPeriods, newInvoices);
 
         if (!includedOrders || newInvoices.size() == 0) {
             // check if invoices without orders are allowed
-            PreferenceBL preferenceBL = new PreferenceBL();
+            int preferenceAllowInvoicesWithoutOrders = 0;
             try {
-                preferenceBL.set(entityId, Constants.PREFERENCE_ALLOW_INVOICES_WITHOUT_ORDERS);
+                preferenceAllowInvoicesWithoutOrders =
+                	PreferenceBL.getPreferenceValueAsIntegerOrZero(
+                		entityId, Constants.PREFERENCE_ALLOW_INVOICES_WITHOUT_ORDERS);
             } catch (EmptyResultDataAccessException fe) {
                 // use default
             }
 
-            if (preferenceBL.getInt() == 0) {
+            if (preferenceAllowInvoicesWithoutOrders == 0) {
                 LOG.debug("No applicable orders. No invoice generated (skipping invoices).");
                 return null;
             }
         }
 
         if (!isReview) {
-            for (Map.Entry<TimePeriod, NewInvoiceDTO> newInvoiceEntry : newInvoices.entrySet()) {
+            for (Map.Entry<TimePeriod, NewInvoiceContext> newInvoiceEntry : newInvoices.entrySet()) {
                 // process events before orders added to invoice
                 processOrderToInvoiceEvents(newInvoiceEntry.getValue(), entityId);
             }
@@ -336,16 +399,16 @@ public class BillingProcessBL extends ResultList
         // find the invoice home interface
         InvoiceDAS invoiceDas = new InvoiceDAS();
         // any of the new invoices being created could hold the overdue invoices
-        NewInvoiceDTO holder = newInvoices.isEmpty() ? null : (NewInvoiceDTO) newInvoices.elements().nextElement();
+        NewInvoiceContext holder = newInvoices.isEmpty() ? null : (NewInvoiceContext) newInvoices.elements().nextElement();
 
         Collection dueInvoices =
                 invoiceDas.findWithBalanceByUser(user);
-        LOG.debug("Processing invoices for user " + user.getUserId());
+        LOG.debug("Processing invoices for user %s", user.getUserId());
         // go through each of them, and update the DTO if it applies
 
         for (Iterator it = dueInvoices.iterator(); it.hasNext();) {
             InvoiceDTO invoice = (InvoiceDTO) it.next();
-            LOG.debug("Processing invoice " + invoice.getId());
+            LOG.debug("Processing invoice %s", invoice.getId());
             // apply any invoice processing filter pluggable task
             try {
                 PluggableTaskManager taskManager
@@ -370,20 +433,24 @@ public class BillingProcessBL extends ResultList
                         if (BigDecimal.ZERO.compareTo(invoice.getBalance()) < 0) {
                             continue;
                         }
-                        
+
                         // no invoice/s yet (no applicable orders), so create one
-                        holder = new NewInvoiceDTO();
+                        holder = new NewInvoiceContext();
                         holder.setDate(process.getBillingDate());
                         holder.setIsReview(isReview ? new Integer(1) : new Integer(0));
                         holder.setCarriedBalance(BigDecimal.ZERO);
                         holder.setInvoiceStatus(new InvoiceStatusDAS().find(Constants.INVOICE_STATUS_UNPAID));
 
-                        // need to set a due date, so use the order default
-                        OrderBL orderBl = new OrderBL();
-                        OrderDTO order = new OrderDTO();
-                        order.setBaseUserByUserId(user);
-                        orderBl.set(order);
-                        TimePeriod dueDatePeriod = orderBl.getDueDate();
+                        // need to set a due date, so use the order default unless
+                        // it has been explicitly set for this invoice generation
+                        if (dueDatePeriod == null) {
+                            OrderDTO order = new OrderDTO();
+                            order.setBaseUserByUserId(user);
+
+                            OrderBL orderBl = new OrderBL();
+                            orderBl.set(order);
+                            dueDatePeriod = orderBl.getDueDate();
+                        }
 
                         holder.setDueDatePeriod(dueDatePeriod);
                         newInvoices.put(dueDatePeriod, holder);
@@ -411,7 +478,7 @@ public class BillingProcessBL extends ResultList
                     holder.setCarriedBalance(carried);
                 }
 
-                LOG.debug("invoice " + invoice.getId() + " result " + isProcessable);
+                LOG.debug("invoice %s result %s", invoice.getId(), isProcessable);
 
             } catch (PluggableTaskException e) {
                 LOG.fatal("Problems handling task invoice filter.", e);
@@ -433,7 +500,7 @@ public class BillingProcessBL extends ResultList
         try {
             retValue = new InvoiceDTO[newInvoices.size()];
             int index = 0;
-            for (NewInvoiceDTO invoice : newInvoices.values()) {
+            for (NewInvoiceContext invoice : newInvoices.values()) {
                 /*
                  * Apply invoice composition tasks to the new invoices object
                  */
@@ -442,6 +509,8 @@ public class BillingProcessBL extends ResultList
                 if (!isReview) {
                     // process events after orders added to invoice
                     processOrderAddedOnInvoiceEvents(invoice, entityId);
+                    processTaxesAndPenalties(invoice, entityId, user.getUserId());
+                    
                     for (InvoiceDTO oldInvoice : invoice.getInvoices()) {
                         // since this invoice is being delegated, mark it as being carried forward
                         // so that it is not re-processed later. do not clear the old balance!
@@ -450,24 +519,23 @@ public class BillingProcessBL extends ResultList
                 }
 
                 /*
-                 * apply this object to the DB, generating the actual rows 
+                 * apply this object to the DB, generating the actual rows
                  */
                 // only if the invoice generated actually has some lines in it
                 if (invoice.areLinesGeneratedEmpty()) {
-                    LOG.warn("User " + user.getUserId() + " had orders or invoices but" +
-                            " the invoice composition task didn't generate any lines.");
+                    LOG.warn("User %s had orders or invoices but the invoice composition task didn't generate any lines.", user.getUserId());
                     continue;
                 }
 
-                // If this is a web services API call, the billing 
-                // process id is 0. Don't link to the billing process 
+                // If this is a web services API call, the billing
+                // process id is 0. Don't link to the billing process
                 // object for API calls.
                 retValue[index] = generateDBInvoice(user.getUserId(),
                                                     invoice,
                                                     (process.getId() != 0 ? process : null),
-                                                    Constants.ORDER_PROCESS_ORIGIN_PROCESS);
+                                                    Constants.ORDER_PROCESS_ORIGIN_PROCESS, executorUserId);
 
-                // try to get this new invioce paid by previously unlinked 
+                // try to get this new invioce paid by previously unlinked
                 // payments
                 if (paymentApplication && !isReview) {
                     PaymentBL pBL = new PaymentBL();
@@ -494,14 +562,14 @@ public class BillingProcessBL extends ResultList
         return retValue;
     }
 
-    private boolean processOrdersForUser(UserDTO user, Integer entityId,BillingProcessDTO process, 
-            boolean isReview, boolean onlyRecurring, boolean useProcessDateForInvoice,
-        int maximumPeriods, Hashtable<TimePeriod, NewInvoiceDTO> newInvoices) {
-        
+	private boolean processOrdersForUser(UserDTO user, Integer entityId,BillingProcessDTO process, TimePeriod dueDatePeriod,
+            boolean isReview, boolean onlyRecurring, boolean useCustomerNextInvoiceDateForInvoice,
+        int maximumPeriods, Hashtable<TimePeriod, NewInvoiceContext> newInvoices) {
+
         boolean includedOrders = false;
         Integer userId = user.getUserId();
 
-        LOG.debug("Processing orders for user " + userId);
+        LOG.debug("Processing orders for user %s", userId);
 
         // initialize the subaccounts iterator if this user is a parent
         Iterator subAccountsIt = null;
@@ -514,12 +582,13 @@ public class BillingProcessBL extends ResultList
 
         // get the orders that might be processable for this user
         OrderDAS orderDas = new OrderDAS();
-        Collection<OrderDTO> orders = orderDas.findByUser_Status(userId,
-                Constants.ORDER_STATUS_ACTIVE);
+        ScrollableResults orders = orderDas.findByUser_Status(userId, OrderStatusFlag.INVOICE);
 
         // go through each of them, and update the DTO if it applies
-        for (OrderDTO order : orders) {
-            LOG.debug("Processing order :" + order.getId());
+        while (orders.next()) {
+            OrderDTO order = (OrderDTO) orders.get()[0];
+
+            LOG.debug("Processing order :%s", order.getId());
             // apply any order processing filter pluggable task
             try {
                 PluggableTaskManager taskManager = new PluggableTaskManager(
@@ -544,8 +613,7 @@ public class BillingProcessBL extends ResultList
                     if (onlyRecurring) {
                         if (order.getOrderPeriod().getId() != Constants.ORDER_PERIOD_ONCE) {
                             includedOrders = true;
-                            LOG.debug("It is not one-timer. " +
-                                    "Generating invoice");
+                            LOG.debug("It is not one-timer. Generating invoice");
                         }
                     } else {
                         includedOrders = true;
@@ -554,43 +622,51 @@ public class BillingProcessBL extends ResultList
                      * now find if there is already an invoice being
                      * generated for the given due date period
                      */
+
                     // find the due date that applies to this order
                     OrderBL orderBl = new OrderBL();
                     orderBl.set(order);
-                    TimePeriod dueDatePeriod = orderBl.getDueDate();
+                    TimePeriod orderDueDatePeriod = dueDatePeriod != null ? dueDatePeriod : orderBl.getDueDate();
+
                     // look it up in the hashtable
-                    NewInvoiceDTO thisInvoice = (NewInvoiceDTO) newInvoices.get(dueDatePeriod);
+                    NewInvoiceContext thisInvoice = (NewInvoiceContext) newInvoices.get(orderDueDatePeriod);
                     if (thisInvoice == null) {
-                        LOG.debug("Adding new invoice for period " + dueDatePeriod + " process date:" + process.getBillingDate());
+                        LOG.debug("Adding new invoice for period %s process date: %s", orderDueDatePeriod, process.getBillingDate());
                         // we need a new one with this period
                         // define the invoice date
-                        thisInvoice = new NewInvoiceDTO();
-                        if (useProcessDateForInvoice) {
-                            thisInvoice.setDate(process.getBillingDate());
+                        thisInvoice = new NewInvoiceContext();
+                        if (useCustomerNextInvoiceDateForInvoice) {
+                            thisInvoice.setDate(user.getCustomer().getNextInvoiceDate());
                         } else {
-                            thisInvoice.setDate(orderBl.getInvoicingDate(),
-                                    order.getOrderPeriod().getId() != Constants.ORDER_PERIOD_ONCE);
+                            thisInvoice.setDate(process.getBillingDate());
                         }
                         thisInvoice.setIsReview(isReview ? new Integer(1) : new Integer(0));
                         thisInvoice.setCarriedBalance(BigDecimal.ZERO);
-                        thisInvoice.setDueDatePeriod(dueDatePeriod);
+                        thisInvoice.setDueDatePeriod(orderDueDatePeriod);
+
                     } else {
-                        LOG.debug("invoice found for period " + dueDatePeriod);
-                        if (!useProcessDateForInvoice) {
-                            thisInvoice.setDate(orderBl.getInvoicingDate(),
-                                    order.getOrderPeriod().getId() != Constants.ORDER_PERIOD_ONCE);
+                        LOG.debug("invoice found for period %s", dueDatePeriod);
+                        if (!useCustomerNextInvoiceDateForInvoice) {
+                        	thisInvoice.setDate(process.getBillingDate());
                         }
                     }
                     /*
                      * The order periods plug-in might not add any period. This should not happen
                      * but if it does, the invoice should not be included
                      */
-                    if (addOrderToInvoice(entityId, order, thisInvoice,
+                    boolean oneTimeCheck= false;
+                    if (onlyRecurring && order.getOrderPeriod().getId() ==  Constants.ORDER_PERIOD_ONCE) {
+                		oneTimeCheck= isBillableOneTime(order, thisInvoice, process.getBillingDate());
+                    } else {
+                    	oneTimeCheck= true;//check not required
+                    }
+                     
+                    if (oneTimeCheck && addOrderToInvoice(entityId, order, thisInvoice,
                             process.getBillingDate(), maximumPeriods)) {
                         // add or replace
-                        newInvoices.put(dueDatePeriod, thisInvoice);
+                        newInvoices.put(orderDueDatePeriod, thisInvoice);
                     }
-                    LOG.debug("After putting period there are " + newInvoices.size() + " periods.");
+                    LOG.debug("After putting period there are %s periods.", newInvoices.size());
 
                 // here it would be easy to update this order
                 // to_process and
@@ -610,7 +686,9 @@ public class BillingProcessBL extends ResultList
                 throw new SessionInternalError(
                         "Problems executing order filter task.");
             }
-        } // for - all the orders for this user
+        }
+
+        orders.close();
 
         // see if there is any subaccounts to include in this invoice
         while (subAccountsIt != null) {  // until there are no more subaccounts (subAccountsIt != null) {
@@ -621,8 +699,7 @@ public class BillingProcessBL extends ResultList
                         customer.getInvoiceChild().intValue() == 0) {
                     break;
                 } else {
-                    LOG.debug("Subaccount not included in parent's invoice " +
-                            customer.getId());
+                    LOG.debug("Subaccount not included in parent's invoice %s", customer.getId());
                     customer = null;
                 }
             }
@@ -631,31 +708,52 @@ public class BillingProcessBL extends ResultList
                 // if the child does not have any orders to invoice, this should
                 // not affect the current value of includedOrders
                 if (processOrdersForUser(customer.getBaseUser(),
-                        entityId, process, isReview, onlyRecurring,
-                        useProcessDateForInvoice, maximumPeriods,
+                        entityId, process, dueDatePeriod, isReview, onlyRecurring,
+                        useCustomerNextInvoiceDateForInvoice, maximumPeriods,
                         newInvoices)) {
                     // if ANY child has orders to invoice, it is enough for includedOrders to be true
                     includedOrders = true;
                 }
-                LOG.debug("Now processing subaccount " + userId);
+                LOG.debug("Now processing subaccount %s", userId);
 
             } else {
                 subAccountsIt = null;
                 LOG.debug("No more subaccounts to process");
             }
-        } 
+        }
 
         return includedOrders;
     }
 
+    private boolean isBillableOneTime(OrderDTO order, NewInvoiceContext newInvoice, Date processDate) {
+    	LOG.debug("Any one period on this Invoice should incldue the one time order's active since");
+    	Date start= order.getActiveSince();
+    	Date end= processDate;
+    	for (NewInvoiceContext.OrderContext orderCtx : newInvoice.getOrders()) {
+            if ( orderCtx.order.getOrderPeriod().getId() !=  Constants.ORDER_PERIOD_ONCE.intValue() ) {
+				for (PeriodOfTime period : orderCtx.periods) {
+					if (period.getStart().before(start)) {
+	    				start= period.getStart();
+	    			}
+	    			if (period.getEnd().after(end)) {
+	    				end= period.getEnd();
+	    			}
+				}
+			}
+    	}
+    	
+    	Interval interval= new Interval(new DateTime(start.getTime()), new DateTime(end.getTime()));
+    	return interval.contains(order.getActiveSince().getTime());
+    }
+    
     private InvoiceDTO generateDBInvoice(Integer userId,
-            NewInvoiceDTO newInvoice, BillingProcessDTO process,
-            Integer origin)
+            NewInvoiceContext newInvoice, BillingProcessDTO process,
+            Integer origin, Integer executorUserId)
             throws SessionInternalError {
         // The invoice row is created first
         // all that fits in the DTO goes there
         newInvoice.calculateTotal();
-        
+
         if (newInvoice.getCarriedBalance() != null) {
             newInvoice.setBalance(newInvoice.getTotal().subtract(newInvoice.getCarriedBalance()));
         } else {
@@ -666,7 +764,7 @@ public class BillingProcessBL extends ResultList
         InvoiceBL invoiceBL = new InvoiceBL();
 
         try {
-            invoiceBL.create(userId, newInvoice, process);
+            invoiceBL.create(userId, newInvoice, process, executorUserId);
             invoiceBL.createLines(newInvoice);
         } catch (Exception e) {
             LOG.fatal("CreateException creating invoice record", e);
@@ -674,35 +772,37 @@ public class BillingProcessBL extends ResultList
         }
 
         createOrderProcess(newInvoice, invoiceBL.getEntity(), process,
-                origin);
+                origin, executorUserId);
 
         return invoiceBL.getEntity();
 
     }
 
-    private void createOrderProcess(NewInvoiceDTO newInvoice,
+    private void createOrderProcess(NewInvoiceContext newInvoice,
             InvoiceDTO invoice, BillingProcessDTO process,
-            Integer origin)
+            Integer origin, Integer executorId)
             throws SessionInternalError {
+
         LOG.debug("Generating order process records...");
+
         // update the orders involved, now that their old data is not needed
         // anymore
-        for (int f = 0; f < newInvoice.getOrders().size(); f++) {
+        for (NewInvoiceContext.OrderContext orderCtx : newInvoice.getOrders()) {
 
-            OrderDTO order = (OrderDTO) newInvoice.getOrders().get(f);
+            OrderDTO order = orderCtx.order;
 
-            LOG.debug(" ... order " + order.getId());
+            LOG.debug(" ... order %s", order.getId());
+
             // this will help later
-            List<PeriodOfTime> periodsList = newInvoice.getPeriods().get(f);
+            List<PeriodOfTime> periodsList = orderCtx.periods;
             Date startOfBillingPeriod = (Date) periodsList.get(0).getStart();
             Date endOfBillingPeriod = periodsList.get(periodsList.size() - 1).getEnd();
-            Integer periods = (Integer) newInvoice.getPeriods().get(f).size();
+            Integer periods = (Integer) orderCtx.periods.size();
 
             // We don't update orders if this is just a review
             if (newInvoice.getIsReview().intValue() == 0) {
                 // update the to_process if applicable
-                updateStatusFinished(order, startOfBillingPeriod,
-                        endOfBillingPeriod);
+                updateStatusFinished(order, startOfBillingPeriod, endOfBillingPeriod, executorId);
 
                 // update this order process field
                 updateNextBillableDay(order, endOfBillingPeriod);
@@ -717,25 +817,26 @@ public class BillingProcessBL extends ResultList
                 orderProcess.setPeriodEnd(endOfBillingPeriod);
                 orderProcess.setIsReview(newInvoice.getIsReview());
                 orderProcess.setPurchaseOrder(order);
+
                 InvoiceDAS invDas = new InvoiceDAS();
                 orderProcess.setInvoice(invDas.find(invoice.getId()));
+
                 BillingProcessDAS proDas = new BillingProcessDAS();
                 orderProcess.setBillingProcess(process != null ? proDas.find(process.getId()) : null);
                 orderProcess.setPeriodsIncluded(periods);
                 orderProcess.setOrigin(origin);
                 orderProcess = das.save(orderProcess);
-                LOG.debug("created order process id " + orderProcess.getId() +
-                        " for order " + order.getId());
+
+                LOG.debug("created order process id %s for order %s", orderProcess.getId(), order.getId());
 
             } catch (Exception e) {
                 throw new SessionInternalError(e);
             }
         }
-
     }
 
     private void composeInvoice(Integer entityId, Integer userId,
-            NewInvoiceDTO newInvoice)
+            NewInvoiceContext newInvoice)
             throws PluggableTaskException, TaskException, SessionInternalError {
         newInvoice.setEntityId(entityId);
         PluggableTaskManager taskManager =
@@ -750,15 +851,14 @@ public class BillingProcessBL extends ResultList
 
         String validationMessage = newInvoice.validate();
         if (validationMessage != null) {
-            LOG.error(
-                    "Composing invoice for entity " + entityId + " invalid new invoice object: " + validationMessage);
+            LOG.error("Composing invoice for entity %s invalid new invoice object: %s", entityId, validationMessage);
             throw new SessionInternalError(
-                    "NewInvoiceDTO:" + validationMessage);
+                    "NewInvoiceContext:" + validationMessage);
         }
     }
 
     private boolean addOrderToInvoice(Integer entityId, OrderDTO order,
-            NewInvoiceDTO newInvoice, Date processDate, int maxPeriods)
+            NewInvoiceContext newInvoice, Date processDate, int maxPeriods)
             throws SessionInternalError, TaskException,
             PluggableTaskException {
         // require the calculation of the period dates
@@ -801,11 +901,10 @@ public class BillingProcessBL extends ResultList
                     EventLogger.BILLING_PROCESS_UNBILLED_PERIOD,
                     Constants.TABLE_PUCHASE_ORDER);
 
-            LOG.warn("Order " + order.getId() + " is prepaid " +
-                    "but has past time not billed.");
+            LOG.warn("Order %s is prepaid but has past time not billed.", order.getId());
         }
 
-        // initialize the currency of the new invoice 
+        // initialize the currency of the new invoice
         if (newInvoice.getCurrency() == null) {
             newInvoice.setCurrency(order.getCurrency());
         } else {
@@ -823,13 +922,14 @@ public class BillingProcessBL extends ResultList
 
     static void updateStatusFinished(OrderDTO order,
             Date startOfBillingPeriod,
-            Date endOfBillingPeriod)
+            Date endOfBillingPeriod,
+            Integer executorId)
             throws SessionInternalError {
 
         // all one timers are done
         if (order.getOrderPeriod().getId() == Constants.ORDER_PERIOD_ONCE) {
             OrderBL orderBL = new OrderBL(order);
-            orderBL.setStatus(null, Constants.ORDER_STATUS_FINISHED);
+            orderBL.setStatus(null, new OrderStatusDAS().getDefaultOrderStatusId(OrderStatusFlag.FINISHED, order.getUser().getCompany().getId()));
         } else { // recursive orders get more complicated
             // except those that are immortal :)
             if (order.getActiveUntil() == null) {
@@ -837,12 +937,12 @@ public class BillingProcessBL extends ResultList
             }
             // see until when the incoming process will cover
             // compare if this is after the order exipres
-            Logger log = Logger.getLogger(BillingProcessBL.class);
-            log.debug("order " + order.getId() + "end of bp " +
-                    endOfBillingPeriod + " active until " + order.getActiveUntil());
+            FormatLogger log = new FormatLogger(Logger.getLogger(BillingProcessBL.class));
+            log.debug("order %s end of bp %s active until %s", 
+                    order.getId(), endOfBillingPeriod, order.getActiveUntil());
             if (endOfBillingPeriod.compareTo(Util.truncateDate(order.getActiveUntil())) >= 0) {
                 OrderBL orderBL = new OrderBL(order);
-                orderBL.setStatus(null, Constants.ORDER_STATUS_FINISHED);
+                orderBL.setStatus(null, new OrderStatusDAS().getDefaultOrderStatusId(OrderStatusFlag.FINISHED, order.getUser().getCompany().getId()));
             }
         }
     }
@@ -852,20 +952,37 @@ public class BillingProcessBL extends ResultList
         GregorianCalendar cal = new GregorianCalendar();
 
         cal.setTime(process.getBillingDate());
-        cal.add(MapPeriodToCalendar.map(process.getPeriodUnit().getId()),
-                process.getPeriodValue());
+        
+        if (CalendarUtils.isSemiMonthlyPeriod(process.getPeriodUnit())) {
+        	cal.setTime(CalendarUtils.addSemiMonthyPeriod(cal.getTime()));
+        } else {
+        	cal.add(MapPeriodToCalendar.map(process.getPeriodUnit().getId()),
+        			process.getPeriodValue());
+        }
 
         return cal.getTime();
     }
 
     static public void updateNextBillableDay(OrderDTO order,
             Date end) throws SessionInternalError {
-        // if this order won't be process ever again, the 
-        // it shouldn't have a next billable day        
-        if (order.getStatusId().equals(Constants.ORDER_STATUS_FINISHED)) {
+        // if this order won't be process ever again, the
+        // it shouldn't have a next billable day
+        if (order.getOrderStatus().getOrderStatusFlag().equals(OrderStatusFlag.FINISHED)) {
             order.setNextBillableDay(null);
         } else {
             order.setNextBillableDay(end);
+        }
+        updateNextBillableDayInChanges(order);
+    }
+
+    static private void updateNextBillableDayInChanges (OrderDTO order) {
+        Date nextBillableDate = order.getNextBillableDay();
+        for (OrderLineDTO line: order.getLines()) {
+            for (OrderChangeDTO change: line.getOrderChanges()) {
+                if ((nextBillableDate == null) || (change.getNextBillableDate() == null) || nextBillableDate.after(change.getNextBillableDate())) {
+                    change.setNextBillableDate(nextBillableDate);
+                }
+            } 
         }
     }
 
@@ -900,11 +1017,10 @@ public class BillingProcessBL extends ResultList
                 addRuntimeStatistic(run.getBillingProcess().getId(), language, runDto);
             }
 
-            LOG.debug("Run:" + run.getId() + " has " + run.getProcessRunTotals().size() +
-                    " total records");
+            LOG.debug("Run: %s has %s total records.", run.getId(), run.getProcessRunTotals().size());
             // go over the totals, since there's one per currency
             for (Iterator it2 = runDto.getTotals().iterator(); it2.hasNext();) {
-                // the total to process 
+                // the total to process
                 BillingProcessRunTotalDTOEx totalDto =
                         (BillingProcessRunTotalDTOEx) it2.next();
 
@@ -944,7 +1060,7 @@ public class BillingProcessBL extends ResultList
                     sum.getPmTotals().put(method, new Float(methodTotal.floatValue()));
                 }
 
-                LOG.debug("Added total to run dto. PMs in total:" + sum.getPmTotals().size() + " now grandTotal totals:" + grandTotal.getTotals().size());
+                LOG.debug("Added total to run dto. PMs in total:%s now grandTotal totals: %s", sum.getPmTotals().size(), grandTotal.getTotals().size());
             }
             totalInvoices += runDto.getInvoicesGenerated();
         }
@@ -961,8 +1077,8 @@ public class BillingProcessBL extends ResultList
     }
 
     private void addRuntimeStatistic(Integer billingProcessId, Integer language,  BillingProcessRunDTOEx runDto) {
-        for (Iterator iter = new BillingProcessDAS().getCountAndSum(billingProcessId); iter.hasNext();) {
-            Object[] row = (Object[]) iter.next();
+        for (Object invoiceTblObj: new BillingProcessDAS().getCountAndSum(billingProcessId)) {
+            Object[] row = (Object[]) invoiceTblObj;
 
             BillingProcessRunTotalDTOEx totalRowDto =
                     new BillingProcessRunTotalDTOEx();
@@ -975,9 +1091,10 @@ public class BillingProcessBL extends ResultList
             totalRowDto.setTotalPaid(BigDecimal.ZERO);
 
             // now go over the totals by payment method
-            Hashtable totals = new Hashtable();
-            for (Iterator itt = new BillingProcessDAS().getSuccessfulProcessCurrencyMethodAndSum(billingProcessId); itt.hasNext();) {
-                Object[] payedRow = (Object[]) itt.next();
+            Hashtable<String, BigDecimal> totals = new Hashtable<String, BigDecimal>();
+
+            for (Object invoicePymObj: new BillingProcessDAS().getSuccessfulProcessCurrencyMethodAndSum(billingProcessId)) {
+                Object[] payedRow= (Object[]) invoicePymObj;
                 if (payedRow[0].equals(totalRowDto.getCurrency().getId())) {
                     PaymentMethodDTO paymentMethod = new PaymentMethodDAS().find((Integer) payedRow[1]);
                     BigDecimal payed = (BigDecimal) payedRow[2];
@@ -986,8 +1103,8 @@ public class BillingProcessBL extends ResultList
                 }
             }
             totalRowDto.setPmTotals(totals);
-            for (Iterator itt = new BillingProcessDAS().getFailedProcessCurrencyAndSum(billingProcessId); itt.hasNext();) {
-                Object[] unpayedRow = (Object[]) itt.next();
+            for (Object unpayedObj: new BillingProcessDAS().getFailedProcessCurrencyAndSum(billingProcessId)) {
+                Object[] unpayedRow = (Object[]) unpayedObj;
                 if (unpayedRow[0].equals(totalRowDto.getCurrency().getId())) {
                     totalRowDto.setTotalNotPaid(totalRowDto.getTotalNotPaid().add((BigDecimal) unpayedRow[1]));
                 }
@@ -1025,7 +1142,7 @@ public class BillingProcessBL extends ResultList
 
     public Integer[] getToRetry(Integer entityId)
             throws SQLException, Exception {
-        List list = new ArrayList();
+        List<Integer> list = new ArrayList<Integer>();
 
         prepareStatement(ProcessSQL.findToRetry);
         cachedResults.setInt(1, entityId.intValue());
@@ -1064,7 +1181,7 @@ public class BillingProcessBL extends ResultList
         }
     }
 
-    public BillingProcessRunTotalDTOEx getTotal(CurrencyDTO currency, List totals) {
+    public BillingProcessRunTotalDTOEx getTotal(CurrencyDTO currency, List<BillingProcessRunTotalDTOEx> totals) {
         BillingProcessRunTotalDTOEx retValue = null;
         for (int f = 0; f < totals.size(); f++) {
             BillingProcessRunTotalDTOEx total = (BillingProcessRunTotalDTOEx) totals.get(f);
@@ -1088,10 +1205,10 @@ public class BillingProcessBL extends ResultList
     public BillingProcessDTOEx getReviewDTO(Integer entityId, Integer languageId) {
         billingProcess = billingProcessDas.findReview(entityId);
         if (billingProcess == null) {
-            System.out.println("Don't found the billingProcess");
+            LOG.debug("Don't found the billingProcess");
             return null;
         } else {
-            System.out.println("found the billingProcess");
+            LOG.debug("found the billingProcess");
         }
         return getDtoEx(languageId);
     }
@@ -1119,11 +1236,18 @@ public class BillingProcessBL extends ResultList
                     Constants.TABLE_BILLING_PROCESS_CONFIGURATION);
         }
         // delete the review
-        LOG.debug("Removing review id = " + review.getId() + " from " +
-                " entity " + entityId);
+        LOG.debug("Removing review id = %s from entity %s", review.getId(), entityId);
         // this is needed while the order process is JPA, but the billing process is Entity
         OrderProcessDAS processDas = new OrderProcessDAS();
         com.sapienter.jbilling.server.process.db.BillingProcessDTO processDto = new BillingProcessDAS().find(review.getId());
+        
+        // deleting all the references of billing process and process runs from
+        // billing_process_failed_user, batch_process_info
+        for (BatchProcessInfoDTO batchInfoDto : new BatchProcessInfoDAS().getEntitiesByBillingProcessId(processDto.getId())) {
+        	new BillingProcessFailedUserDAS().removeFailedUsersForBatchProcess(batchInfoDto.getId());
+        	new BatchProcessInfoDAS().delete(batchInfoDto);
+        }
+        
         for (OrderProcessDTO orderDto : processDto.getOrderProcesses()) {
             processDas.delete(orderDto);
         }
@@ -1136,16 +1260,12 @@ public class BillingProcessBL extends ResultList
         getHome().delete(review);
     }
 
-    @SuppressWarnings("unchecked")
-    private void processOrderToInvoiceEvents(NewInvoiceDTO newInvoice, Integer entityId) {
-        List<OrderDTO> orders = newInvoice.getOrders();
-        List<List<PeriodOfTime>> periods = newInvoice.getPeriods();
-        for (int i = 0; i < orders.size(); i++) {
-            OrderDTO order = orders.get(i);
+    private void processOrderToInvoiceEvents(NewInvoiceContext newInvoice, Integer entityId) {
+        for (NewInvoiceContext.OrderContext orderCtx : newInvoice.getOrders()) {
+            OrderDTO order = orderCtx.order;
             Integer userId = findUserId(order);
-            for (PeriodOfTime period : periods.get(i)) {
-                OrderToInvoiceEvent newEvent =
-                        new OrderToInvoiceEvent(entityId, userId, order);
+            for (PeriodOfTime period : orderCtx.periods) {
+                OrderToInvoiceEvent newEvent = new OrderToInvoiceEvent(entityId, userId, order);
                 newEvent.setStart(period.getStart());
                 newEvent.setEnd(period.getEnd());
                 EventManager.process(newEvent);
@@ -1153,27 +1273,39 @@ public class BillingProcessBL extends ResultList
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private void processOrderAddedOnInvoiceEvents(NewInvoiceDTO newInvoice, Integer entityId) {
-        List<OrderDTO> orders = newInvoice.getOrders();
-        List<List<PeriodOfTime>> periods = newInvoice.getPeriods();
-        for (int i = 0; i < orders.size(); i++) {
-            OrderDTO order = orders.get(i);
+    private void processOrderAddedOnInvoiceEvents(NewInvoiceContext newInvoice, Integer entityId) {
+        List<NewInvoiceContext.OrderContext> orders = newInvoice.getOrders();
+        LOG.info("Number of orders: %s", orders.size());
+        for (NewInvoiceContext.OrderContext orderCtx : orders) {
+            OrderDTO order = orderCtx.order;
             Integer userId = findUserId(order);
-            for (PeriodOfTime period : periods.get(i)) {
-                LOG.info("Number of orders in map: " + newInvoice.getOrderTotalContributions().size());
-                LOG.info("Map: " + newInvoice.getOrderTotalContributions());
-                OrderAddedOnInvoiceEvent newEvent =
-                        new OrderAddedOnInvoiceEvent(entityId, userId, order, 
-                        newInvoice.getOrderTotalContributions().get(
-                        order.getId()));
-                newEvent.setStart(period.getStart());
-                newEvent.setEnd(period.getEnd());
-                EventManager.process(newEvent);
-            }
+            OrderAddedOnInvoiceEvent newEvent =
+                    new OrderAddedOnInvoiceEvent(entityId, userId, order, orderCtx.totalContribution);
+            newEvent.setStart(orderCtx.orderPeriodStart);
+            newEvent.setEnd(orderCtx.orderPeriodEnd);
+            EventManager.process(newEvent);
         }
     }
 
+    /**
+     * Handle tax and penalties
+     * @param newInvoice
+     * @param entityId
+     * @param userId
+     */
+    private void processTaxesAndPenalties(NewInvoiceContext newInvoice,
+			Integer entityId, Integer userId) {
+    	LOG.debug("Handling taxes and penalties to fire processTaxLineOnInvoiceEvents");
+        for (int i = 0; i < newInvoice.getResultLines().size(); i++) {
+            InvoiceLineDTO invoiceLine = (InvoiceLineDTO) newInvoice.getResultLines().get(i);
+            if (null != invoiceLine.getInvoiceLineType() && invoiceLine.getInvoiceLineType().getId() == Constants.INVOICE_LINE_TYPE_TAX) {
+                ProcessTaxLineOnInvoiceEvent taxLineOnInvoice= new ProcessTaxLineOnInvoiceEvent(entityId, userId, invoiceLine.getAmount());
+                LOG.debug("Firing event %s", taxLineOnInvoice);
+                EventManager.process(taxLineOnInvoice);
+            }
+        }
+	}
+    
     private Integer findUserId(OrderDTO order) {
         UserDTO user = order.getUser();
 
@@ -1182,7 +1314,7 @@ public class BillingProcessBL extends ResultList
                 (user.getCustomer().getInvoiceChild() == null ||
                  user.getCustomer().getInvoiceChild() == 0)) {
             // go up one level
-            LOG.debug("finding parent for invoicing. Now " + user.getUserId());
+            LOG.debug("finding parent for invoicing. Now %s", user.getUserId());
             user = user.getCustomer().getParent().getBaseUser();
         }
 
@@ -1196,7 +1328,43 @@ public class BillingProcessBL extends ResultList
      * @return converted web-service object
      */
     public static BillingProcessWS getWS(BillingProcessDTO dto) {
-        return dto != null ? new BillingProcessWS(dto) : null;
+		if (null == dto)
+			return null;
+
+		BillingProcessWS ws = new BillingProcessWS();
+
+		ws.setId(dto.getId());
+		ws.setEntityId(dto.getEntity() != null ? dto.getEntity().getId() : null);
+		ws.setPeriodUnitId(dto.getPeriodUnit() != null ? dto.getPeriodUnit()
+				.getId() : null);
+		ws.setPeriodValue(dto.getPeriodValue());
+		ws.setBillingDate(dto.getBillingDate());
+		ws.setReview(dto.getIsReview());
+		ws.setRetriesToDo(dto.getRetriesToDo());
+
+		// invoice ID's
+		if (!dto.getInvoices().isEmpty()) {
+			ws.setInvoiceIds(new ArrayList<Integer>(dto.getInvoices().size()));
+			for (InvoiceDTO invoice : dto.getInvoices())
+				ws.getInvoiceIds().add(invoice.getId());
+		}
+
+		// order processes
+		if (!dto.getOrderProcesses().isEmpty()) {
+			ws.setOrderProcesses(new ArrayList<OrderProcessWS>(dto
+					.getOrderProcesses().size()));
+			for (OrderProcessDTO process : dto.getOrderProcesses())
+				ws.getOrderProcesses().add(OrderBL.getOrderProcessWS(process));
+		}
+
+		if (!dto.getProcessRuns().isEmpty()) {
+			// billing process runs
+			ws.setProcessRuns(new ArrayList<ProcessRunWS>(dto.getProcessRuns()
+					.size()));
+			for (ProcessRunDTO run : dto.getProcessRuns())
+				ws.getProcessRuns().add(BillingProcessBL.getProcessRunWS(run));
+		}
+		return ws;
     }
 
 
@@ -1206,7 +1374,70 @@ public class BillingProcessBL extends ResultList
      * @param ex extended DTO to convert
      * @return converted web-service object
      */
-    public static BillingProcessWS getWS(BillingProcessDTOEx ex) {
-        return ex != null ? new BillingProcessWS(ex) : null;
+    public static BillingProcessWS getWS(BillingProcessDTOEx dto) {
+		if (null == dto)
+			return null;
+
+		BillingProcessWS ws = getWS((BillingProcessDTO) dto);
+
+		ws.setBillingDateEnd(dto.getBillingDateEnd());
+		ws.setRetries(dto.getRetries());
+
+		// billing process runs
+		if (!dto.getRuns().isEmpty()) {
+			ws.setProcessRuns(new ArrayList<ProcessRunWS>(dto.getRuns().size()));
+			for (BillingProcessRunDTOEx run : dto.getRuns())
+				ws.getProcessRuns().add(BillingProcessBL.getProcessRunWS(run));
+		}
+
+		return ws;
     }
+    
+    public static final ProcessRunTotalWS getProcessRunTotalWS(ProcessRunTotalDTO dto) {
+    	
+    	ProcessRunTotalWS ws = new ProcessRunTotalWS();
+        ws.setId(dto.getId());
+        ws.setProcessRunId(dto.getProcessRun() != null ? dto.getProcessRun().getId() : null);
+        ws.setCurrencyId(dto.getCurrency() != null ? dto.getCurrency().getId() : null);
+        ws.setTotalInvoiced(dto.getTotalInvoiced());
+        ws.setTotalPaid(dto.getTotalPaid());
+        ws.setTotalNotPaid(dto.getTotalNotPaid());
+        return ws;
+    }
+    
+    public static final ProcessRunWS getProcessRunWS(ProcessRunDTO dto) {
+    	
+    	ProcessRunWS ws = new ProcessRunWS();
+        ws.setId(dto.getId());
+        ws.setBillingProcessId(dto.getBillingProcess() != null ? dto.getBillingProcess().getId() : null);
+       ws.setRunDate(dto.getRunDate());
+        ws.setStarted(dto.getStarted());
+        ws.setFinished(dto.getFinished());
+        ws.setInvoicesGenerated(dto.getInvoicesGenerated());
+        ws.setPaymentFinished(dto.getPaymentFinished());
+        ws.setStatusId(dto.getStatus() != null ? dto.getStatus().getId() : null);
+
+        // billing process run totals
+        if (!dto.getProcessRunTotals().isEmpty()) {
+           ws.setProcessRunTotals(new ArrayList<ProcessRunTotalWS>(dto.getProcessRunTotals().size()));
+            for (ProcessRunTotalDTO runTotal : dto.getProcessRunTotals())
+                ws.getProcessRunTotals().add(BillingProcessBL.getProcessRunTotalWS(runTotal));
+        }
+        return ws;
+    }
+
+    public static final ProcessRunWS getProcessRunWS(BillingProcessRunDTOEx ex) {
+       
+    	ProcessRunWS ws = getProcessRunWS((ProcessRunDTO) ex);
+
+        ws.setStatusStr(ex.getStatusStr());
+
+        if (!ex.getTotals().isEmpty()) {
+            ws.setProcessRunTotals(new ArrayList<ProcessRunTotalWS>(ex.getTotals().size()));
+            for (BillingProcessRunTotalDTOEx runTotal : ex.getTotals())
+                ws.getProcessRunTotals().add(BillingProcessBL.getProcessRunTotalWS(runTotal));
+        }
+        return ws;
+    }
+    
 }

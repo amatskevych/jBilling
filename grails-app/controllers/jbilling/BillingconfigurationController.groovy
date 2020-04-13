@@ -20,11 +20,11 @@
 
 package jbilling
 
-import grails.plugins.springsecurity.Secured;
+import grails.plugin.springsecurity.annotation.Secured
+
 import com.sapienter.jbilling.server.process.BillingProcessConfigurationWS;
+import com.sapienter.jbilling.server.util.IWebServicesSessionBean;
 import com.sapienter.jbilling.common.SessionInternalError;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 
 /**
 * BillingController
@@ -32,28 +32,39 @@ import java.util.Date;
 * @author Vikas Bodani
 * @since 11/01/11
 */
-@Secured(["MENU_99"])
+@Secured(["isAuthenticated()"])
 class BillingconfigurationController {
 
-	def webServicesSession
+	static scope = "prototype"
+	IWebServicesSessionBean webServicesSession
 	def viewUtils
 	def recentItemService
 	def breadcrumbService
     
-    def index = {
-		
+    def index () {
+
 		breadcrumbService.addBreadcrumb(controllerName, actionName, null, null)
 		def configuration= webServicesSession.getBillingProcessConfiguration()
-		boolean isBillingRunning= webServicesSession.isBillingRunning()
-		if (isBillingRunning)
-		{
+		boolean isBillingRunning= webServicesSession.isBillingRunning(webServicesSession.getCallerCompanyId())
+		if (params['alreadyRunning']?.toBoolean()) {
+			flash.error = 'prompt.billing.already.running'
 			flash.info = 'prompt.billing.running'
+		} else {
+			if (isBillingRunning) {
+				flash.info = 'prompt.billing.running'
+			} else {
+				if (params['isFutureRunAttempt']?.toBoolean()) {
+					flash.error = 'billing.cannot.be.run.for.future.date'
+				} else if ( params['trigger']?.toBoolean()) {
+					flash.error = 'prompt.billing.trigger.fail'
+				}
+			}
 		}
 		[configuration:configuration, isBillingRunning: isBillingRunning]
 	}
 	
-	def saveConfig = {
-		
+	def saveConfig () {
+
 		log.info "${params}"
 		def configuration= new BillingProcessConfigurationWS() 
 		bindData(configuration, params)
@@ -62,9 +73,8 @@ class BillingconfigurationController {
 		configuration.setGenerateReport params.generateReport ? 1 : 0
 		configuration.setInvoiceDateProcess params.invoiceDateProcess ? 1 : 0 
 		configuration.setOnlyRecurring params.onlyRecurring ? 1 : 0
-		configuration.setAutoPayment params.autoPayment ? 1 : 0
 		configuration.setAutoPaymentApplication params.autoPaymentApplication ? 1 : 0
-		//configuration.setNextRunDate (new SimpleDateFormat("dd-MMM-yyyy").parse(params.nextRunDate) )
+		//configuration.setNextRunDate (DateTimeFormat.forPattern("dd-MMM-yyyy").parseDateTime(params.nextRunDate))
 		configuration.setEntityId webServicesSession.getCallerCompanyId()
 		
 		log.info "Generate Report ${params.generateReport}"
@@ -79,23 +89,31 @@ class BillingconfigurationController {
 			flash.error = 'billing.configuration.save.fail'
 		}
 		
-		redirect action: index
+		chain action: 'index'
 	}
 	
-	def runBilling = {
+	def runBilling () {
+		def alreadyRunning= false
+		def isFutureRunAttempt = false
+		def configuration= webServicesSession.getBillingProcessConfiguration()
 		
+		//Check billing Run Date cannot be in future.
+		if(configuration.nextRunDate.after(new Date())) {
+			isFutureRunAttempt = true
+		}
 		try {
-			if (!webServicesSession.isBillingRunning()) {
+			if (!webServicesSession.isBillingRunning(webServicesSession.getCallerCompanyId())) {
 				webServicesSession.triggerBillingAsync(new Date())
-				flash.message = 'prompt.billing.trigger'
+				//flash.message = 'prompt.billing.trigger'
 			} else {
 				flash.error = 'prompt.billing.already.running'
+				alreadyRunning= true
 			}
 		} catch (Exception e) {
 			log.error e.getMessage()
 			viewUtils.resolveException(flash, session.locale, e);
 		}
-		redirect action: 'index'
+
+		chain action: 'index', params: ['trigger': true, 'alreadyRunning': alreadyRunning, 'isFutureRunAttempt': isFutureRunAttempt]
 	}
-	
 }

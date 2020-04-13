@@ -35,8 +35,7 @@ import javax.persistence.Transient;
 import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
 
-import com.sapienter.jbilling.server.util.db.JbillingTable;
-
+import java.io.Serializable;
 import java.math.BigDecimal;
 
 @Entity
@@ -141,6 +140,7 @@ public class PreferenceDTO implements java.io.Serializable {
     public BigDecimal getFloatValue() {
         return value != null ? new BigDecimal(value) : null;
     }
+
 }
 
 

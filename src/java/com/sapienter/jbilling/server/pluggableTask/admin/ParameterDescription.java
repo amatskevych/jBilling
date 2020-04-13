@@ -25,12 +25,25 @@ public class ParameterDescription {
 	private final String name;
 	private final boolean required;
 	private final Type type;
+	private boolean isPassword;
 	
+	
+	public ParameterDescription(String name, boolean required, Type type, boolean isPassword) {
+		super();
+		this.name = name;
+		this.required = required;
+		this.type = type;
+		this.isPassword = isPassword;
+	}
 	public ParameterDescription(String name, boolean required, Type type) {
 		super();
 		this.name = name;
 		this.required = required;
 		this.type = type;
+	}
+	
+	public boolean getIsPassword() {
+		return isPassword;
 	}
 	
 	public String getName() {

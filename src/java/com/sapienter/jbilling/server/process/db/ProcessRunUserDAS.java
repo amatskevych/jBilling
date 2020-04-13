@@ -50,11 +50,11 @@ public class ProcessRunUserDAS extends AbstractDAS<ProcessRunUserDTO> {
         return findUserIdsByStatus(processRunId, ProcessRunUserDTO.STATUS_FAILED);
     }
 
-    public Integer findSuccessfullUsersCount(Integer processRunId) {
+    public Long findSuccessfullUsersCount(Integer processRunId) {
         return findUsersCountByStatus(processRunId, ProcessRunUserDTO.STATUS_SUCCEEDED);
     }
 
-    public Integer findFailedUsersCount(Integer processRunId) {
+    public Long findFailedUsersCount(Integer processRunId) {
         return findUsersCountByStatus(processRunId, ProcessRunUserDTO.STATUS_FAILED);
     }
 
@@ -67,6 +67,15 @@ public class ProcessRunUserDAS extends AbstractDAS<ProcessRunUserDTO> {
         return (List<Integer>) criteria.list();
     }
 
+    public boolean findIfUserIsSuccessful(Integer processRunId, Integer userId) {
+    	Criteria criteria = getSession().createCriteria(ProcessRunUserDTO.class)
+                .add(Restrictions.eq("status", ProcessRunUserDTO.STATUS_SUCCEEDED))
+                .add(Restrictions.eq("processRun.id", processRunId))
+                .add(Restrictions.eq("user.id", userId));
+
+        return (null != criteria.uniqueResult());
+    }
+    
     public ProcessRunUserDTO getUser(Integer processRunId, Integer userId) {
         Criteria criteria = getSession().createCriteria(ProcessRunUserDTO.class)
                 .add(Restrictions.eq("user.id", userId))
@@ -83,13 +92,13 @@ public class ProcessRunUserDAS extends AbstractDAS<ProcessRunUserDTO> {
         query.executeUpdate();
     }
 
-    private Integer findUsersCountByStatus(Integer processRunId, Integer status) {
+    private Long findUsersCountByStatus(Integer processRunId, Integer status) {
         Criteria criteria = getSession().createCriteria(ProcessRunUserDTO.class)
                 .add(Restrictions.eq("status", status))
                 .add(Restrictions.eq("processRun.id", processRunId))
                 .setProjection(Projections.count("user.id"));
 
-        return (Integer) criteria.uniqueResult();
+        return (Long) criteria.uniqueResult();
     }
 
 }

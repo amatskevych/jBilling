@@ -47,7 +47,7 @@ public class PartnerRange  implements java.io.Serializable {
 
 
      private int id;
-     private Partner partner;
+     private PartnerDTO partner;
      private Double percentageRate;
      private Double referralFee;
      private int rangeFrom;
@@ -63,7 +63,7 @@ public class PartnerRange  implements java.io.Serializable {
         this.rangeFrom = rangeFrom;
         this.rangeTo = rangeTo;
     }
-    public PartnerRange(int id, Partner partner, Double percentageRate, Double referralFee, int rangeFrom, int rangeTo) {
+    public PartnerRange(int id, PartnerDTO partner, Double percentageRate, Double referralFee, int rangeFrom, int rangeTo) {
        this.id = id;
        this.partner = partner;
        this.percentageRate = percentageRate;
@@ -84,11 +84,11 @@ public class PartnerRange  implements java.io.Serializable {
     
     @ManyToOne(fetch=FetchType.LAZY)
     @JoinColumn(name="partner_id")
-    public Partner getPartner() {
+    public PartnerDTO getPartner() {
         return this.partner;
     }
     
-    public void setPartner(Partner partner) {
+    public void setPartner(PartnerDTO partner) {
         this.partner = partner;
     }
     

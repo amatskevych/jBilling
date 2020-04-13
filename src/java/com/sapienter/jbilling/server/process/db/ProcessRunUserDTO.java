@@ -20,10 +20,9 @@
 package com.sapienter.jbilling.server.process.db;
 
 import com.sapienter.jbilling.server.user.db.UserDTO;
-import org.hibernate.annotations.Cache;
-import org.hibernate.annotations.CacheConcurrencyStrategy;
 
 import javax.persistence.*;
+import java.io.Serializable;
 import java.util.Date;
 
 @Entity
@@ -133,4 +132,5 @@ public class ProcessRunUserDTO implements java.io.Serializable {
 
         return ret.toString();
     }
+
 }

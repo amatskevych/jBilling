@@ -20,6 +20,7 @@
 package com.sapienter.jbilling.server.order.db;
 
 
+import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -42,6 +43,7 @@ import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
 
 import com.sapienter.jbilling.server.process.db.PeriodUnitDTO;
+import com.sapienter.jbilling.server.user.db.CompanyDAS;
 import com.sapienter.jbilling.server.user.db.CompanyDTO;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.db.AbstractDescription;
@@ -72,7 +74,19 @@ public class OrderPeriodDTO extends AbstractDescription implements java.io.Seria
     public OrderPeriodDTO(int id) {
         this.id = id;
     }
+    
+    public OrderPeriodDTO(Integer unitId, Integer value, Integer entityId) {
+    	setUnitId(unitId);
+    	setValue(value);
+    	this.company = new CompanyDAS().find(entityId);
+    }
 
+    public OrderPeriodDTO(CompanyDTO entity, PeriodUnitDTO periodUnitDTO, Integer value) {
+        this.company = entity;
+        this.periodUnitDTO = periodUnitDTO;
+        this.value = value;
+     }
+    
     public OrderPeriodDTO(int id, CompanyDTO entity, PeriodUnitDTO periodUnitDTO, Integer value, Set<OrderDTO> orderDTOs) {
        this.id = id;
        this.company = entity;
@@ -171,6 +185,7 @@ public class OrderPeriodDTO extends AbstractDescription implements java.io.Seria
     public void touch() {
         getUnitId();
     }
+
 }
 
 

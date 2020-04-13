@@ -20,46 +20,55 @@
 package com.sapienter.jbilling.server.user.db;
 
 
+import com.sapienter.jbilling.server.process.db.AgeingEntityStepDTO;
+import com.sapienter.jbilling.server.util.Constants;
+import com.sapienter.jbilling.server.util.db.AbstractDescription;
+import org.hibernate.annotations.Cache;
+import org.hibernate.annotations.CacheConcurrencyStrategy;
+
+import javax.persistence.*;
 import java.util.HashSet;
 import java.util.Set;
 
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.OneToMany;
-import javax.persistence.Transient;
-import javax.persistence.DiscriminatorValue;
-
-import com.sapienter.jbilling.server.process.db.AgeingEntityStepDTO;
-import com.sapienter.jbilling.server.util.Constants;
-import com.sapienter.jbilling.server.util.db.AbstractGenericStatus;
-
 @Entity
-@DiscriminatorValue("user_status")
-public class UserStatusDTO extends AbstractGenericStatus implements java.io.Serializable {
+@TableGenerator(name = "user_status_GEN",
+        table = "jbilling_seqs",
+        pkColumnName = "name",
+        valueColumnName = "next_id",
+        pkColumnValue = "user_status",
+        allocationSize = 100)
+@Table(name = "user_status")
+@Cache(usage = CacheConcurrencyStrategy.NONSTRICT_READ_WRITE)
+public class UserStatusDTO extends AbstractDescription implements java.io.Serializable {
 
-     private int canLogin;
-     private Set<AgeingEntityStepDTO> ageingEntitySteps = new HashSet<AgeingEntityStepDTO>(0);
-     private Set<UserDTO> baseUsers = new HashSet<UserDTO>(0);
+    protected int id;
+    private int canLogin;
+    private AgeingEntityStepDTO ageingEntityStep;
+    private Set<UserDTO> baseUsers = new HashSet<UserDTO>(0);
 
     public UserStatusDTO() {
     }
 
-    public UserStatusDTO(Integer statusvalue) {
-        this.statusValue = statusValue;
-    }
-    
-    public UserStatusDTO(int statusValue, int canLogin) {
-        this.statusValue = statusValue;
+    public UserStatusDTO(int canLogin, AgeingEntityStepDTO ageingEntityStep) {
         this.canLogin = canLogin;
+        this.ageingEntityStep = ageingEntityStep;
     }
-    
-    public UserStatusDTO(int statusValue, int canLogin, Set<AgeingEntityStepDTO> ageingEntitySteps, Set<UserDTO> baseUsers) {
-       this.statusValue = statusValue;
-       this.canLogin = canLogin;
-       this.ageingEntitySteps = ageingEntitySteps;
-       this.baseUsers = baseUsers;
+
+    public UserStatusDTO(int canLogin, AgeingEntityStepDTO ageingEntityStep, Set<UserDTO> baseUsers) {
+        this.canLogin = canLogin;
+        this.ageingEntityStep = ageingEntityStep;
+        this.baseUsers = baseUsers;
+    }
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.TABLE, generator = "user_status_GEN")
+    @Column(name = "id", unique = true, nullable = false)
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
     }
     
     @Transient
@@ -75,26 +84,28 @@ public class UserStatusDTO extends AbstractGenericStatus implements java.io.Seri
     public void setCanLogin(int canLogin) {
         this.canLogin = canLogin;
     }
-@OneToMany(cascade=CascadeType.ALL, fetch=FetchType.LAZY, mappedBy="userStatus")
-    public Set<AgeingEntityStepDTO> getAgeingEntitySteps() {
-        return this.ageingEntitySteps;
+    @OneToOne(mappedBy = "userStatus", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    public AgeingEntityStepDTO getAgeingEntityStep() {
+        return this.ageingEntityStep;
     }
-    
-    public void setAgeingEntitySteps(Set<AgeingEntityStepDTO> ageingEntitySteps) {
-        this.ageingEntitySteps = ageingEntitySteps;
+
+    public void setAgeingEntityStep(AgeingEntityStepDTO ageingEntityStep) {
+        this.ageingEntityStep = ageingEntityStep;
     }
-@OneToMany(cascade=CascadeType.ALL, fetch=FetchType.LAZY, mappedBy="userStatus")
+
+    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "userStatus")
     public Set<UserDTO> getBaseUsers() {
         return this.baseUsers;
     }
-    
+
     public void setBaseUsers(Set<UserDTO> baseUsers) {
         this.baseUsers = baseUsers;
     }
 
-
-
-
+    @Transient
+    public boolean isSuspended() {
+        return ageingEntityStep == null || ageingEntityStep.getSuspend() > 0;
+    }
 }
 
 

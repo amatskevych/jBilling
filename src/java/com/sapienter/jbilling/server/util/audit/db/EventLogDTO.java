@@ -19,6 +19,7 @@
  */
 package com.sapienter.jbilling.server.util.audit.db;
 
+import java.io.Serializable;
 import java.util.Calendar;
 import java.util.Date;
 
@@ -182,7 +183,7 @@ public class EventLogDTO  implements java.io.Serializable {
         return this.oldDate;
     }
 
-    protected int getVersionNum() { return versionNum; }
+    public int getVersionNum() { return versionNum; }
 
     public void touch() {
         getJbillingTable().getName();
@@ -192,6 +193,7 @@ public class EventLogDTO  implements java.io.Serializable {
         getEventLogModule().getId();
         getEventLogMessage().getId();
     }
+
 }
 
 

@@ -3,11 +3,11 @@ jBilling
 
 **Requirements:**
 
-* Java 6+
-* Grails 1.3.4
+* Java 8+
+* Grails 2.4.3
 * PostgreSQL 8+ *(required for testing, other runtime databases are supported)*
 
-To run jBilling from source you will need to have Java 6+ and Grails 1.3.4 installed. To install grails, download version 1.3.4 from the [Grails Archive](http://www.grails.org/download/archive/Grails) and follow the installation instructions for your operating system. 
+To run jBilling from source you will need to have Java 8+ and Grails 2.4.3 installed. To install grails, download version 2.4.3 from the [Grails Archive](http://www.grails.org/download/) and follow the installation instructions for your operating system. 
 
 [Java](http://www.oracle.com/technetwork/java/javase/downloads/index.html) and [PostgreSQL](http://www.postgresql.org/) can be downloaded an installed by visiting the vendor's websites, or in linux environments by using the package manager (apt-get or yum).
 
@@ -18,9 +18,9 @@ Cloning the Source Code from GitHub
 
 Install [Git](http://git-scm.com/download/). 
 
-Clone the repository from `git@github.com:emilc/jBilling.git` 
+Clone the repository from `git@github.com:emilc/enterprise.git` 
 
-<pre><code>clone git@github.com:emilc/jBilling.git jbilling-community</code></pre>
+<pre><code>clone git@github.com:emilc/enterprise.git jbilling-enterprise</code></pre>
 
 
 
@@ -50,7 +50,8 @@ Setup
 
 Run the grails `compile` target to compile the jBilling source code, then run the `prepare-test` target to load the reference database and prepare all the required resources.
 
-<pre><code>grails compile
+<pre><code>
+grails compile
 grails prepare-test
 </pre></code>
 

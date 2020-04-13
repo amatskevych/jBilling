@@ -40,6 +40,10 @@ public abstract class AbstractItemEvent implements Event {
     public Integer getEntityId() {
         return entityId;
     }
+    
+    public Integer setEntityId(Integer entityId) {
+        return this.entityId = entityId;
+    }
 
     @Override
     public String toString() {

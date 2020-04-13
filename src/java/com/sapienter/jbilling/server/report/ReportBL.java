@@ -20,6 +20,8 @@
 
 package com.sapienter.jbilling.server.report;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.report.db.ReportDAS;
 import com.sapienter.jbilling.server.report.db.ReportDTO;
 import com.sapienter.jbilling.server.user.UserBL;
@@ -43,7 +45,9 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.sql.Connection;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -55,11 +59,14 @@ import java.util.Map;
  */
 public class ReportBL {
 
-    private static final Logger LOG = Logger.getLogger(ReportBL.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(ReportBL.class));
 
     public static final String SESSION_IMAGE_MAP = "jasper_images";
     public static final String PARAMETER_ENTITY_ID = "entity_id";
     public static final String PARAMETER_SUBREPORT_DIR = "SUBREPORT_DIR";
+    public static final String CHILD_ENTITIES = "child_entities";
+
+    public static final String BASE_PATH = Util.getSysProp("base_dir") + File.separator + "reports" + File.separator;
 
     private ReportDTO report;
     private Locale locale;
@@ -180,11 +187,12 @@ public class ReportBL {
      */
     public JasperPrint run() {
         return run(report.getName(),
-                   report.getReportFile(),
-                   report.getReportBaseDir(),
+                   getReportFile(report),
+                   getReportBaseDir(report),
                    report.getParameterMap(),
                    locale,
-                   entityId);
+                   entityId,
+                   report.getChildEntities());
     }
 
     /**
@@ -199,12 +207,18 @@ public class ReportBL {
      * @return JasperPrint output file
      */
     public static JasperPrint run(String reportName, File report, String baseDir, Map<String, Object> parameters,
-                                  Locale locale, Integer entityId) {
+                                  Locale locale, Integer entityId, List<Integer> childs) {
 
         // add user locale, entity id and sub report directory
         parameters.put(JRParameter.REPORT_LOCALE, locale);
         parameters.put(PARAMETER_ENTITY_ID, entityId);
         parameters.put(PARAMETER_SUBREPORT_DIR, baseDir);
+        
+        if(childs == null || childs.size() == 0) {
+        	childs = new ArrayList<Integer>(0);
+        	childs.add(0);
+        }
+        parameters.put(CHILD_ENTITIES, childs);
 
         LOG.debug("Generating report " + report.getPath() + " ...");
         LOG.debug(parameters.toString());
@@ -237,9 +251,26 @@ public class ReportBL {
             }
         }
 
-        // release connection
+        // release connection 
         DataSourceUtils.releaseConnection(connection, dataSource);
 
         return print;
+    }
+
+    /**
+     * Returns the base path for this Jasper Report file on disk.
+     *
+     * @return base path for the Jasper Report file
+     */
+    public static String getReportBaseDir(ReportDTO report) {
+        return BASE_PATH + report.getType().getName() + File.separator;
+    }
+    
+    public static File getReportFile(ReportDTO report) { 
+    	return report.getFileName() != null ? new File(getReportFilePath(report)) : null;
+    }
+    
+    public static String getReportFilePath(ReportDTO report) {
+    	 return getReportBaseDir(report) + report.getFileName();
     }
 }

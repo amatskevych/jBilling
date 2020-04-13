@@ -24,22 +24,23 @@ import java.util.Date;
 import java.util.List;
 import java.util.List;
 
-
 import com.sapienter.jbilling.common.SessionInternalError;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue;
 import com.sapienter.jbilling.server.payment.blacklist.db.BlacklistDAS;
 import com.sapienter.jbilling.server.payment.blacklist.db.BlacklistDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.payment.tasks.PaymentFilterTask;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskDAS;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskDTO;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
 import com.sapienter.jbilling.server.user.db.CompanyDTO;
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
 import com.sapienter.jbilling.server.user.db.UserDAS;
 import com.sapienter.jbilling.server.user.db.UserDTO;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.Context;
 import com.sapienter.jbilling.server.util.PreferenceBL;
+
 import org.springframework.dao.EmptyResultDataAccessException;
 
 /**
@@ -113,14 +114,16 @@ public class BlacklistBL {
      */
     public static Integer getBlacklistPluginId(Integer entityId) {
         // get the blacklist filter plug-in id from blacklist preference
-        PreferenceBL preferenceBL = new PreferenceBL();
+    	Integer preferenceUseBlacklist = 0;
         try {
-            preferenceBL.set(entityId, Constants.PREFERENCE_USE_BLACKLIST);
+        	preferenceUseBlacklist = 
+        		PreferenceBL.getPreferenceValueAsIntegerOrZero(
+        			entityId, Constants.PREFERENCE_USE_BLACKLIST);
         } catch (EmptyResultDataAccessException fe) { 
             // use default
         }
 
-        return preferenceBL.getInt();
+        return preferenceUseBlacklist;
     }
 
     /**
@@ -139,7 +142,7 @@ public class BlacklistBL {
      * Creates an entry in the blacklist.
      */
     public Integer create(CompanyDTO company, Integer type, Integer source, 
-            CreditCardDTO creditCard, ContactDTO contact, UserDTO user) {
+            PaymentInformationDTO creditCard, ContactDTO contact, UserDTO user, MetaFieldValue metaFieldValue) {
         BlacklistDTO entry = new BlacklistDTO();
         entry.setCompany(company);
         entry.setCreateDate(new Date());
@@ -148,6 +151,7 @@ public class BlacklistBL {
         entry.setCreditCard(creditCard);
         entry.setContact(contact);
         entry.setUser(user);
+        entry.setMetaFieldValue(metaFieldValue);
 
         // save data
         blacklistEntry = blacklistDAS.save(entry);

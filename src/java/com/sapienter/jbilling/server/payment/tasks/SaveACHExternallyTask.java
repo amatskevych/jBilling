@@ -20,17 +20,21 @@
 
 package com.sapienter.jbilling.server.payment.tasks;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
 import com.sapienter.jbilling.server.payment.IExternalCreditCardStorage;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDAS;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.pluggableTask.PluggableTask;
 import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskBL;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.system.event.Event;
 import com.sapienter.jbilling.server.system.event.task.IInternalEventsTask;
-import com.sapienter.jbilling.server.user.db.AchDAS;
-import com.sapienter.jbilling.server.user.db.AchDTO;
 import com.sapienter.jbilling.server.user.event.AchDeleteEvent;
 import com.sapienter.jbilling.server.user.event.AchUpdateEvent;
+
 import org.apache.log4j.Logger;
 
 import static com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription.Type.*;
@@ -40,7 +44,7 @@ import static com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescrip
  * @since 14-09-2010
  */
 public class SaveACHExternallyTask extends PluggableTask implements IInternalEventsTask {
-    private static final Logger LOG = Logger.getLogger(SaveCreditCardExternallyTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(SaveCreditCardExternallyTask.class));
 
     private static final ParameterDescription PARAM_CONTACT_TYPE = new ParameterDescription("contactType", false, INT);
     private static final ParameterDescription PARAM_EXTERNAL_SAVING_PLUGIN_ID = new ParameterDescription("externalSavingPluginId", true, INT);
@@ -118,12 +122,12 @@ public class SaveACHExternallyTask extends PluggableTask implements IInternalEve
         if (event instanceof AchUpdateEvent) {
             LOG.debug("Processing AchUpdateEvent ...");
             AchUpdateEvent ev = (AchUpdateEvent) event;
-            String gateWayKey = externalCCStorage.storeCreditCard(null, null, ev.getAch());
+            String gateWayKey = externalCCStorage.storeCreditCard(null, ev.getAch());
             updateAch(ev.getAch(), gateWayKey);
         } else if (event instanceof AchDeleteEvent) {
             LOG.debug("Processing AchDeleteEvent ...");
             AchDeleteEvent ev = (AchDeleteEvent) event;
-            String gateWayKey = externalCCStorage.deleteCreditCard(null, null, ev.getAch());
+            String gateWayKey = externalCCStorage.deleteCreditCard(null, ev.getAch());
             deleteAch(ev.getAch(), gateWayKey);
         } else {
             throw new PluggableTaskException("Cant not process event " + event);
@@ -136,16 +140,17 @@ public class SaveACHExternallyTask extends PluggableTask implements IInternalEve
      * @param ach - ACH object to update
      * @param gatewayKey gateway key from external storage, null if storage failed.
      */
-    private void updateAch(AchDTO ach, String gatewayKey) {
-        if (gatewayKey != null) {
+    private void updateAch(PaymentInformationDTO ach, String gatewayKey) {
+    	PaymentInformationBL piBl = new PaymentInformationBL();
+    	if (gatewayKey != null) {
             LOG.debug("Storing ach gateway key: " + gatewayKey);
-            ach.setGatewayKey(gatewayKey);
-            ach.obscureBankAccount();
-            new AchDAS().makePersistent(ach);
+            piBl.updateStringMetaField(ach, gatewayKey, MetaFieldType.GATEWAY_KEY);
+            piBl.obscureBankAccountNumber(ach);
+            new PaymentInformationDAS().makePersistent(ach);
         } else {
             if (getParameter(PARAM_OBSCURE_ON_FAIL.getName(), DEFAULT_OBSCURE_ON_FAIL)) {
-                ach.obscureBankAccount();
-                new AchDAS().makePersistent(ach);
+            	piBl.obscureBankAccountNumber(ach);
+                new PaymentInformationDAS().makePersistent(ach);
                 LOG.warn("gateway key returned from external store is null, obscuring ach with no key");
             } else {
                 LOG.warn("gateway key returned from external store is null, ach will not be obscured!");
@@ -158,7 +163,7 @@ public class SaveACHExternallyTask extends PluggableTask implements IInternalEve
      * @param ach
      * @param gatewayKey
      */
-    private void deleteAch(AchDTO ach, String gatewayKey) {
+    private void deleteAch(PaymentInformationDTO ach, String gatewayKey) {
         if (gatewayKey == null) {
             LOG.debug("Failed to delete the ACH Record - gateway key returned null." );
         }

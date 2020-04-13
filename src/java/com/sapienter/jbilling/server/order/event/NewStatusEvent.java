@@ -22,26 +22,33 @@ package com.sapienter.jbilling.server.order.event;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.order.OrderBL;
 import com.sapienter.jbilling.server.system.event.Event;
 
 public class NewStatusEvent implements Event {
 
-    private static final Logger LOG = Logger.getLogger(NewStatusEvent.class); 
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(NewStatusEvent.class)); 
     private Integer entityId;
     private Integer userId;
     private Integer orderId;
     private Integer orderType;
     private Integer oldStatusId;
     private Integer newStatusId;
-    
+    private Integer executorId;
+
+    public NewStatusEvent(Integer orderId, Integer oldStatusId, Integer newStatusId, Integer executorId) {
+        this(orderId, oldStatusId, newStatusId);
+        this.executorId = executorId;
+    }
+
     public NewStatusEvent(Integer orderId, Integer oldStatusId, Integer newStatusId) {
         try {
             OrderBL order = new OrderBL(orderId);
             
-            this.entityId = order.getEntity().getUser().getEntity().getId();
-            this.userId = order.getEntity().getUser().getUserId();
-            this.orderType = order.getEntity().getOrderPeriod().getId();
+            this.entityId = order.getDTO().getUser().getEntity().getId();
+            this.userId = order.getDTO().getUser().getUserId();
+            this.orderType = order.getDTO().getOrderPeriod().getId();
             this.oldStatusId = oldStatusId;
             this.newStatusId = newStatusId;
         } catch (Exception e) {
@@ -80,5 +87,7 @@ public class NewStatusEvent implements Event {
         return oldStatusId;
     }
 
-    
+    public Integer getExecutorId() {
+        return executorId;
+    }
 }

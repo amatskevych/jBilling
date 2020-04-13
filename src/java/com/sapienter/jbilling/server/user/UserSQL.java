@@ -83,8 +83,8 @@ public interface UserSQL {
     static final String findInStatus = 
         "SELECT id " +
         "  FROM base_user a " + 
-        " WHERE a.status_id = (select id from generic_status " +
-        "    WHERE dtype = 'user_status' AND status_value = ?) " +
+        " WHERE a.status_id = (select id from user_status " +
+        "    WHERE id = ?) " +
         "   AND a.entity_id = ?" +
         "   AND a.deleted = 0" +
         " ORDER BY 1";
@@ -92,8 +92,8 @@ public interface UserSQL {
     static final String findNotInStatus = 
         "SELECT id " +
         "  FROM base_user a " + 
-        " WHERE a.status_id <> (select id from generic_status " +
-        "    WHERE dtype = 'user_status' AND status_value = ?) " +
+        " WHERE a.status_id <> (select id from user_status " +
+        "    WHERE id = ?) " +
         "   AND a.entity_id = ?" +
         "   AND a.deleted = 0" +
         " ORDER BY 1";
@@ -147,4 +147,16 @@ public interface UserSQL {
         "SELECT entity_id " +
         "  FROM base_user " +
         " WHERE id = ?";
+
+    static final String findOthersByEmail =
+            "SELECT a.id " +
+            "  FROM base_user a, contact c " +
+            " WHERE a.id = c.user_id " +
+            "   AND lower(c.email) = ?" +
+            "   AND a.id <> ?" +
+            "   AND a.entity_id = ?" +
+            "   AND a.deleted = 0" +
+            "   AND c.deleted = 0" +
+            " ORDER BY 1";
+
 }

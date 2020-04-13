@@ -21,19 +21,25 @@
 package com.sapienter.jbilling.client.authentication;
 
 import com.sapienter.jbilling.client.authentication.util.UsernameHelper;
+import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.user.db.UserDTO;
-import com.sapienter.jbilling.server.user.permisson.db.PermissionDTO;
 import com.sapienter.jbilling.server.user.permisson.db.RoleDTO;
-import grails.plugins.springsecurity.SpringSecurityService;
-import org.codehaus.groovy.grails.plugins.springsecurity.GrailsUserDetailsService;
-import org.codehaus.groovy.grails.plugins.springsecurity.SpringSecurityUtils;
+
+import grails.plugin.springsecurity.SpringSecurityService;
+import grails.plugin.springsecurity.SpringSecurityUtils;
+
 import org.springframework.dao.DataAccessException;
+
+import grails.plugin.springsecurity.userdetails.GrailsUserDetailsService;
+
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.GrantedAuthorityImpl;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
+import java.security.InvalidKeyException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -80,10 +86,11 @@ public class CompanyUserDetailsService implements GrailsUserDetailsService {
      *
      * @param s username (principal) to retrieve
      * @return found user details
-     * @throws UsernameNotFoundException
+     * @throws AuthenticationException
      * @throws DataAccessException
      */
     public UserDetails loadUserByUsername(String s) throws UsernameNotFoundException, DataAccessException {
+
         // get the user for the given name
         // CompanyUserAuthenticationFilter concatenates the user name with the entity id
         String[] tokens = s.split(UsernameHelper.VALUE_SEPARATOR);
@@ -100,15 +107,11 @@ public class CompanyUserDetailsService implements GrailsUserDetailsService {
         if (user == null)
             throw new UsernameNotFoundException("User '" + s + "' not found", username);
 
+
         // collect granted permissions and roles
         // this is a bad use of generics, the UserDetails signature should be <? extends GrantedAuthority>
         Collection<GrantedAuthority> authorities = new ArrayList<GrantedAuthority>();
 
-        for (PermissionDTO permission : bl.getPermissions()) {
-            permission.initializeAuthority();
-            authorities.add(permission);
-        }
-        
         for (RoleDTO role : user.getRoles()) {
             role.initializeAuthority();            
             authorities.add(role);
@@ -120,10 +123,11 @@ public class CompanyUserDetailsService implements GrailsUserDetailsService {
         String usernameToken = UsernameHelper.buildUsernameToken(user.getUserName(), user.getEntity().getId());
         
         // return user details for the retrieved account
-        return new CompanyUserDetails(usernameToken, user.getPassword(), user.isEnabled(),
+        return new CompanyUserDetails(usernameToken, null != user.getPassword() ? user.getPassword() : "", user.isEnabled(),
                                       !user.isAccountExpired(), !user.isPasswordExpired(), !user.isAccountLocked(),
                                       authorities.isEmpty() ? NO_AUTHORITIES : authorities,
                                       user, UserBL.getLocale(user), user.getId(), mainRoleId,
                                       user.getEntity().getId(), user.getCurrency().getId(), user.getLanguage().getId());
     }
+
 }

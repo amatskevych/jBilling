@@ -56,6 +56,10 @@ public class AgeingEntityStepDTO extends AbstractDescription implements Serializ
     private CompanyDTO company;
     private UserStatusDTO userStatus;
     private int days;
+    private int retryPayment;
+    private int suspend;
+    private int sendNotification;
+
     private int versionNum;
 
     public AgeingEntityStepDTO() {
@@ -119,28 +123,32 @@ public class AgeingEntityStepDTO extends AbstractDescription implements Serializ
         this.days = days;
     }
 
-    public String getWelcomeMessage(Integer languageId) {
-        return getDescription(languageId, "welcome_message");
+    @Column(name = "suspend", nullable = false)
+    public int getSuspend() {
+        return this.suspend;
     }
 
-    public void setWelcomeMessage(Integer languageId, String message) {
-        if (message == null) {
-            message = "";
-        }
-        setDescription("welcome_message", languageId, message);
+    public void setSuspend(int suspend) {
+        this.suspend = suspend;
     }
 
-    public String getFailedLoginMessage(Integer languageId) {
-        return getDescription(languageId, "failed_login_message");
+    @Column(name = "retry_payment", nullable = false)
+    public int getRetryPayment() {
+        return retryPayment;
     }
 
-    public void setFailedLoginMessage(Integer languageId, String message) {
-        if (message == null) {
-            message = "";
-        }
-        setDescription("failed_login_message", languageId, message);
+    public void setRetryPayment(int retryPayment) {
+        this.retryPayment = retryPayment;
     }
 
+    @Column(name = "send_notification", nullable = false)
+    public int getSendNotification() {
+        return sendNotification;
+    }
+
+    public void setSendNotification(int sendNotification) {
+        this.sendNotification = sendNotification;
+    }
 
     @Version
     @Column(name = "OPTLOCK")
@@ -151,4 +159,5 @@ public class AgeingEntityStepDTO extends AbstractDescription implements Serializ
     public void setVersionNum(int versionNum) {
         this.versionNum = versionNum;
     }
+
 }

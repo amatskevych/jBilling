@@ -20,9 +20,9 @@
 
 package com.sapienter.jbilling.server.pluggableTask.admin;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
@@ -44,6 +44,8 @@ import org.hibernate.annotations.CacheConcurrencyStrategy;
 import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
 
+import com.sapienter.jbilling.common.FormatLogger;
+
 
 @Entity
 @TableGenerator(
@@ -57,7 +59,7 @@ import org.hibernate.annotations.FetchMode;
 @Table(name = "pluggable_task")
 @Cache(usage = CacheConcurrencyStrategy.NONSTRICT_READ_WRITE)
 public class PluggableTaskDTO implements java.io.Serializable {
-    private static final Logger LOG = Logger.getLogger(PluggableTaskDTO.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PluggableTaskDTO.class));
     //  this is in synch with the DB (pluggable task type)
     public static final Integer TYPE_EMAIL = new Integer(9);
    
@@ -160,7 +162,13 @@ public class PluggableTaskDTO implements java.io.Serializable {
         this.type = type;
     }
 
-    protected int getVersionNum() { return versionNum; }
+    public Integer getVersionNum() {
+        return versionNum;
+    }
+
+    public void setVersionNum(Integer versionNum) {
+        this.versionNum = versionNum;
+    }
 
     public void populateParamValues() {
         if (parameters != null) {
@@ -187,4 +195,17 @@ public class PluggableTaskDTO implements java.io.Serializable {
                 + ", processingOrder=" + processingOrder + ", type=" + type
                 + ", versionNum=" + versionNum + "]";
     }
+
+    public void touch(){
+        if(null != getType()){
+            getType().touch();
+        }
+
+        if(null != getParameters()){
+            for(PluggableTaskParameterDTO param : getParameters()){
+                param.getValue();
+            }
+        }
+    }
+
 }

@@ -21,6 +21,8 @@
 package com.sapienter.jbilling.server.util.csv;
 
 import au.com.bytecode.opencsv.CSVWriter;
+
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.util.converter.BigDecimalConverter;
 import org.apache.commons.beanutils.ConvertUtils;
 import org.apache.commons.beanutils.Converter;
@@ -39,10 +41,10 @@ import java.util.List;
  */
 public class CsvExporter<T extends Exportable> implements Exporter<T> {
 
-    private static final Logger LOG = Logger.getLogger(CsvExporter.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(CsvExporter.class));
 
     /** The maximum safe number of exportable elements to processes.  */
-    public static final Integer MAX_RESULTS = 10000;
+    public static final Integer MAX_RESULTS = 1000000;
 
     static {
         ConvertUtils.register(new BigDecimalConverter(), BigDecimal.class);
@@ -72,17 +74,21 @@ public class CsvExporter<T extends Exportable> implements Exporter<T> {
     public String export(List<? extends Exportable> list) {
         String[] header;
 
-        // list can be empty, instantiate a new instance of type to
-        // extract the field names for the CSV header
-        try {
-            header = type.newInstance().getFieldNames();
-        } catch (InstantiationException e) {
-            LOG.debug("Could not produce a new instance of " + type.getSimpleName() + " to build CSV header.");
-            return null;
+        if(!list.isEmpty()) {
+            header = list.get(0).getFieldNames();
+        } else {
+            // list can be empty, instantiate a new instance of type to
+            // extract the field names for the CSV header
+            try {
+                header = type.newInstance().getFieldNames();
+            } catch (InstantiationException e) {
+                LOG.debug("Could not produce a new instance of " + type.getSimpleName() + " to build CSV header.");
+                return null;
 
-        } catch (IllegalAccessException e) {
-            LOG.debug("Constructor of " + type.getSimpleName() + " is not accessible to build CSV header.");
-            return null;
+            } catch (IllegalAccessException e) {
+                LOG.debug("Constructor of " + type.getSimpleName() + " is not accessible to build CSV header.");
+                return null;
+            }
         }
 
         StringWriter out = new StringWriter();
@@ -112,7 +118,11 @@ public class CsvExporter<T extends Exportable> implements Exporter<T> {
         for (Object object : objects) {
             if (object != null) {
                 Converter converter = ConvertUtils.lookup(object.getClass());
-                strings[i++] = converter.convert(object.getClass(), object).toString();
+                if (converter != null) {
+                    strings[i++] = converter.convert(object.getClass(), object).toString();
+                } else {
+                    strings[i++] = object.toString();
+                }
             } else {
                 strings[i++] = "";
             }

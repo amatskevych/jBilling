@@ -21,6 +21,7 @@ package com.sapienter.jbilling.server.system.event;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskDTO;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
@@ -29,7 +30,7 @@ import com.sapienter.jbilling.server.system.event.task.IInternalEventsTask;
 import com.sapienter.jbilling.server.util.Constants;
 
 public class InternalEventProcessor {
-    private static final Logger LOG = Logger.getLogger(InternalEventProcessor.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(InternalEventProcessor.class));
 
     public void process(Event event) {
     LOG.debug("In InternalEventProcessor::process()");

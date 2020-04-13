@@ -27,14 +27,14 @@ package com.sapienter.jbilling.server.pluggableTask;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 
-import com.sapienter.jbilling.server.invoice.NewInvoiceDTO;
+import com.sapienter.jbilling.server.invoice.NewInvoiceContext;
 
 /**
  * @author Emil
  *
  */
 public class CalculateDueDateDfFm extends CalculateDueDate {
-    public void apply(NewInvoiceDTO invoice, Integer userId) throws TaskException {
+    public void apply(NewInvoiceContext invoice, Integer userId) throws TaskException {
         // make the normal calculations first
         super.apply(invoice, null);
         // then get into the Df Fm: last day of the month

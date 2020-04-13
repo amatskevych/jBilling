@@ -21,12 +21,11 @@
 package com.sapienter.jbilling.server.pluggableTask;
 
 import java.math.BigDecimal;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.item.db.ItemTypeDTO;
-import com.sapienter.jbilling.server.order.OrderLineComparator;
 import org.apache.log4j.Logger;
 
 import com.sapienter.jbilling.server.item.ItemDecimalsException;
@@ -44,7 +43,7 @@ import com.sapienter.jbilling.server.util.Constants;
  */
 public class BasicLineTotalTask extends PluggableTask implements OrderProcessingTask {
 
-    private static final Logger LOG = Logger.getLogger(BasicLineTotalTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(BasicLineTotalTask.class));
 
     private static final BigDecimal ONE_HUNDRED = new BigDecimal("100.00");
 
@@ -63,12 +62,12 @@ public class BasicLineTotalTask extends PluggableTask implements OrderProcessing
 
             // calculate line total
             ItemDTO item = itemDas.find(line.getItemId());
-
-            if (item != null && item.getPercentage() == null) {
+            
+            if ( null != line.getPrice() && line.getQuantity() != null && !line.isPercentage()) {
                 line.setAmount(line.getQuantity().multiply(line.getPrice()));
 
-                LOG.debug("normal line total: "
-                          + line.getQuantity() + " x " + line.getPrice() + " = " + line.getAmount());
+                LOG.debug("normal line total: %s x %s = %s", 
+                        line.getQuantity(), line.getPrice(), line.getAmount());
             }
         }
 
@@ -84,12 +83,12 @@ public class BasicLineTotalTask extends PluggableTask implements OrderProcessing
             ItemDTO percentageItem = itemDas.find(line.getItemId());
 
             if (percentageItem != null
-                && percentageItem.getPercentage() != null
+                && line.isPercentage()
                 && !line.getTypeId().equals(Constants.ORDER_LINE_TYPE_TAX)) {
 
                 // sum of applicable item charges * percentage
                 BigDecimal total = getTotalForPercentage(order.getLines(), percentageItem.getExcludedTypes());
-                line.setAmount(line.getPrice().divide(ONE_HUNDRED, Constants.BIGDECIMAL_ROUND).multiply(total));
+                line.setAmount(line.getPrice().divide(ONE_HUNDRED, Constants.BIGDECIMAL_SCALE, Constants.BIGDECIMAL_ROUND).multiply(total));
 
                 LOG.debug("percentage line total: %" + line.getPrice() + ";  "
                           + "( " + line.getPrice() + " / 100 ) x " + total  + " = " + line.getAmount());
@@ -108,12 +107,12 @@ public class BasicLineTotalTask extends PluggableTask implements OrderProcessing
             ItemDTO taxItem = itemDas.find(line.getItemId());
 
             if (taxItem != null
-                && taxItem.getPercentage() != null
+                && taxItem.isPercentage()
                 && line.getTypeId().equals(Constants.ORDER_LINE_TYPE_TAX)) {
 
                 // sum of applicable item charges + fees * percentage
                 BigDecimal total = getTotalForTax(order.getLines(), taxItem.getExcludedTypes());
-                line.setAmount(line.getPrice().divide(ONE_HUNDRED, BigDecimal.ROUND_HALF_EVEN).multiply(total));
+                line.setAmount(line.getPrice().divide(ONE_HUNDRED, Constants.BIGDECIMAL_SCALE, BigDecimal.ROUND_HALF_EVEN).multiply(total));
 
                 LOG.debug("tax line total: %" + line.getPrice() + ";  "
                           + "( " + line.getPrice() + " / 100 ) x " + total  + " = " + line.getAmount());
@@ -123,7 +122,7 @@ public class BasicLineTotalTask extends PluggableTask implements OrderProcessing
 
         // order total
         order.setTotal(getTotal(order.getLines()));
-        LOG.debug("Order total = " + order.getTotal());
+        LOG.debug("Order total = %s", order.getTotal());
     }
 
     /**
@@ -142,17 +141,17 @@ public class BasicLineTotalTask extends PluggableTask implements OrderProcessing
             if (line.getDeleted() == 1) continue;
 
             // add line total for non-percentage & non-tax lines
-            if (line.getItem().getPercentage() == null && line.getTypeId().equals(Constants.ORDER_LINE_TYPE_ITEM)) {
+            if (line.getItem() != null && !line.isPercentage() && line.getTypeId().equals(Constants.ORDER_LINE_TYPE_ITEM) || line.getTypeId().equals(Constants.ORDER_LINE_TYPE_SUBSCRIPTION)) {
 
                 // add if type is not in the excluded list
                 if (!isItemExcluded(line.getItem(), excludedTypes)) {
                     total = total.add(line.getAmount());
                 } else {
-                    LOG.debug("item " + line.getItem().getId() + " excluded from percentage.");
+                    LOG.debug("item %s excluded from percentage.", line.getItem().getId());
                 }
             }
         }
-        LOG.debug("total amount applicable for percentage: " + total);
+        LOG.debug("total amount applicable for percentage: %s", total);
 
         return total;
     }
@@ -179,11 +178,11 @@ public class BasicLineTotalTask extends PluggableTask implements OrderProcessing
                 if (!isItemExcluded(line.getItem(), excludedTypes)) {
                     total = total.add(line.getAmount());
                 } else {
-                    LOG.debug("item " + line.getItem().getId() + " excluded from tax.");
+                    LOG.debug("item %s excluded from tax.", line.getItem().getId());
                 }
             }
         }
-        LOG.debug("total amount applicable for tax: " + total);
+        LOG.debug("total amount applicable for tax: %s", total);
 
         return total;
     }
@@ -219,7 +218,8 @@ public class BasicLineTotalTask extends PluggableTask implements OrderProcessing
             if (line.getDeleted() == 1) continue;
 
             // add total
-            total = total.add(line.getAmount());
+            if (line.getAmount() != null)
+            	total = total.add(line.getAmount());
         }
 
         return total;
@@ -232,10 +232,11 @@ public class BasicLineTotalTask extends PluggableTask implements OrderProcessing
      */
     public void clearLineTotals(List<OrderLineDTO> lines) {
         for (OrderLineDTO line : lines) {
-            if (line.getDeleted() == 1) continue;
+            if (line.getDeleted() == 1 || line.getTotalReadOnly()) continue;
 
             // clear amount
-            line.setAmount(null);
+            if (line.getItem() != null)
+            	line.setAmount(null);
         }
     }
 
@@ -251,7 +252,7 @@ public class BasicLineTotalTask extends PluggableTask implements OrderProcessing
             if (line.getDeleted() == 1) continue;
 
             // validate line quantity
-            if (line.getItem() != null
+            if (line.getItem() != null && line.getQuantity() != null
                     && line.getQuantity().remainder(Constants.BIGDECIMAL_ONE).compareTo(BigDecimal.ZERO) != 0.0
                     && line.getItem().getHasDecimals() == 0) {
 

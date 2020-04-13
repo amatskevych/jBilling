@@ -19,14 +19,20 @@
  */
 package com.sapienter.jbilling.server.payment.blacklist;
 
+import java.util.Date;
 import java.util.List;
 import java.util.ResourceBundle;
 
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldDAS;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
 import com.sapienter.jbilling.server.payment.blacklist.db.BlacklistDAS;
 import com.sapienter.jbilling.server.payment.blacklist.db.BlacklistDTO;
 import com.sapienter.jbilling.server.user.contact.db.ContactDAS;
 import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
+import com.sapienter.jbilling.server.user.db.CustomerDAS;
 import com.sapienter.jbilling.server.user.db.UserDAS;
 import com.sapienter.jbilling.server.util.Util;
 
@@ -40,30 +46,121 @@ public class AddressFilter implements BlacklistFilter {
     }
 
     public Result checkUser(Integer userId) {
-        ContactDTO contact = new ContactDAS().findPrimaryContact(userId);
-
-        if (contact == null) {
-            return new Result(false, null);
-        }
-
-        if (contact.getAddress1() == null && contact.getAddress2() == null &&
-                contact.getCity() == null && contact.getStateProvince() == null &&
-                contact.getPostalCode() == null && contact.getCountryCode() == null) {
-            return new Result(false, null);
-        }
-
         Integer entityId = new UserDAS().find(userId).getCompany().getId();
-        List<BlacklistDTO> blacklist = new BlacklistDAS().filterByAddress(
-                entityId, contact.getAddress1(), contact.getAddress2(),
-                contact.getCity(), contact.getStateProvince(), 
-                contact.getPostalCode(), contact.getCountryCode());
 
-        if (!blacklist.isEmpty()) {
-            ResourceBundle bundle = Util.getEntityNotificationsBundle(userId);
-            return new Result(true, 
-                    bundle.getString("payment.blacklist.address_filter"));
+        ContactDTO contact = new ContactDAS().findContact(userId);
+
+        //check against a contact
+        if (contact != null) {
+            if (contact.getAddress1() != null || contact.getAddress2() != null ||
+                    contact.getCity() != null || contact.getStateProvince() != null ||
+                    contact.getPostalCode() != null || contact.getCountryCode() != null) {
+
+                List<BlacklistDTO> blacklist = new BlacklistDAS().filterByAddress(
+                        entityId,
+                        contact.getAddress1(),
+                        contact.getAddress2(),
+                        contact.getCity(),
+                        contact.getStateProvince(),
+                        contact.getPostalCode(),
+                        contact.getCountryCode());
+
+                if (!blacklist.isEmpty()) {
+                    ResourceBundle bundle = Util.getEntityNotificationsBundle(userId);
+                    return new Result(true,
+                            bundle.getString("payment.blacklist.address_filter"));
+                }
+            }
         }
 
+        //check against meta fields
+        CustomerDAS customerDAS = new CustomerDAS();
+        MetaFieldDAS metaFieldDAS = new MetaFieldDAS();
+        Integer customerId = customerDAS.getCustomerId(userId);
+        if(null != customerId){
+            List<Integer> aitIds = customerDAS.getCustomerAccountInfoTypeIds(customerId);
+            for(Integer ait : aitIds){
+
+                String address1 = null;
+                String address2 = null;
+                String city = null;
+                String stateProvince = null;
+                String postalCode = null;
+                String countryCode = null;
+                Date effectiveDate = new Date();
+
+                List<Integer> address1s =
+                        metaFieldDAS.getCustomerFieldValues(customerId, MetaFieldType.ADDRESS1, ait, effectiveDate);
+                Integer address1Id = null != address1s && address1s.size() > 0 ?
+                        address1s.get(0) : null;
+
+                List<Integer> address2s =
+                        metaFieldDAS.getCustomerFieldValues(customerId, MetaFieldType.ADDRESS2, ait, effectiveDate);
+                Integer address2Id = null != address2s && address2s.size() > 0 ?
+                        address2s.get(0) : null;
+
+                List<Integer> cities =
+                        metaFieldDAS.getCustomerFieldValues(customerId, MetaFieldType.CITY, ait, effectiveDate);
+                Integer cityId = null != cities && cities.size() > 0 ?
+                        cities.get(0) : null;
+
+                List<Integer> stateProvinces =
+                        metaFieldDAS.getCustomerFieldValues(customerId, MetaFieldType.STATE_PROVINCE, ait, effectiveDate);
+                Integer stateProvinceId = null != stateProvinces && stateProvinces.size() > 0 ?
+                        stateProvinces.get(0) : null;
+
+                List<Integer> postalCodes =
+                        metaFieldDAS.getCustomerFieldValues(customerId, MetaFieldType.POSTAL_CODE, ait, effectiveDate);
+                Integer postalCodeId = null != postalCodes && postalCodes.size() > 0 ?
+                        postalCodes.get(0) : null;
+
+                List<Integer> countryCodes =
+                        metaFieldDAS.getCustomerFieldValues(customerId, MetaFieldType.COUNTRY_CODE, ait, effectiveDate);
+                Integer countryCodeId = null != countryCodes && countryCodes.size() > 0 ?
+                        countryCodes.get(0) : null;
+
+                if (null != address1Id) {
+                    MetaFieldValue value = metaFieldDAS.getStringMetaFieldValue(address1Id);
+                    address1 = null != value.getValue() ? (String) value.getValue() : null;
+                }
+
+                if (null != address2Id) {
+                    MetaFieldValue value = metaFieldDAS.getStringMetaFieldValue(address2Id);
+                    address2 = null != value.getValue() ? (String) value.getValue() : null;
+                }
+
+                if (null != cityId) {
+                    MetaFieldValue value = metaFieldDAS.getStringMetaFieldValue(cityId);
+                    city = null != value.getValue() ? (String) value.getValue() : null;
+                }
+
+                if (null != stateProvinceId) {
+                    MetaFieldValue value = metaFieldDAS.getStringMetaFieldValue(stateProvinceId);
+                    stateProvince = null != value.getValue() ? (String) value.getValue() : null;
+                }
+
+                if (null != postalCodeId) {
+                    MetaFieldValue value = metaFieldDAS.getStringMetaFieldValue(postalCodeId);
+                    postalCode = null != value.getValue() ? (String) value.getValue() : null;
+                }
+
+                if (null != countryCodeId) {
+                    MetaFieldValue value = metaFieldDAS.getStringMetaFieldValue(countryCodeId);
+                    countryCode =  null != value && null != value.getValue() ?
+                            (String) value.getValue() : null;
+                }
+
+                List<BlacklistDTO> blacklist = new BlacklistDAS().filterByAddress(
+                        entityId, address1, address2, city,
+                        stateProvince, postalCode, countryCode);
+
+                if (!blacklist.isEmpty()) {
+                    ResourceBundle bundle = Util.getEntityNotificationsBundle(userId);
+                    return new Result(true,
+                            bundle.getString("payment.blacklist.address_filter"));
+                }
+            }
+        }
         return new Result(false, null);
     }
 

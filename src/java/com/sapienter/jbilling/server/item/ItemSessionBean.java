@@ -20,39 +20,37 @@
 
 package com.sapienter.jbilling.server.item;
 
-import java.util.List;
-
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.item.db.ItemDTO;
 import com.sapienter.jbilling.server.item.db.ItemTypeDAS;
 import com.sapienter.jbilling.server.item.db.ItemTypeDTO;
-import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.util.db.CurrencyDTO;
-
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 
 /*
  *
  * This is the session facade for the Item. All interaction from the client
- * to the server is made through calls to the methods of this class. This 
+ * to the server is made through calls to the methods of this class. This
  * class uses helper classes (Business Logic -> BL) for the real logic.
  *
  * @author emilc
- * 
+ *
  */
 
 @Transactional( propagation = Propagation.REQUIRED )
 public class ItemSessionBean implements IItemSessionBean {
 
-    //private static final Logger LOG = Logger.getLogger(ItemSessionBean.class);
+    //private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(ItemSessionBean.class));
 
     // -------------------------------------------------------------------------
     // Methods
-    // -------------------------------------------------------------------------  
+    // -------------------------------------------------------------------------
 
-    public Integer create(ItemDTO dto, Integer languageId) 
+    public Integer create(ItemDTO dto, Integer languageId)
             throws SessionInternalError {
         try {
             ItemBL bl = new ItemBL();
@@ -61,18 +59,18 @@ public class ItemSessionBean implements IItemSessionBean {
             throw new SessionInternalError(e);
         }
     }
-    
 
-    public void update(Integer executorId, ItemDTO dto, Integer languageId) 
+
+    public void update(Integer executorId, ItemDTO dto, Integer languageId, boolean isPlan)
             throws SessionInternalError {
         try {
             ItemBL bl = new ItemBL(dto.getId());
-            bl.update(executorId, dto, languageId);
+            bl.update(executorId, dto, languageId, isPlan);
         } catch (Exception e) {
             throw new SessionInternalError(e);
         }
     }
-    
+
     public boolean validateDecimals( Integer hasDecimals, Integer itemId ) {
         if( itemId == null ) { return true; }
         ItemBL bl = new ItemBL(itemId);
@@ -80,7 +78,7 @@ public class ItemSessionBean implements IItemSessionBean {
     }
 
     public ItemDTO get(Integer id, Integer languageId, Integer userId,
-            Integer currencyId, Integer entityId, 
+            Integer currencyId, Integer entityId,
             List<PricingField> pricingFields) throws SessionInternalError {
         try {
             ItemBL itemBL = new ItemBL(id);
@@ -89,9 +87,9 @@ public class ItemSessionBean implements IItemSessionBean {
         } catch (Exception e) {
             throw new SessionInternalError(e);
         }
-    } 
+    }
 
-    public void delete(Integer executorId, Integer id) 
+    public void delete(Integer executorId, Integer id)
             throws SessionInternalError {
         try {
             ItemBL bl = new ItemBL(id);
@@ -99,10 +97,10 @@ public class ItemSessionBean implements IItemSessionBean {
         } catch (Exception e) {
             throw new SessionInternalError(e);
         }
-        
-    } 
 
-    public Integer createType(ItemTypeDTO dto) 
+    }
+
+    public Integer createType(ItemTypeDTO dto)
             throws SessionInternalError {
         try {
             ItemTypeBL bl = new ItemTypeBL();
@@ -112,24 +110,24 @@ public class ItemSessionBean implements IItemSessionBean {
             throw new SessionInternalError(e);
         }
     }
-    
-    public ItemTypeDTO getType(Integer id) 
+
+    public ItemTypeDTO getType(Integer id)
             throws SessionInternalError {
-        try {            
+        try {
             ItemTypeDTO type = new ItemTypeDAS().find(id);
             ItemTypeDTO dto = new ItemTypeDTO();
             dto.setId(type.getId());
             dto.setEntity(type.getEntity());
             dto.setDescription(type.getDescription());
             dto.setOrderLineTypeId(type.getOrderLineTypeId());
-
-            return dto;        
+            dto.setEntities(type.getEntities());
+            return dto;
         } catch (Exception e) {
             throw new SessionInternalError(e);
         }
     }
 
-    public void updateType(Integer executorId, ItemTypeDTO dto) 
+    public void updateType(Integer executorId, ItemTypeDTO dto)
             throws SessionInternalError {
         try {
             ItemTypeBL bl = new ItemTypeBL(dto.getId());
@@ -144,10 +142,10 @@ public class ItemSessionBean implements IItemSessionBean {
      * For now, this will delete permanently
      *
      */
-     public void deleteType(Integer executorId, Integer itemTypeId) 
+     public void deleteType(Integer executorId, Integer itemTypeId)
              throws SessionInternalError {
          try {
-             
+
              ItemTypeBL bl = new ItemTypeBL(itemTypeId);
              bl.delete(executorId);
 
@@ -156,7 +154,7 @@ public class ItemSessionBean implements IItemSessionBean {
          }
      }
 
-    public CurrencyDTO[] getCurrencies(Integer languageId, Integer entityId) 
+    public CurrencyDTO[] getCurrencies(Integer languageId, Integer entityId)
             throws SessionInternalError {
         try {
             CurrencyBL bl = new CurrencyBL();
@@ -165,10 +163,8 @@ public class ItemSessionBean implements IItemSessionBean {
             throw new SessionInternalError(e);
         }
     }
-    
-    public void setCurrencies(Integer entityId, CurrencyDTO[] currencies,
-            Integer currencyId) 
-            throws SessionInternalError {
+
+    public void setCurrencies(Integer entityId, CurrencyDTO[] currencies, Integer currencyId) throws SessionInternalError {
         try {
             CurrencyBL bl = new CurrencyBL();
             bl.setCurrencies(entityId, currencies);
@@ -176,18 +172,17 @@ public class ItemSessionBean implements IItemSessionBean {
         } catch (Exception e) {
             throw new SessionInternalError(e);
         }
-        
-    }   
 
-    public Integer getEntityCurrency(Integer entityId) 
-            throws SessionInternalError {
+    }
+
+    public Integer getEntityCurrency(Integer entityId) throws SessionInternalError {
         try {
             CurrencyBL bl = new CurrencyBL();
             return bl.getEntityCurrency(entityId);
         } catch (Exception e) {
             throw new SessionInternalError(e);
         }
-        
-    }   
-           
+
+    }
+
 }

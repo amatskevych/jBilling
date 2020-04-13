@@ -20,7 +20,7 @@
 
 package jbilling
 
-import grails.plugins.springsecurity.Secured
+import grails.plugin.springsecurity.annotation.Secured
 
 /**
  * BreadcrumbController
@@ -30,10 +30,10 @@ import grails.plugins.springsecurity.Secured
  */
 @Secured(["isAuthenticated()"])
 class BreadcrumbController {
-
+	static scope = "prototype"
     def breadcrumbService
 
-    def index = {
+    def index () {
         render template: "/layouts/includes/breadcrumbs"
     }
 }

@@ -26,11 +26,19 @@ class UrlMappings {
 				// apply constraints here
 			}
 		}
+        /**
+         * REST url mappings
+         */
+        "/rest/users"(controller: "rest" , parseRequest: true) {
+            action = [ GET: "getUser", POST: "createUser" ]
+        }
 
-		"/" {
+        "/" {
             controller = "home"
         }
 
-		"500"(view:'/error')
+        "404"(controller: 'errors', action: 'pageNotFound')
+
+		"500"(controller: 'errors', action: 'handleErrors')
 	}
 }

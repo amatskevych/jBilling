@@ -19,55 +19,86 @@
  */
 package com.sapienter.jbilling.server.user.db;
 
+import java.util.Date;
 import java.util.List;
 
+import com.sapienter.jbilling.server.util.Constants;
+
+
 import org.apache.log4j.Logger;
-import org.hibernate.Criteria;
-import org.hibernate.Query;
+import org.hibernate.*;
+import org.hibernate.criterion.CriteriaSpecification;
+import org.hibernate.criterion.DetachedCriteria;
+import org.hibernate.criterion.Order;
+import org.hibernate.criterion.Projections;
+import org.hibernate.criterion.Property;
 import org.hibernate.criterion.Restrictions;
 
+import com.sapienter.jbilling.server.order.db.OrderDTO;
+import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.common.CommonConstants;
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.user.UserDTOEx;
 import com.sapienter.jbilling.server.util.db.AbstractDAS;
 
-              
-    
 public class UserDAS extends AbstractDAS<UserDTO> {
-    private static final Logger LOG = Logger.getLogger(UserDAS.class);
-   
-    private static final String findByCustomField =
-        "SELECT a " + 
-        "  FROM UserDTO a, ContactMap cm " +
-        " WHERE a.company.id = :entity " +
-        "   AND a.id = cm.foreignId " +
-        "   AND cm.jbillingTable.id = 10 " +
-        "   AND cm.contactType.isPrimary = 1 " +
-        "   AND cm.contact.contactFields.contactFieldType.id = :type " +
-        "   AND cm.contact.contactFields.contactFieldType.content = :content " +
-        "   AND a.deleted = 0";
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(UserDAS.class));
 
-     private static final String findInStatusSQL = 
-         "SELECT a " + 
-         "  FROM UserDTO a " + 
+     private static final String findInStatusSQL =
+         "SELECT a " +
+         "  FROM UserDTO a " +
          " WHERE a.userStatus.id = :status " +
          "   AND a.company.id = :entity " +
          "   AND a.deleted = 0" ;
 
      private static final String findNotInStatusSQL =
          "SELECT a " +
-         "  FROM UserDTO a " + 
+         "  FROM UserDTO a " +
          " WHERE a.userStatus.id <> :status " +
          "   AND a.company.id = :entity " +
          "   AND a.deleted = 0";
 
-     private static final String findAgeingSQL = 
-         "SELECT a " + 
-         "  FROM UserDTO a " + 
+     private static final String findAgeingSQL =
+         "SELECT a " +
+         "  FROM UserDTO a " +
          " WHERE a.userStatus.id > " + UserDTOEx.STATUS_ACTIVE +
-         "   AND a.userStatus.id <> " + UserDTOEx.STATUS_DELETED +
          "   AND a.customer.excludeAging = 0 " +
          "   AND a.company.id = :entity " +
          "   AND a.deleted = 0";
+
+     private static final String CURRENCY_USAGE_FOR_ENTITY_SQL =
+             "SELECT count(*) " +
+             "  FROM UserDTO a " +
+             " WHERE a.currency.id = :currency " +
+             "	  AND a.company.id = :entity "+
+             "   AND a.deleted = 0";
+     
+     private static final String FIND_CHILD_LIST_SQL =
+    	        "SELECT u.id " +
+    	        "FROM UserDTO u " +
+    	        "WHERE u.deleted=0 and u.customer.parent.baseUser.id = :parentId";
+
+
+	public List<Integer> findChildList(Integer userId) {
+		Query query = getSession().createQuery(FIND_CHILD_LIST_SQL);
+		query.setParameter("parentId", userId);
+		
+		return query.list();
+	}
+
+     public Long findUserCountByCurrencyAndEntity(Integer currencyId, Integer entityId){
+         Query query = getSession().createQuery(CURRENCY_USAGE_FOR_ENTITY_SQL);
+         query.setParameter("currency", currencyId);
+         query.setParameter("entity", entityId);
+
+         return (Long) query.uniqueResult();
+     }
+
+    private static final String findCurrencySQL =
+          "SELECT count(*) " +
+          "  FROM UserDTO a " +
+          " WHERE a.currency.id = :currency "+
+          "   AND a.deleted = 0";
 
     public UserDTO findRoot(String username) {
         if (username == null || username.length() == 0) {
@@ -79,10 +110,10 @@ public class UserDAS extends AbstractDAS<UserDTO> {
             .add(Restrictions.eq("userName", username))
             .add(Restrictions.eq("deleted", 0))
             .createAlias("roles", "r")
-                .add(Restrictions.eq("r.id", CommonConstants.TYPE_ROOT));
-        
+                .add(Restrictions.eq("r.roleTypeId", CommonConstants.TYPE_ROOT));
+
         criteria.setCacheable(true); // it will be called over an over again
-        
+
         return (UserDTO) criteria.uniqueResult();
     }
 
@@ -96,33 +127,55 @@ public class UserDAS extends AbstractDAS<UserDTO> {
             .add(Restrictions.eq("userName", username))
             .add(Restrictions.eq("deleted", 0))
             .createAlias("roles", "r")
-                .add(Restrictions.eq("r.id", CommonConstants.TYPE_ROOT))
-            .createAlias("permissions", "p")
-                .add(Restrictions.eq("p.permission.id", 120));
-        
+            .add(Restrictions.eq("r.roleTypeId", CommonConstants.TYPE_ROOT));
+
         criteria.setCacheable(true); // it will be called over an over again
-        
+
+        return (UserDTO) criteria.uniqueResult();
+    }
+
+    public UserDTO findByUserId(Integer userId, Integer entityId) {
+        // I need to access an association, so I can't use the parent helper class
+        Criteria criteria = getSession().createCriteria(UserDTO.class)
+                .add(Restrictions.eq("id", userId))
+                .add(Restrictions.eq("deleted", 0))
+                .createAlias("company", "e")
+                .add(Restrictions.eq("e.id", entityId))
+                .add(Restrictions.eq("e.deleted", 0));
+
         return (UserDTO) criteria.uniqueResult();
     }
 
     public UserDTO findByUserName(String username, Integer entityId) {
         // I need to access an association, so I can't use the parent helper class
         Criteria criteria = getSession().createCriteria(UserDTO.class)
-                .add(Restrictions.eq("userName", username))
+                .add(Restrictions.eq("userName", username).ignoreCase())
                 .add(Restrictions.eq("deleted", 0))
                 .createAlias("company", "e")
-                    .add(Restrictions.eq("e.id", entityId));
-        
+                    .add(Restrictions.eq("e.id", entityId))
+                    .add(Restrictions.eq("e.deleted", 0));
+
         return (UserDTO) criteria.uniqueResult();
     }
-    
+
+    public List<UserDTO> findByEmail(String email, Integer entityId) {
+        Criteria criteria = getSession().createCriteria(UserDTO.class)
+                .add(Restrictions.eq("deleted", 0)) 
+                .createAlias("company", "e")
+                .add(Restrictions.eq("e.id", entityId))
+                .createAlias("contact", "c")
+                .add(Restrictions.eq("c.email", email).ignoreCase());
+
+        return criteria.list();
+    }
+
     public List<UserDTO> findInStatus(Integer entityId, Integer statusId) {
         Query query = getSession().createQuery(findInStatusSQL);
         query.setParameter("entity", entityId);
         query.setParameter("status", statusId);
         return query.list();
     }
-    
+
     public List<UserDTO> findNotInStatus(Integer entityId, Integer statusId) {
         Query query = getSession().createQuery(findNotInStatusSQL);
         query.setParameter("entity", entityId);
@@ -130,19 +183,157 @@ public class UserDAS extends AbstractDAS<UserDTO> {
         return query.list();
     }
 
-    public List<UserDTO> findByCustomField(Integer entityId, Integer typeId, String value) {
-        Query query = getSession().createQuery(findByCustomField);
-        query.setParameter("entity", entityId);
-        query.setParameter("type", typeId);
-        query.setParameter("content", value);
-        return query.list();
-    }
-    
     public List<UserDTO> findAgeing(Integer entityId) {
         Query query = getSession().createQuery(findAgeingSQL);
         query.setParameter("entity", entityId);
         return query.list();
     }
+
+    public boolean exists(Integer userId, Integer entityId) {
+        Criteria criteria = getSession().createCriteria(getPersistentClass())
+                .add(Restrictions.idEq(userId))
+                .createAlias("company", "company")
+                .add(Restrictions.eq("company.id", entityId))
+                .setProjection(Projections.rowCount());
+
+        return (criteria.uniqueResult() != null && ((Long) criteria.uniqueResult()) > 0);
+    }
+
+    public Long findUserCountByCurrency(Integer currencyId){
+        Query query = getSession().createQuery(findCurrencySQL);
+        query.setParameter("currency", currencyId);
+        return (Long) query.uniqueResult();
+    }
+
+    public List<UserDTO> findAdminUsers(Integer entityId) {
+        Criteria criteria = getSession().createCriteria(UserDTO.class)
+                .add(Restrictions.eq("company.id", entityId))
+                .add(Restrictions.eq("deleted", 0))
+                .createAlias("roles", "r")
+                .add(Restrictions.eq("r.roleTypeId", CommonConstants.TYPE_ROOT));
+
+        return criteria.list();
+    }
+
+    @SuppressWarnings("unchecked")
+    public ScrollableResults findUserIdsWithUnpaidInvoicesForAgeing(Integer entityId) {
+        DetachedCriteria query = DetachedCriteria.forClass(UserDTO.class)
+                .add(Restrictions.eq("deleted", 0))
+                .createAlias("customer", "customer", CriteriaSpecification.INNER_JOIN)
+                .add(Restrictions.eq("customer.excludeAging", 0))
+                .createAlias("invoices", "invoice", CriteriaSpecification.INNER_JOIN)  // only with invoices
+                .add(Restrictions.eq("invoice.isReview", 0))
+                .add(Restrictions.eq("invoice.deleted", 0))
+                .createAlias("invoice.invoiceStatus", "status", CriteriaSpecification.INNER_JOIN)
+                .add(Restrictions.ne("status.id", Constants.INVOICE_STATUS_PAID))
+                .setProjection(Projections.distinct(Projections.property("id")));
+        if (entityId != null) {
+            query.add(Restrictions.eq("company.id", entityId));
+        }
+        // added order to get all ids in ascending order
+        query.addOrder(Order.asc("id"));
+
+        Criteria criteria = query.getExecutableCriteria(getSession());
+        return criteria.scroll();
+    }
+
+    public List<UserDTO> findByMetaFieldValueIds(Integer entityId, List<Integer> valueIds){
+        Criteria criteria = getSession().createCriteria(UserDTO.class, "user");
+        criteria.add(Restrictions.eq("company.id", entityId));
+        criteria.createAlias("user.customer", "customer");
+        criteria.createAlias("customer.metaFields", "values");
+        criteria.add(Restrictions.in("values.id", valueIds));
+        return criteria.list();
+    }
     
+    public List<UserDTO> findByAitMetaFieldValueIds(Integer entityId, List<Integer> valueIds){
+        Criteria criteria = getSession().createCriteria(UserDTO.class, "user");
+        criteria.add(Restrictions.eq("company.id", entityId));
+        criteria.createAlias("user.customer", "customer");
+        criteria.createAlias("customer.customerAccountInfoTypeMetaFields", "cmfs");
+        criteria.createAlias("cmfs.metaFieldValue", "value");
+        criteria.add(Restrictions.in("value.id", valueIds));
+        return criteria.list();
+    }
+
+    public UserDTO findByMetaFieldNameAndValue(Integer entityId, String metaFieldName, String metaFieldValue){
+        Criteria criteria = getSession().createCriteria(UserDTO.class, "user");
+        criteria.add(Restrictions.eq("company.id", entityId));
+        criteria.createAlias("user.customer", "customer");
+        criteria.createAlias("customer.customerAccountInfoTypeMetaFields", "cmfs");
+        criteria.createAlias("cmfs.metaFieldValue", "value");
+        criteria.createAlias("value.field", "metaField");
+        criteria.add(Restrictions.sqlRestriction("string_value =  ?", metaFieldValue, Hibernate.STRING));
+        criteria.add(Restrictions.eq("metaField.name", metaFieldName));
+        return (UserDTO) criteria.uniqueResult();
+    }
+
+    /**
+     * Returns the entity ID for the user. Executes really
+     * fast and does not use any joins.
+     */
+    public Integer getUserCompanyId(Integer userId){
+        SQLQuery query = getSession().createSQLQuery("select entity_id from base_user where id = :userId");
+        query.setParameter("userId", userId);
+        return (Integer) query.uniqueResult();
+    }
+    
+    public boolean hasSubscriptionProduct(Integer userId) {
+    	DetachedCriteria dc = DetachedCriteria.forClass(CustomerDTO.class).
+    							createAlias("parent", "parent").
+    							createAlias("parent.baseUser", "parentUser").
+    			 				add(Restrictions.eq("parentUser.id", userId)).
+    			 				createAlias("baseUser", "baseUser").
+    			 				setProjection(Projections.property("baseUser.id"));
+    	
+ 		Criteria c = getSession().createCriteria(OrderDTO.class).
+ 				     			add(Restrictions.eq("deleted", 0)).
+ 				     			createAlias("baseUserByUserId","user").
+ 				     			add(Property.forName("user.id").in(dc)).
+ 				     			
+ 				 				createAlias("lines","lines").
+ 				 				createAlias("lines.item", "item").
+ 				 				createAlias("item.itemTypes", "types").
+ 				 				add(Restrictions.eq("types.orderLineTypeId", Constants.ORDER_LINE_TYPE_SUBSCRIPTION)).
+ 				 				setResultTransformer(CriteriaSpecification.DISTINCT_ROOT_ENTITY);
+ 		
+ 		return c.list().size() > 0;
+    }
+    
+    public boolean isSubscriptionAccount(Integer userId) {
+        Criteria c = getSession().createCriteria(OrderDTO.class).
+                add(Restrictions.eq("deleted", 0)).
+                createAlias("baseUserByUserId", "user").
+                add(Restrictions.eq("user.id", userId)).
+
+                createAlias("lines", "lines").
+                createAlias("lines.item", "item").
+                createAlias("item.itemTypes", "types").
+                add(Restrictions.eq("types.orderLineTypeId", Constants.ORDER_LINE_TYPE_SUBSCRIPTION)).
+                setResultTransformer(CriteriaSpecification.DISTINCT_ROOT_ENTITY);
+
+        return c.list().size() > 0;
+    }
+    
+    public void saveUserWithNewPasswordScheme(Integer userId, String newPassword, Integer newScheme, Integer entityId){
+    	String hql = "Update UserDTO u set password = :password, encryptionScheme = :newScheme where id = :id and company.id = :entityId";
+    	Query query = getSession().createQuery(hql).setString("password", newPassword).setInteger("newScheme", newScheme)
+    			.setInteger("id", userId).setInteger("entityId", entityId);
+    	query.executeUpdate();
+    }
+
+    public List<UserDTO> findUsersInActiveSince(Date activityThresholdDate, Integer entityId) {
+        if (null == activityThresholdDate) {
+            LOG.error("can not find users on empty date %s for entity id %s",activityThresholdDate, entityId );
+            return null;
+        }
+        // Get a list of users that have not logged in since before the provided date
+        Criteria criteria = getSession().createCriteria(UserDTO.class)
+                .add(Restrictions.or(Restrictions.and(Restrictions.isNotNull("lastLogin"), Restrictions.le("lastLogin", activityThresholdDate)), Restrictions.and(Restrictions.isNull("lastLogin"), Restrictions.le("createDatetime", activityThresholdDate))))
+                .add(Restrictions.eq("entity_id", entityId))
+                .add(Restrictions.eq("deleted", 0));
+
+        return criteria.list();
+    }
 
 }

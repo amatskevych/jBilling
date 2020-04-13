@@ -20,18 +20,45 @@
 
 package com.sapienter.jbilling.client.user
 
+import com.sapienter.jbilling.common.CommonConstants
+import com.sapienter.jbilling.common.SessionInternalError
+import com.sapienter.jbilling.server.metafields.DataType
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO
+import com.sapienter.jbilling.server.payment.db.PaymentMethodTemplateDTO
+import com.sapienter.jbilling.client.authentication.CompanyUserDetails
+import com.sapienter.jbilling.server.user.db.UserDTO
+import com.sapienter.jbilling.server.user.partner.PartnerCommissionExceptionWS
+import com.sapienter.jbilling.server.user.partner.PartnerReferralCommissionWS
+import com.sapienter.jbilling.server.user.partner.PartnerWS
+import com.sapienter.jbilling.server.util.PreferenceBL
+import grails.plugin.springsecurity.SpringSecurityUtils
+import grails.util.GrailsWebUtil
+import org.apache.commons.lang.StringUtils
+import org.codehaus.groovy.grails.context.support.PluginAwareResourceBundleMessageSource
 import org.codehaus.groovy.grails.web.servlet.mvc.GrailsParameterMap
+
+import com.sapienter.jbilling.server.user.CustomerAccountTypeMetaFieldWS
+import com.sapienter.jbilling.server.user.MainSubscriptionWS
 import com.sapienter.jbilling.server.user.UserWS
+
 import org.codehaus.groovy.grails.web.metaclass.BindDynamicMethod
-import com.sapienter.jbilling.server.entity.CreditCardDTO
-import com.sapienter.jbilling.server.user.CreditCardBL
+
 import com.sapienter.jbilling.common.Constants
 import com.sapienter.jbilling.server.user.ContactWS
 import com.sapienter.jbilling.server.user.db.CompanyDTO
-import com.sapienter.jbilling.server.entity.AchDTO
+import com.sapienter.jbilling.server.payment.db.PaymentMethodTypeDTO
+
 import org.apache.log4j.Logger
+import org.joda.time.format.DateTimeFormat
+import org.joda.time.format.DateTimeFormatter
 import org.springframework.security.authentication.encoding.PasswordEncoder
+
 import com.sapienter.jbilling.server.util.Context
+import com.sapienter.jbilling.server.metafields.db.MetaField
+import com.sapienter.jbilling.server.metafields.MetaFieldValueWS
+import com.sapienter.jbilling.server.payment.PaymentInformationWS
+import com.sapienter.jbilling.client.metafield.MetaFieldBindHelper
+
 
 /**
  * UserHelper 
@@ -55,102 +82,47 @@ class UserHelper {
     static def UserWS bindUser(UserWS user, GrailsParameterMap params) {
         bindData(user, params, 'user')
 
+
         // default main role to TYPE_CUSTOMER if not set
         if (!user.mainRoleId) {
             user.setMainRoleId(Constants.TYPE_CUSTOMER)
         }
 
         log.debug("User ${user}")
-
-        // bind credit card object if parameters present
-        if (!params.deleteCreditCard && params.creditCard.any { key, value -> value }) {
-            def creditCard = new CreditCardDTO()
-            bindData(creditCard, params, 'creditCard')
-            bindExpiryDate(creditCard, params)
-
-            if (!creditCard.number.startsWith('*')) {
-                // update credit card only if not obscured
-                user.setCreditCard(creditCard)
-
-            } else {
-                // or only if we have an ID for the existing card
-                // in this case, pull the original number from the users existing card
-                if (creditCard.id) {
-                    def existingCard =  new CreditCardBL(creditCard.id).getEntity();
-                    if (existingCard) {
-                        creditCard.number = existingCard.getNumber()
-                        user.setCreditCard(creditCard)
-                    }
-                }
-            }
-
-            log.debug("Credit card ${creditCard}")
-        }
-
-        // bind ach object if parameters present
-        if (!params.deleteAch && params.ach.any { key, value -> value }) {
-            def ach = new AchDTO()
-            bindData(ach, params, 'ach')
-            user.setAch(ach)
-
-            log.debug("Ach ${ach}")
-        }
+		
+		// bind main Subscription object if parameters present
+		if (params.mainSubscription) {
+			def mainSubscription = new MainSubscriptionWS()
+			bindData(mainSubscription, params, 'mainSubscription')
+			user.setMainSubscription(mainSubscription)
+			log.debug("Main Subscrption ${mainSubscription}")
+		}
 
         return user
     }
 
     /**
      * Binds user contacts. The given UserWS object will be populated with the primary contact type, and the
-     * given list will be populated with all remaining bound secondary contacts.
+     * given list will be populated with all the contacts.
      *
      * @param user user object to bind primary contact to
      * @param contacts list to populate with remaining secondary contacts
      * @param company company
      * @param params parameters to bind
-     * @return list of bound secondary contact types
+     * @return list of bound contact types
      */
     static def Object[] bindContacts(UserWS user, List contacts, CompanyDTO company, GrailsParameterMap params) {
-        def contactTypes = company.contactTypes
-        def primaryContactTypeId = params.int('primaryContactTypeId')
+        // bind user contact
+        def contact = new ContactWS()
+        bindData(contact, params, "contact")
 
-        // bind primary user contact and custom contact fields
-        def primaryContact = new ContactWS()
-        bindData(primaryContact, params, "contact-${primaryContactTypeId}")
-        primaryContact.type = primaryContactTypeId
+        // manually bind contact "include in notifications" flag
+        contact.include = params."contact".include != null ? 1 : 0
 
-        // manually bind primary contact "include in notifications" flag
-		primaryContact.include = params."contact-${primaryContactTypeId}".include != null ? 1 : 0
+        user.setContact(contact)
+        contacts << contact
 
-        if (params.contactField) {
-            primaryContact.fieldIDs = new Integer[params.contactField.size()]
-            primaryContact.fieldValues = new Integer[params.contactField.size()]
-            params.contactField.eachWithIndex { id, value, i ->
-                primaryContact.fieldIDs[i] = id.toInteger()
-                primaryContact.fieldValues[i] = value
-            }
-        }
-
-        user.setContact(primaryContact)
-
-        log.debug("Primary contact (type ${primaryContactTypeId}): ${primaryContact}")
-
-
-        // bind secondary contact types
-        contactTypes.findAll{ it.id != primaryContactTypeId }.each{
-            // bind if contact object if parameters present
-            if (params["contact-${it.id}"].any { key, value -> value }) {
-                def otherContact = new ContactWS()
-                bindData(otherContact, params, "contact-${it.id}")
-                otherContact.type = it.id
-
-				// manually bind secondary contact "include in notifications" flag
-				otherContact.include = params."contact-${it.id}".include != null ? 1 : 0
-
-                contacts << otherContact;
-            }
-        }
-
-        log.debug("Secondary contacts: ${contacts}")
+        log.debug("Contact : ${contact}")
 
         return contacts;
     }
@@ -168,43 +140,253 @@ class UserHelper {
         if (oldUser) {
             // validate that the entered confirmation password matches the users existing password
             if (params.newPassword) {
+
+                //read old password directly from DB. API does not reveal password hashes
+                def oldPassword = UserDTO.get(oldUser.userId).password
+
                 PasswordEncoder passwordEncoder = Context.getBean(Context.Name.PASSWORD_ENCODER)
-                if (!passwordEncoder.isPasswordValid(oldUser.password, params.oldPassword, null)) {
+                //fake user details so we can verify the customers password
+                //should we move this to the server side validation?
+                CompanyUserDetails userDetails = new CompanyUserDetails(
+                        oldUser.getUserName(), oldPassword, true, true, true, true,
+                        Collections.EMPTY_LIST, null, null, oldUser.getMainRoleId(), oldUser.getEntityId(),
+                        oldUser.getCurrencyId(), oldUser.getLanguageId()
+                )
+                if (!passwordEncoder.isPasswordValid(oldPassword, params.oldPassword, userDetails)) {
                     flash.error = 'current.password.doesnt.match.existing'
                     return
                 }
+
+            } else {
+				newUser.setPassword(null)
             }
-        } else {
-            // validate that the new user has a password
-            if (!params.newPassword) {
-                flash.error = 'password.required'
+        }
+		
+		// verify passwords only when new password is present
+		if (params.newPassword) {
+			if (params.newPassword == params.verifiedPassword) {
+				if (params.newPassword)
+					newUser.setPassword(params.newPassword)
+			} else {
+				flash.error = 'passwords.dont.match'
+			}
+		} else {
+			newUser.setPassword(null)
+        }
+    }
+
+    /**
+     * Binds the Commission Exceptions for a partner.
+     *
+     * @param partner Partner object to bind the commission exceptions to.
+     * @param params Params object with the information filled in the form.
+     * @param dateFormat Format to parse the dates to.
+     * @return
+     */
+    static def bindPartnerCommissionExceptions(PartnerWS partner, GrailsParameterMap params, String dateFormat) {
+        // Get the number of commission exceptions that were defined.
+        def exceptionSize = params.list('exception.itemId')?.size()
+
+        // Initialize the array.
+        partner.commissionExceptions = new PartnerCommissionExceptionWS[exceptionSize]
+
+        if (exceptionSize == 1) {
+            PartnerCommissionExceptionWS commissionException = new PartnerCommissionExceptionWS()
+
+            // Parse the Item Id.
+            commissionException.itemId = bindPartnerCommissionEntityId(params.exception?.itemId)
+
+            // Parse the dates.
+            commissionException.startDate = bindPartnerCommissionDate(params?.exception?.startDate, dateFormat)
+            commissionException.endDate = bindPartnerCommissionDate(params?.exception?.endDate, dateFormat)
+
+            // Parse the percentage.
+            commissionException.percentage = params.exception?.percentage
+
+            partner.commissionExceptions[0] = commissionException
+        } else if (exceptionSize > 1) {
+            PartnerCommissionExceptionWS commissionException
+
+            (0..(exceptionSize - 1)).each {
+                commissionException = new PartnerCommissionExceptionWS()
+
+                // Parse the Item Id.
+                commissionException.itemId = bindPartnerCommissionEntityId(params.exception?.itemId[it])
+
+                // Parse the dates.
+                commissionException.startDate = bindPartnerCommissionDate(params?.exception?.startDate[it], dateFormat)
+                commissionException.endDate = bindPartnerCommissionDate(params?.exception?.endDate[it], dateFormat)
+
+                // Parse the percentage.
+                commissionException.percentage = params.exception?.percentage[it]
+
+                partner.commissionExceptions[it] = commissionException
+            }
+        }
+    }
+
+    /**
+     * Binds the Referral Commissions for a partner.
+     *
+     * @param partner Partner object to bind the commission exceptions to.
+     * @param params Params object with the information filled in the form.
+     * @param dateFormat Format to parse the dates to.
+     */
+    static def bindPartnerReferralCommissions(PartnerWS partner, GrailsParameterMap params, String dateFormat) {
+        // Get the number of referral commissions that were defined.
+        def referralSize = params.list('referrer.referralId')?.size()
+
+        partner.referrerCommissions = new PartnerReferralCommissionWS[referralSize];
+
+        if (referralSize == 1) {
+            PartnerReferralCommissionWS referralCommission = new PartnerReferralCommissionWS()
+
+            // Parse the Partner Id.
+            referralCommission.referralId = bindPartnerCommissionEntityId(params?.referrer?.referralId)
+            
+            referralCommission.referrerId = partner.id
+
+            // Parse the dates.
+            referralCommission.startDate = bindPartnerCommissionDate(params?.referrer?.startDate, dateFormat)
+            referralCommission.endDate = bindPartnerCommissionDate(params?.referrer?.endDate, dateFormat)
+
+            // Parse the percentage.
+            referralCommission.percentage = params.referrer?.percentage
+
+            partner.referrerCommissions[0] = referralCommission
+        } else if (referralSize > 1) {
+            PartnerReferralCommissionWS referralCommission
+
+            (0..(referralSize - 1)).each {
+                referralCommission = new PartnerReferralCommissionWS()
+                
+                referralCommission.referrerId = partner.id
+
+                // Parse the Partner Id.
+                referralCommission.referralId = bindPartnerCommissionEntityId(params?.referrer?.referralId[it])
+
+                // Parse the dates.
+                referralCommission.startDate = bindPartnerCommissionDate(params?.referrer?.startDate[it], dateFormat)
+                referralCommission.endDate = bindPartnerCommissionDate(params?.referrer?.endDate[it], dateFormat)
+
+                // Parse the percentage.
+                referralCommission.percentage = params.referrer?.percentage[it]
+
+                partner.referrerCommissions[it] = referralCommission
+            }
+        }
+    }
+
+    /**
+     * Parses a date for the Partner Commissions. If an exception is thrown we set them to null so the validator knows it's an error.
+     *
+     * @param date String of the Date to parse.
+     * @param dateFormat String with the format the date should be parsed to.
+     * @return a Date object if the parameter was valid. Otherwise, null.
+     */
+    private static def bindPartnerCommissionDate(String date, String dateFormat) {
+        DateTimeFormatter dtf = DateTimeFormat.forPattern(dateFormat)
+
+        try {
+            return dtf.parseDateTime(date).toDate()
+        } catch (IllegalArgumentException ex) {
+            return null
+        }
+    }
+
+    /**
+     * Used for the Partner Commissions to parse the id of an Item or a Partner. If it's invalid we set it to zero so the validator knows it's an error.
+     * @param id
+     * @return
+     */
+    private static def bindPartnerCommissionEntityId(String id) {
+        try {
+            return Integer.parseInt(id)
+        } catch (NumberFormatException e) {
+            return 0
+        }
+    }
+
+    static def bindMetaFields(UserWS userWS, Collection<MetaField> metaFields, GrailsParameterMap params) {
+        def fieldsArray = MetaFieldBindHelper.bindMetaFields(metaFields, params)
+        if (userWS.metaFields && userWS.metaFields.length > 0) {
+            def prevFields = userWS.metaFields ? Arrays.asList(userWS.metaFields) : null;
+            if (prevFields) fieldsArray.addAll(prevFields)
+        }
+		userWS.metaFields = fieldsArray.toArray(new MetaFieldValueWS[fieldsArray.size()])
+    }
+
+    static def bindMetaFields(UserWS userWS, Map<Integer, Collection<MetaField>> metaFields, GrailsParameterMap params) {
+        def fieldsArray = MetaFieldBindHelper.bindMetaFields(metaFields, params)
+        if (userWS.metaFields && userWS.metaFields.length > 0) {
+            def prevFields = userWS.metaFields ? Arrays.asList(userWS.metaFields) : null;
+            if (prevFields) fieldsArray.addAll(prevFields)
+        }
+        userWS.metaFields = fieldsArray.toArray(new MetaFieldValueWS[fieldsArray.size()])
+    }
+
+	static def bindPaymentInformations(UserWS user, Integer modelIndex, GrailsParameterMap params) {
+		List<PaymentInformationWS> paymentInstruments = new ArrayList<PaymentInformationWS>(0)
+		def errorMessages = null
+		for(Integer ind = 0 ; ind <= modelIndex ; ind++) {
+			PaymentInformationWS ws = new PaymentInformationWS()
+            bindData(ws,params,"paymentMethod_${ind}")
+            if(PaymentMethodTypeDTO.get(ws.paymentMethodTypeId)==null) {
+                user.setPaymentInstruments(new ArrayList<PaymentInformationWS>(0))
                 return
             }
+            List<MetaField> metaFieldList = PaymentMethodTypeDTO.get(ws.paymentMethodTypeId).metaFields?.toList()
+			bindMetaFields(ws, metaFieldList, params, ind)
+            // Use stored value in case of obscure cc.number
+            PaymentMethodTemplateDTO paymentMethodTemplate = PaymentMethodTypeDTO.get(ws.paymentMethodTypeId).getPaymentMethodTemplate();
+            if (paymentMethodTemplate?.templateName.equals(CommonConstants.PAYMENT_CARD)) {
+                ws.metaFields.each { metaField ->
+                    if (metaField.fieldName.equals(CommonConstants.METAFIELD_NAME_CC_NUMBER)) {
+                        // update credit card only if not obscured
+                        if (ws.id != null) {
+                            PaymentInformationDTO oldInformation = PaymentInformationDTO.get(ws.id)
+                            oldInformation?.metaFields?.each { oldMetaField ->
+                                if (oldMetaField.getField()?.name?.equals(CommonConstants.METAFIELD_NAME_CC_NUMBER)) {
+                                    if(isCreditNumberUpdated(oldMetaField.getValue(), metaField.getStringValue())){
+                                        metaField.setValue(oldMetaField.getValue())
+                                    }
+                                    return;
+                                }
+                            }
+                        }
+                        return;
+                    }
+                }
+            }
+            metaFieldList.each { metaField ->
+                if(metaField.dataType.equals(DataType.DATE)) {
+                    MetaFieldValueWS metaFieldValueWS = ws.metaFields.find { it.fieldName == metaField.name }
+                    if(metaFieldValueWS.getValue() == null && StringUtils.isNotEmpty(params.get(ind + "_metaField_" + metaField?.id)?.value)) {
+                        errorMessages = metaField.name;
+                        return
+                    }
+                }
+            }
+            paymentInstruments.add(ws)
+		}
+		user.setPaymentInstruments(paymentInstruments)
+        if(errorMessages) {
+            throw new SessionInternalError("Please insert valid date format for " + errorMessages, [
+                    "metaField.date.format.errorMessage," + errorMessages
+            ] as String[])
         }
+	}
 
-        // verify passwords
-        if (params.newPassword == params.verifiedPassword) {
-            if (params.newPassword) newUser.setPassword(params.newPassword)
-
-        } else {
-            flash.error = 'passwords.dont.match'
-        }
+    private static boolean isCreditNumberUpdated(String ccNumber, String newCCNumber){
+        if(ccNumber == null || newCCNumber == null) return false
+        return ccNumber.replaceFirst('^\\d{12}', '************').equals(newCCNumber)
     }
 
-    private static def bindExpiryDate(CreditCardDTO creditCard, GrailsParameterMap params) {
-        Integer expiryMonth = params.int('expiryMonth')
-        Integer expiryYear = params.int('expiryYear')
-
-        if (expiryMonth && expiryYear)  {
-            Calendar calendar = Calendar.getInstance()
-            calendar.clear()
-            calendar.set(Calendar.MONTH, expiryMonth - 1)
-            calendar.set(Calendar.YEAR, expiryYear)
-
-            creditCard.expiry = calendar.getTime()
-        }
-    }
-
+	static def bindMetaFields(PaymentInformationWS paymentWS, Collection<MetaField> metaFields, GrailsParameterMap params, Integer modelIndex) {
+		def fieldsArray = MetaFieldBindHelper.bindMetaFields(metaFields, modelIndex, params)
+		paymentWS.metaFields = fieldsArray.toArray(new MetaFieldValueWS[fieldsArray.size()])
+	}
+	
     private static def bindData(Object model, modelParams, String prefix) {
         def args = [ model, modelParams, [exclude:[], include:[]]]
         if (prefix) args << prefix

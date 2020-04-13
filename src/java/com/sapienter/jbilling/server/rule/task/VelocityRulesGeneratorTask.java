@@ -29,6 +29,7 @@ import org.apache.log4j.Logger;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.VelocityEngine;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.pluggableTask.TaskException;
 import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 
@@ -50,7 +51,7 @@ public class VelocityRulesGeneratorTask extends AbstractGeneratorTask {
         descriptions.add(PARAM_TEMPLATE_FILENAME);
     }
     
-    private static final Logger LOG = Logger.getLogger(VelocityRulesGeneratorTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(VelocityRulesGeneratorTask.class));
 
     public VelocityRulesGeneratorTask() {
         super();

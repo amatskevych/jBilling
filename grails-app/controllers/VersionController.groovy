@@ -1,4 +1,3 @@
-
 /*
  jBilling - The Enterprise Open Source Billing System
  Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
@@ -26,7 +25,8 @@
  * @since 12/07/11
  */
 class VersionController {
+	static scope = "singleton"
 
-    def index = {
+    def index () {
     }
 }

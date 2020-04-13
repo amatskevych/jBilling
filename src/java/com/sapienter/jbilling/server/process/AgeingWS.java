@@ -23,6 +23,8 @@ package com.sapienter.jbilling.server.process;
 import java.io.Serializable;
 import javax.validation.constraints.NotNull;
 import com.sapienter.jbilling.server.security.WSSecured;
+import com.sapienter.jbilling.server.util.api.validation.UpdateValidationGroup;
+import org.hibernate.validator.constraints.NotEmpty;
 
 
 /**
@@ -31,31 +33,25 @@ import com.sapienter.jbilling.server.security.WSSecured;
  */
 public class AgeingWS implements WSSecured, Serializable {
 	
-	@NotNull(message="validation.error.notnull")
+	@NotNull(message="validation.error.notnull", groups = {UpdateValidationGroup.class})
 	private Integer statusId = null;
+    @NotEmpty(message="validation.error.notnull")
     private String statusStr = null;
     @NotNull(message="validation.error.notnull")
     private String welcomeMessage = null;
     @NotNull(message="validation.error.notnull")
     private String failedLoginMessage = null;
     private Boolean inUse = null;
+    private Boolean suspended;
+    private Boolean paymentRetry;
+    private Boolean sendNotification;
+    @NotNull(message="validation.error.notnull")
     private Integer days;
     private Integer entityId;
     
     //default constructor
     public AgeingWS(){}
     
-	public AgeingWS(AgeingDTOEx dto) {
-		super();
-		this.statusId = dto.getStatusId();
-		this.statusStr = dto.getStatusStr();
-		this.welcomeMessage = dto.getWelcomeMessage();
-		this.failedLoginMessage = dto.getFailedLoginMessage();
-		this.inUse = dto.getInUse();
-		this.days = dto.getDays();
-		this.entityId= (null != dto.getCompany()) ? dto.getCompany().getId() : null;
-	}
-	
 	public Integer getStatusId() {
 		return statusId;
 	}
@@ -80,13 +76,40 @@ public class AgeingWS implements WSSecured, Serializable {
 	public void setFailedLoginMessage(String failedLoginMessage) {
 		this.failedLoginMessage = failedLoginMessage;
 	}
-	public Boolean getInUse() {
-		return inUse;
-	}
-	public void setInUse(Boolean inUse) {
-		this.inUse = inUse;
-	}
-	public Integer getDays() {
+
+    public Boolean getInUse() {
+        return inUse;
+    }
+
+    public void setInUse(Boolean inUse) {
+        this.inUse = inUse;
+    }
+
+    public Boolean getSuspended() {
+        return suspended;
+    }
+
+    public void setSuspended(Boolean suspended) {
+        this.suspended = suspended;
+    }
+
+    public Boolean getPaymentRetry() {
+        return paymentRetry;
+    }
+
+    public void setPaymentRetry(Boolean paymentRetry) {
+        this.paymentRetry = paymentRetry;
+    }
+
+    public Boolean getSendNotification() {
+        return sendNotification;
+    }
+
+    public void setSendNotification(Boolean sendNotification) {
+        this.sendNotification = sendNotification;
+    }
+
+    public Integer getDays() {
 		return days;
 	}
 	public void setDays(Integer days) {
@@ -116,8 +139,8 @@ public class AgeingWS implements WSSecured, Serializable {
 	public String toString() {
 		return "AgeingWS [statusId=" + statusId + ", statusStr=" + statusStr
 				+ ", welcomeMessage=" + welcomeMessage
-				+ ", failedLoginMessage=" + failedLoginMessage + ", inUse="
-				+ inUse + ", days=" + days + "]";
+				+ ", failedLoginMessage=" + failedLoginMessage + ", suspended="
+				+ suspended + ", days=" + days + "]";
 	}
 
 }

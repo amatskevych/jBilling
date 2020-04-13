@@ -19,30 +19,37 @@
  */
 package com.sapienter.jbilling.server.pluggableTask;
 
+import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskDTO;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 
 public abstract class PaymentTaskWithTimeout extends PaymentTaskBase {
-    public static final String PARAM_TIMEOUT_SECONDS = "timeout_sec";
-    
     private int myTimeout;
-    
+
+    public static final ParameterDescription PARAMETER_TIMEOUT =
+            new ParameterDescription("timeout_sec", false, ParameterDescription.Type.STR);
+
+    //initializer for pluggable params
+    {
+        descriptions.add(PARAMETER_TIMEOUT);
+    }
+
     @Override
     public void initializeParamters(PluggableTaskDTO task)
             throws PluggableTaskException {
-        
+
         super.initializeParamters(task);
 
-        String timeoutText = getOptionalParameter(PARAM_TIMEOUT_SECONDS, "10");
+        String timeoutText = getOptionalParameter(PARAMETER_TIMEOUT.getName(), "10");
         try {
-            myTimeout = Integer.parseInt(timeoutText);  
-        } catch (NumberFormatException e){
-            throw new PluggableTaskException("" // 
-                    + "Integer expected for parameter: " + PARAM_TIMEOUT_SECONDS // 
+            myTimeout = Integer.parseInt(timeoutText);
+        } catch (NumberFormatException e) {
+            throw new PluggableTaskException(""
+                    + "Integer expected for parameter: " + PARAMETER_TIMEOUT.getName()
                     + ", actual: " + timeoutText);
         }
     }
-    
+
     protected int getTimeoutSeconds() {
         return myTimeout;
     }

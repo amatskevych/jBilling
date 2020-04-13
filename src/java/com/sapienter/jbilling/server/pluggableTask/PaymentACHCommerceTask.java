@@ -29,8 +29,11 @@ import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.log4j.Logger;
 
 import com.sapienter.jbilling.common.Constants;
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
 import com.sapienter.jbilling.server.payment.PaymentAuthorizationDTOEx;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentResultDAS;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
@@ -57,10 +60,10 @@ public class PaymentACHCommerceTask extends PaymentTaskBase {
     private final static String PROCESSOR_NAME = "ACHCommerce";
     private final static String RESPONSE_DELIMITER = "[|]";
     private static final int timeOut = 10000; // in millisec
-    private Logger logger;
+    private FormatLogger logger;
 
     public PaymentACHCommerceTask() {
-        logger = Logger.getLogger(PaymentACHCommerceTask.class);
+        logger = new FormatLogger(Logger.getLogger(PaymentACHCommerceTask.class));
     }
 
     /* 
@@ -96,9 +99,10 @@ public class PaymentACHCommerceTask extends PaymentTaskBase {
     public boolean process(PaymentDTOEx paymentInfo)
             throws PluggableTaskException {
         try {
-            if (paymentInfo.getAch() == null ||
-                    paymentInfo.getAch().getBankAccount() == null ||
-                    paymentInfo.getAch().getBankAccount().length() == 0) {
+        	PaymentInformationBL piBl = new PaymentInformationBL();
+            if (!piBl.isACH(paymentInfo.getInstrument()) ||
+                    piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ACCOUNT_NUMBER) == null ||
+                    		piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ACCOUNT_NUMBER).length() == 0) {
                 // this payment is not for ach, might be for credit cards
                 return true;
             }
@@ -175,7 +179,7 @@ public class PaymentACHCommerceTask extends PaymentTaskBase {
             throw new PluggableTaskException("Error loading Contact for user id " +
                     paymentInfo.getUserId(), e);
         }
-
+        PaymentInformationBL piBl = new PaymentInformationBL();
         NameValuePair[] data = {
             new NameValuePair("usermode", "cgi"),
             new NameValuePair("action", "submit"),
@@ -184,8 +188,8 @@ public class PaymentACHCommerceTask extends PaymentTaskBase {
             new NameValuePair("merchantid", super.ensureGetParameter("merchantid")),
             new NameValuePair("batchid", super.ensureGetParameter("batchid")),
             new NameValuePair("verstr", "RS"),
-            new NameValuePair("routing", paymentInfo.getAch().getAbaRouting()),
-            new NameValuePair("account", paymentInfo.getAch().getBankAccount()),
+            new NameValuePair("routing", piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ROUTING_NUMBER)),
+            new NameValuePair("account", piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ACCOUNT_NUMBER)),
             new NameValuePair("amount", paymentInfo.getAmount().toString()),
             new NameValuePair("fname", firstName),
             new NameValuePair("lname", lastName),

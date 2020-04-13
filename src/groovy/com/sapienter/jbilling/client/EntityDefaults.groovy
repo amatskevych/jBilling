@@ -22,32 +22,48 @@ package com.sapienter.jbilling.client
 
 import com.sapienter.jbilling.server.user.db.CompanyDTO
 import com.sapienter.jbilling.server.order.db.OrderPeriodDTO
-import com.sapienter.jbilling.server.process.db.PeriodUnitDTO
+import com.sapienter.jbilling.server.order.ApplyToOrder
 import com.sapienter.jbilling.server.util.Constants
+import com.sapienter.jbilling.server.util.db.EnumerationDTO
+import com.sapienter.jbilling.server.util.db.EnumerationValueDTO;
+import com.sapienter.jbilling.server.util.db.InternationalDescription
+import com.sapienter.jbilling.server.util.db.InternationalDescriptionId
+import com.sapienter.jbilling.server.user.db.UserDTO
+import com.sapienter.jbilling.server.order.db.OrderChangeStatusDTO
+import com.sapienter.jbilling.server.user.db.AccountTypeDTO
+import com.sapienter.jbilling.server.user.db.MainSubscriptionDTO
 import com.sapienter.jbilling.server.util.db.LanguageDTO
-import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskDTO
-import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskTypeDTO
-import com.sapienter.jbilling.server.payment.db.PaymentMethodDTO
 import com.sapienter.jbilling.server.util.db.PreferenceDTO
 import com.sapienter.jbilling.server.util.db.JbillingTable
 import com.sapienter.jbilling.server.util.db.PreferenceTypeDTO
-import com.sapienter.jbilling.server.user.db.UserDTO
-import com.sapienter.jbilling.server.process.db.BillingProcessConfigurationDTO
-import org.joda.time.DateMidnight
 import com.sapienter.jbilling.server.invoice.db.InvoiceDeliveryMethodDTO
-import com.sapienter.jbilling.server.process.db.AgeingEntityStepDTO
-
-import com.sapienter.jbilling.server.user.UserDTOEx
+import com.sapienter.jbilling.server.metafields.DataType
+import com.sapienter.jbilling.server.metafields.EntityType
+import com.sapienter.jbilling.server.metafields.db.MetaField
+import com.sapienter.jbilling.server.metafields.MetaFieldType
+import com.sapienter.jbilling.server.metafields.db.ValidationRule
+import com.sapienter.jbilling.server.metafields.validation.ValidationRuleType;
+import com.sapienter.jbilling.server.notification.NotificationMediumType
 import com.sapienter.jbilling.server.notification.db.NotificationMessageDTO
-import com.sapienter.jbilling.server.notification.db.NotificationMessageTypeDTO
-import com.sapienter.jbilling.server.notification.db.NotificationMessageSectionDTO
 import com.sapienter.jbilling.server.notification.db.NotificationMessageLineDTO
-import com.sapienter.jbilling.server.user.UserBL
-import org.springframework.context.support.ReloadableResourceBundleMessageSource
+import com.sapienter.jbilling.server.notification.db.NotificationMessageSectionDTO
+import com.sapienter.jbilling.server.notification.db.NotificationMessageTypeDTO
+import com.sapienter.jbilling.server.order.OrderStatusFlag
+import com.sapienter.jbilling.server.order.db.OrderStatusDTO
+import com.sapienter.jbilling.server.payment.db.PaymentMethodDTO
+import com.sapienter.jbilling.server.payment.db.PaymentMethodTemplateDTO
+import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskDTO
+import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskTypeDAS
+import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskTypeDTO
+import com.sapienter.jbilling.server.process.db.BillingProcessConfigurationDTO
+import com.sapienter.jbilling.server.process.db.PeriodUnitDTO
+import com.sapienter.jbilling.server.process.db.ProratingType
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskParameterDTO
-import com.sapienter.jbilling.server.user.db.UserStatusDAS
-import com.sapienter.jbilling.server.util.db.CurrencyDTO
 import com.sapienter.jbilling.server.report.db.ReportDTO
+import com.sapienter.jbilling.server.user.UserBL
+
+import org.codehaus.groovy.grails.context.support.ReloadableResourceBundleMessageSource
+import org.joda.time.DateMidnight
 
 /**
  * EntityDefaults 
@@ -63,8 +79,12 @@ class EntityDefaults {
     def JbillingTable entityTable
     def Locale locale
 
-    def ReloadableResourceBundleMessageSource messageSource
+    ReloadableResourceBundleMessageSource messageSource
 
+	EntityDefaults() {
+		
+	}
+	
     EntityDefaults(CompanyDTO company, UserDTO rootUser, LanguageDTO language, ReloadableResourceBundleMessageSource messageSource) {
         this.company = company
         this.rootUser = rootUser
@@ -78,6 +98,19 @@ class EntityDefaults {
      * Initialize the entity, creating the necessary preferences, plugins and other defaults.
      */
     def init() {
+         /*
+            Order Status
+         */
+        def invoiceOS = new OrderStatusDTO(orderStatusFlag: OrderStatusFlag.INVOICE, entity:company).save()
+        invoiceOS.setDescription("Active", language.id)
+        def finishedOS = new OrderStatusDTO(orderStatusFlag: OrderStatusFlag.FINISHED, entity:company).save()
+        finishedOS.setDescription("Finished", language.id)
+        def notInvoiceOS = new OrderStatusDTO(orderStatusFlag: OrderStatusFlag.NOT_INVOICE, entity:company).save()
+        notInvoiceOS.setDescription("Suspended", language.id)
+        def suspAgeingOS = new OrderStatusDTO(orderStatusFlag: OrderStatusFlag.SUSPENDED_AGEING, entity:company).save()
+        suspAgeingOS.setDescription("Suspended ageing(auto)", language.id)
+        log.debug("company.id ********: "+company?.id)
+
         // add company currency to the entity currency map
         // it's annoying that we need to build this association manually, it would be better mapped through CompanyDTO
         company.currency.entities_1 << company
@@ -85,16 +118,23 @@ class EntityDefaults {
         /*
             Order periods
          */
-        def monthly = new OrderPeriodDTO(company: company, value: 1, periodUnit: new PeriodUnitDTO(Constants.PERIOD_UNIT_MONTH)).save()
+		def monthly = new OrderPeriodDTO(company, new PeriodUnitDTO(Constants.PERIOD_UNIT_MONTH), 1).save()
         monthly.setDescription("Monthly", language.id)
 
-
-        /*
-            Ageing steps
-         */
-        def welcome = new AgeingEntityStepDTO(company: company, userStatus: new UserStatusDAS().find(UserDTOEx.STATUS_ACTIVE), days: 0).save()
-        welcome.setDescription('welcome_message', language.id, getMessage('signup.default.welcome.message', [ company.description ]))
-
+		def maxStatusId= OrderChangeStatusDTO.createCriteria().get {
+		    projections {
+		        max "id"
+		    }
+		} as Integer
+        //default order change status 'Default' apply
+        def orderChangeStatusApply = new OrderChangeStatusDTO(company: company, applyToOrder: ApplyToOrder.YES, 
+											deleted: 0, order: 1, id: ++maxStatusId).save()
+        orderChangeStatusApply.setDescription(getMessage("order.change.status.default.apply"), Constants.LANGUAGE_ENGLISH_ID)
+        orderChangeStatusApply.save()
+		//default account type
+		def oneMonthly= new MainSubscriptionDTO(monthly, Integer.valueOf(1))
+		def defaultAccountType = new AccountTypeDTO(company: company, billingCycle: oneMonthly ).save()
+		defaultAccountType.setDescription('description', Constants.LANGUAGE_ENGLISH_ID, getMessage("default.account.type.name"))
 
         /*
             Payment methods
@@ -125,20 +165,20 @@ class EntityDefaults {
          */
         new BillingProcessConfigurationDTO(
                 entity: company,
+				periodUnit: new PeriodUnitDTO(Constants.PERIOD_UNIT_MONTH),
                 nextRunDate: new DateMidnight().plusMonths(1).toDate(),
                 generateReport: 1,
                 retries: 0,
                 daysForRetry: 1,
                 daysForReport: 3,
                 reviewStatus: 1,
-                periodUnit: new PeriodUnitDTO(Constants.PERIOD_UNIT_WEEK),
-                periodValue: 1,
-                dueDateUnitId: 1,
+				dueDateUnitId: 1,
                 dueDateValue: 1,
                 onlyRecurring: 1,
                 invoiceDateProcess: 0,
-                autoPayment: 0,
-                maximumPeriods: 1
+                maximumPeriods: 99,
+                autoPaymentApplication: 1,
+				proratingType: ProratingType.PRORATING_AUTO_OFF
         ).save()
 
 
@@ -151,41 +191,59 @@ class EntityDefaults {
         new PluggableTaskParameterDTO(task: paymentTask, name: 'all', strValue: 'yes').save()
 
         // BasicEmailNotificationTask
-        def emailTask = new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(9), processingOrder: 1).save()
-        new PluggableTaskParameterDTO(task: emailTask, name: 'smtp_server', strValue: 'localhost').save()
-        new PluggableTaskParameterDTO(task: emailTask, name: 'port', strValue: '25').save()
-        new PluggableTaskParameterDTO(task: emailTask, name: 'ssl_auth', strValue: 'false').save()
-        new PluggableTaskParameterDTO(task: emailTask, name: 'tls', strValue: 'false').save()
-        new PluggableTaskParameterDTO(task: emailTask, name: 'username', strValue: 'username').save()
-        new PluggableTaskParameterDTO(task: emailTask, name: 'password', strValue: 'password').save()
+        def emailTask = new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(9), processingOrder: 1, parameters: [
+            new PluggableTaskParameterDTO(name: 'smtp_server', strValue: ''),
+            new PluggableTaskParameterDTO(name: 'port', strValue: ''),
+            new PluggableTaskParameterDTO(name: 'ssl_auth', strValue: 'false'),
+            new PluggableTaskParameterDTO(name: 'tls', strValue: 'false'),
+            new PluggableTaskParameterDTO(name: 'username', strValue: ''),
+            new PluggableTaskParameterDTO(name: 'password', strValue: '')
+        ]).save()
+
+        updateParametersForTask(emailTask)
 
         // PaperInvoiceNotificationTask
-        def notificationTask = new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(12), processingOrder: 2,).save()
-        new PluggableTaskParameterDTO(task: notificationTask, name: 'design', strValue: 'simple_invoice_b2b').save()
+        def notificationTask = new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(12), processingOrder: 2, parameters: [
+            new PluggableTaskParameterDTO(name: 'design', strValue: 'simple_invoice_b2b')
+        ]).save()
 
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(1), processingOrder: 1).save()    // BasicLineTotalTask
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(3), processingOrder: 1).save()    // CalculateDueDate
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(4), processingOrder: 2).save()    // BasicCompositionTask
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(5), processingOrder: 1).save()    // BasicOrderFilterTask
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(6), processingOrder: 1).save()    // BasicInvoiceFilterTask
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(7), processingOrder: 1).save()    // BasicOrderPeriodTask
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(10), processingOrder: 1).save()   // BasicPaymentInfoTask
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(25), processingOrder: 1).save()   // NoAsyncParameters
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(61), processingOrder: 1).save()   // RulesPricingTask2
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(28), processingOrder: 1).save()   // BasicItemManager
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(33), processingOrder: 1).save()   // RulesMediationTask
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(54), processingOrder: 1).save()   // DynamicBalanceManagerTask
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(82), processingOrder: 1).save()   // BillingProcessTask
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(88), processingOrder: 2).save()   // AgeingProcessTask
-        new PluggableTaskDTO(entityId: company.id, type: new PluggableTaskTypeDTO(87), processingOrder: 1).save()   // BasicAgeingTask
+        updateParametersForTask(notificationTask)
 
+		//The IDs may not be hard coded. They may be different under different circumstances.
+		PluggableTaskTypeDAS pluggableTaskTypeDAS= new PluggableTaskTypeDAS();
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.pluggableTask.BasicLineTotalTask'), processingOrder: 1).save()    // BasicLineTotalTask
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.pluggableTask.CalculateDueDate'), processingOrder: 1).save()    // CalculateDueDate
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.pluggableTask.BasicCompositionTask'), processingOrder: 2).save()    // BasicCompositionTask
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.pluggableTask.BasicOrderFilterTask'), processingOrder: 1).save()    // BasicOrderFilterTask
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.pluggableTask.BasicInvoiceFilterTask'), processingOrder: 1).save()    // BasicInvoiceFilterTask
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.pluggableTask.BasicOrderPeriodTask'), processingOrder: 1).save()    // BasicOrderPeriodTask
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.pluggableTask.BasicPaymentInfoTask'), processingOrder: 1).save()   // BasicPaymentInfoTask
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.payment.tasks.NoAsyncParameters'), processingOrder: 1).save()   // NoAsyncParameters
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.item.tasks.BasicItemManager'), processingOrder: 1).save()   // BasicItemManager
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.user.balance.DynamicBalanceManagerTask'), processingOrder: 1).save()   // DynamicBalanceManagerTask
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.billing.task.BillingProcessTask'), processingOrder: 1).save()   // BillingProcessTask
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.process.task.AgeingProcessTask'), processingOrder: 2).save()   // AgeingProcessTask
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.process.task.BasicAgeingTask'), processingOrder: 1).save()   // BasicAgeingTask
+		new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.process.task.BasicBillingProcessFilterTask'), processingOrder: 1).save()   // BasicBillingProcessFilterTask
+		new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.order.task.CreateOrderForResellerTask'), processingOrder: 2).save()  // CreateOrderForResellerTask
+		new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.invoice.task.DeleteResellerOrderTask'), processingOrder: 3).save()  // DeleteResellerOrderTask
+        new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.order.task.OrderChangeApplyOrderStatusTask'), processingOrder: 7).save()  // CustomerPlanUnsubscriptionProcessingTask
 
+        //This is for testing the initial email sent when the company is created
+        //Otherwise, admin users WILL NOT have passwords configured
+        //And the SMTP server will need to be configured
+        def testNotificationTask = new PluggableTaskDTO(entityId: company.id, type: pluggableTaskTypeDAS.findByClassName('com.sapienter.jbilling.server.notification.task.TestNotificationTask'), processingOrder: 3, parameters: [
+                new PluggableTaskParameterDTO(name: 'from', strValue: 'admin@jbilling.com')
+        ]).save()
+
+        updateParametersForTask(testNotificationTask)
         /*
             Preferences
          */
-        new PreferenceDTO(jbillingTable: entityTable, foreignId: company.id, preferenceType: new PreferenceTypeDTO(Constants.PREFERENCE_GRACE_PERIOD), value: 5).save()
+		
         new PreferenceDTO(jbillingTable: entityTable, foreignId: company.id, preferenceType: new PreferenceTypeDTO(Constants.PREFERENCE_SHOW_NOTE_IN_INVOICE), value: 1).save()
-
+        new PreferenceDTO(jbillingTable: entityTable, foreignId: company.id, preferenceType: new PreferenceTypeDTO(Constants.PREFERENCE_INVOICE_PREFIX), value: "").save()
+        new PreferenceDTO(jbillingTable: entityTable, foreignId: company.id, preferenceType: new PreferenceTypeDTO(Constants.PREFERENCE_INVOICE_NUMBER), value: 1).save()
 
         /*
             Notification messages
@@ -198,9 +256,101 @@ class EntityDefaults {
         createNotificationMessage(Constants.NOTIFICATION_TYPE_PAYMENT_FAILED, 'signup.notification.payment.failed.title', 'signup.notification.payment.failed')
         createNotificationMessage(Constants.NOTIFICATION_TYPE_INVOICE_REMINDER, 'signup.notification.invoice.reminder.title', 'signup.notification.invoice.reminder')
         createNotificationMessage(Constants.NOTIFICATION_TYPE_CREDIT_CARD_UPDATE, 'signup.notification.credit.card.update.title', 'signup.notification.credit.card.update')
+		createNotificationMessage(Constants.NOTIFICATION_TYPE_LOST_PASSWORD, 'signup.notification.lost.password.update.title', 'signup.notification.lost.password.update')
+        createNotificationMessage(Constants.NOTIFICATION_TYPE_INITIAL_CREDENTIALS, 'signup.notification.initial.credentials.update.title', 'signup.notification.initial.credentials.update')
+
+
+        /*
+         * Create payment method template meta fields for entity
+         */
+		// Credit card meta file
+		MetaFieldType usage;
+		ValidationRule rule;
+		InternationalDescriptionId desId
+		
+		int valRulId = JbillingTable.findByName(Constants.TABLE_VALIDATION_RULE).getId();
+	
+		PaymentMethodTemplateDTO template = PaymentMethodTemplateDTO.findByTemplateName(Constants.PAYMENT_CARD)
+		usage = MetaFieldType.TITLE
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "cc.cardholder.name", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.STRING, disabled : false, mandatory : true, primary : true, displayOrder : 1, fieldUsage : usage).save()
+		
+		usage =MetaFieldType.PAYMENT_CARD_NUMBER
+		rule = new ValidationRule(ruleType : ValidationRuleType.PAYMENT_CARD, enabled : true).save()
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "cc.number", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.STRING, disabled : false, mandatory : true, primary : true, displayOrder : 2, validationRule : rule, fieldUsage : usage).save()
+		desId = new InternationalDescriptionId(valRulId, rule.getId(), "errorMessage", language.id)
+		new InternationalDescription(id : desId, content : getMessage("validation.payment.card.number.invalid")).save()
+		
+		usage = MetaFieldType.DATE
+		SortedMap<String, String> attributes = new TreeMap<String, String>()
+		attributes.put('regularExpression', '(?:0[1-9]|1[0-2])/[0-9]{4}')
+		rule = new ValidationRule(ruleType : ValidationRuleType.REGEX, enabled : true, ruleAttributes : attributes).save()
+		rule.ruleAttributes = attributes
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "cc.expiry.date", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.STRING, disabled : false, mandatory : true, primary : true, displayOrder : 3, validationRule : rule, fieldUsage : usage).save()
+		desId = new InternationalDescriptionId(valRulId, rule.getId(), "errorMessage", language.id)
+		new InternationalDescription(id : desId, content : getMessage("validation.payment.card.expiry.date.invalid")).save()
+		
+		usage = MetaFieldType.GATEWAY_KEY
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "cc.gateway.key", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.STRING, disabled : true, mandatory : false, primary : true, displayOrder : 4, fieldUsage : usage).save()
+		
+		usage = MetaFieldType.CC_TYPE
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "cc.type", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.INTEGER, disabled : true, mandatory : false, primary : true, displayOrder : 5, fieldUsage : usage).save()
+		
+		// Ach template meta fields 
+		template = PaymentMethodTemplateDTO.findByTemplateName(Constants.ACH);
+		usage = MetaFieldType.BANK_ROUTING_NUMBER
+		attributes = new TreeMap<String, String>()
+		attributes.put('regularExpression', '(?<=\\s|^)\\d+(?=\\s|$)')
+		rule = new ValidationRule(ruleType : ValidationRuleType.REGEX, enabled : true, ruleAttributes : attributes).save()
+		rule.ruleAttributes = attributes
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "ach.routing.number", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.STRING, disabled : false, mandatory : true, primary : true, displayOrder : 1, validationRule : rule, fieldUsage : usage).save()
+		desId = new InternationalDescriptionId(valRulId, rule.getId(), "errorMessage", language.id)
+		new InternationalDescription(id : desId, content : getMessage("validation.ach.aba.routing.number.invalid")).save()
+		
+		usage = MetaFieldType.TITLE
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "ach.customer.name", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.STRING, disabled : false, mandatory : true, primary : true, displayOrder : 2, fieldUsage : usage).save()
+		
+		usage = MetaFieldType.BANK_ACCOUNT_NUMBER
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "ach.account.number", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.STRING, disabled : false, mandatory : true, primary : true, displayOrder : 3, fieldUsage : usage).save()
+		
+		usage = MetaFieldType.BANK_NAME
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "ach.bank.name", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.STRING, disabled : false, mandatory : true, primary : true, displayOrder : 4, fieldUsage : usage).save()
+		
+		usage = MetaFieldType.BANK_ACCOUNT_TYPE
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "ach.account.type", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.ENUMERATION, disabled : false, mandatory : true, primary : true, displayOrder : 5, fieldUsage : usage).save()
+		
+		EnumerationDTO enumeration = new EnumerationDTO(name : "ach.account.type", entity : company).save()
+		new EnumerationValueDTO(value : 'CHECKING', enumeration : enumeration).save()
+		new EnumerationValueDTO(value : 'SAVINGS', enumeration : enumeration).save()
+		
+		usage = MetaFieldType.GATEWAY_KEY
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "ach.gateway.key", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.STRING, disabled : true, mandatory : false, primary : true, displayOrder : 6, fieldUsage : usage).save()
+		
+		// cheque template meta fields
+		template = PaymentMethodTemplateDTO.findByTemplateName(Constants.CHEQUE)
+		
+		usage = MetaFieldType.BANK_NAME
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "cheque.bank.name", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.STRING, disabled : false, mandatory : true, primary : true, displayOrder : 1, fieldUsage : usage).save()
+		
+		usage = MetaFieldType.CHEQUE_NUMBER
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "cheque.number", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.STRING, disabled : false, mandatory : true, primary : true, displayOrder : 2, fieldUsage : usage).save()
+		
+		usage = MetaFieldType.DATE
+		template.paymentTemplateMetaFields << new MetaField(entity : company, name : "cheque.date", entityType : EntityType.PAYMENT_METHOD_TEMPLATE, dataType : DataType.DATE, disabled : false, mandatory : true, primary : true, displayOrder : 3, fieldUsage : usage).save()
     }
 
     /**
+     * When we construct the pluggable task the way we do it now, we enable the pluggable task
+     * to have parameters immediately but we need to still reference their parameters
+     * to the task they are in
+     * @param taskDTO
+     */
+    def updateParametersForTask(PluggableTaskDTO taskDTO) {
+        for (PluggableTaskParameterDTO parameter : taskDTO.getParameters()) {
+            parameter.task = taskDTO
+            parameter.save()
+        }
+    }
+/**
      * Create a new, 2 section notification message for the given type id and messages. Messages are
      * resolved from the grails 'messages.properties' bundle.
      *
@@ -215,16 +365,21 @@ class EntityDefaults {
                 useFlag: 1,
                 notificationMessageType: new NotificationMessageTypeDTO(id: typeId)
         )
+		
+		def mediumTypes = new ArrayList<NotificationMediumType>(Arrays.asList(NotificationMediumType.values()));
+		message.mediumTypes = mediumTypes
+
+        message.save()
 
         def titleSection = new NotificationMessageSectionDTO(notificationMessage: message, section: 1)
         titleSection.notificationMessageLines << new NotificationMessageLineDTO(notificationMessageSection: titleSection, content: getMessage(titleCode))
         message.notificationMessageSections << titleSection
+        titleSection.save()
 
         def bodySection = new NotificationMessageSectionDTO(notificationMessage: message, section: 2)
-        bodySection.notificationMessageLines << new NotificationMessageLineDTO(content: getMessage(bodyCode))
+        bodySection.notificationMessageLines << new NotificationMessageLineDTO(notificationMessageSection: bodySection, content: getMessage(bodyCode))
         message.notificationMessageSections << bodySection
-
-        message.save()
+        bodySection.save()
     }
 
     def String getMessage(String code) {
@@ -234,5 +389,4 @@ class EntityDefaults {
     def String getMessage(String code, Object[] args) {
         return messageSource.getMessage(code, args, code, locale)
     }
-
 }

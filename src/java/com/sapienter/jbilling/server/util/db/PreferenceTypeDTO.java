@@ -20,19 +20,13 @@
 package com.sapienter.jbilling.server.util.db;
 
 
-import java.math.BigDecimal;
+import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.Id;
-import javax.persistence.OneToMany;
-import javax.persistence.Table;
-import javax.persistence.Transient;
+import javax.persistence.*;
 
+import com.sapienter.jbilling.server.metafields.db.ValidationRule;
 import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
 
@@ -46,6 +40,7 @@ public class PreferenceTypeDTO extends AbstractDescription implements java.io.Se
     private int id;
     private String defaultValue;
     private Set<PreferenceDTO> preferences = new HashSet<PreferenceDTO>(0);
+    private ValidationRule validationRule;
 
     public PreferenceTypeDTO() {
     }
@@ -102,6 +97,17 @@ public class PreferenceTypeDTO extends AbstractDescription implements java.io.Se
     public String getInstructions(Integer languageId) {
         return getDescription(languageId, "instruction");
     }
+
+    @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @JoinColumn(name = "validation_rule_id", nullable = true)
+    public ValidationRule getValidationRule() {
+        return validationRule;
+    }
+
+    public void setValidationRule(ValidationRule validationRule) {
+        this.validationRule = validationRule;
+    }
+
 }
 
 

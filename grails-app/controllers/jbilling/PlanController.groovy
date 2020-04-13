@@ -20,7 +20,8 @@
 
 package jbilling
 
-import grails.plugins.springsecurity.Secured
+import com.sapienter.jbilling.server.util.IWebServicesSessionBean
+import grails.plugin.springsecurity.annotation.Secured
 
 /**
  * PlanController
@@ -28,12 +29,12 @@ import grails.plugins.springsecurity.Secured
  * @author Brian Cowdery
  * @since 01-Feb-2011
  */
-@Secured(["MENU_98"])
+@Secured(["isAuthenticated()"])
 class PlanController {
 
     static pagination = [ max: 10, offset: 0 ]
 
-    def webServicesSession
+    IWebServicesSessionBean webServicesSession
     def viewUtils
     def filterService
     def breadcrumbService

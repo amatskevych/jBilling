@@ -22,14 +22,13 @@
 package com.sapienter.jbilling.client.util;
 
 import com.sapienter.jbilling.common.CommonConstants;
-import com.sapienter.jbilling.common.PermissionConstants;
 
 /**
  * Constants for the client
  *
  */
 
-public final class Constants implements PermissionConstants, CommonConstants {
+public final class Constants implements CommonConstants {
 
     /*
      * Application wide attributes
@@ -64,9 +63,6 @@ public final class Constants implements PermissionConstants, CommonConstants {
     public static final String SESSION_ORDER_SUMMARY = "newOrderSummary";
     // OrderDTO
     public static final String SESSION_ORDER_DTO = "orderDto";
-    // Mediation events that affected an order
-    public static final String SESSION_ORDER_CDR = "orderCDR";
-    
     
     // customer/user fields
     
@@ -197,7 +193,6 @@ public final class Constants implements PermissionConstants, CommonConstants {
     public static final String PAGE_ORDER_LINE_TYPES = "order_line_types";
     public static final String PAGE_TASK_CLASSES = "task_classes";
     public static final String PAGE_SUBSCRIBER_STATUS = "subscriberStatus";
-    public static final String PAGE_PROVISIONING_STATUS = "provisioningStatus";
     public static final String PAGE_BALANCE_TYPE = "balanceType";
 
     /*
@@ -230,4 +225,16 @@ public final class Constants implements PermissionConstants, CommonConstants {
     public static final String FORWARD_PAYOUT_VIEW="payoutView";
     public static final String FORWARD_APPLY_ORDER_CONFIRM="applyConfirm";
 
+    /*
+        Invoice id selection
+     */
+
+    public static final Integer INVALID_SEARCH_ID_ERROR_CODE = -1;
+
+    /*
+    *  Invoice Template action selection
+    * */
+
+    public static final String SAVE_VERSION = "SV";
+    public static final String APPLY = "AP";
 }

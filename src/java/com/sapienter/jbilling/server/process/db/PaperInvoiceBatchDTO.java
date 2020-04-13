@@ -20,6 +20,7 @@
 package com.sapienter.jbilling.server.process.db;
 
 
+import java.io.Serializable;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
@@ -143,6 +144,7 @@ public class PaperInvoiceBatchDTO implements java.io.Serializable {
     public void setVersionNum(int versionNum) {
         this.versionNum = versionNum;
     }
+
 }
 
 

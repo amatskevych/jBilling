@@ -20,44 +20,41 @@
 
 package com.sapienter.jbilling.server.user;
 
-import java.util.Date;
-import java.util.Hashtable;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 import javax.naming.NamingException;
 
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldDAS;
+import com.sapienter.jbilling.server.user.db.CustomerDTO;
 import com.sapienter.jbilling.server.util.audit.EventLogger;
+
+import org.apache.commons.lang.StringUtils;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue;
+import com.sapienter.jbilling.server.user.db.CustomerDAS;
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.invoice.InvoiceBL;
 import com.sapienter.jbilling.server.system.event.EventManager;
 import com.sapienter.jbilling.server.user.contact.db.ContactDAS;
 import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldDAS;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldDTO;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldTypeDAS;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldTypeDTO;
 import com.sapienter.jbilling.server.user.contact.db.ContactMapDAS;
 import com.sapienter.jbilling.server.user.contact.db.ContactMapDTO;
-import com.sapienter.jbilling.server.user.contact.db.ContactTypeDAS;
-import com.sapienter.jbilling.server.user.contact.db.ContactTypeDTO;
 import com.sapienter.jbilling.server.user.event.NewContactEvent;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.Context;
 import com.sapienter.jbilling.server.util.db.JbillingTableDAS;
-import java.util.ArrayList;
 
 public class ContactBL {
-    private static final Logger LOG = Logger.getLogger(ContactBL.class);             
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(ContactBL.class));             
 
     // contact types in synch with the table contact_type
     static public final Integer ENTITY = new Integer(1);
     
     // private methods
     private ContactDAS contactDas = null;
-    private ContactFieldDAS contactFieldDas = null;
     private ContactDTO contact = null;
     private Integer entityId = null;
     private JbillingTableDAS jbDAS = null;
@@ -73,11 +70,34 @@ public class ContactBL {
         init();
     }
     
-    public void set(Integer userId) {
-        contact = contactDas.findPrimaryContact(userId);
-        //LOG.debug("Found " + contact + " for " + userId);
-        setEntityFromUser(userId);
+    public static final ContactWS getContactWS(ContactDTOEx other) {
+    	
+    	ContactWS ws = new ContactWS();
+        ws.setId(other.getId());
+        ws.setOrganizationName(other.getOrganizationName());
+        ws.setAddress1(other.getAddress1());
+        ws.setAddress2(other.getAddress2());
+        ws.setCity(other.getCity());
+        ws.setStateProvince(other.getStateProvince());
+        ws.setPostalCode(other.getPostalCode());
+        ws.setCountryCode(other.getCountryCode());
+        ws.setLastName(other.getLastName());
+        ws.setFirstName(other.getFirstName());
+        ws.setInitial(other.getInitial());
+        ws.setTitle(other.getTitle());
+        ws.setPhoneCountryCode(null != other.getPhoneCountryCode() ? String.valueOf(other.getPhoneCountryCode()) : null);
+        ws.setPhoneAreaCode(null != other.getPhoneAreaCode() ? String.valueOf(other.getPhoneAreaCode()) : null );
+        ws.setPhoneNumber(other.getPhoneNumber());
+        ws.setFaxCountryCode(other.getFaxCountryCode());
+        ws.setFaxAreaCode(other.getFaxAreaCode());
+        ws.setFaxNumber(other.getFaxNumber());
+        ws.setEmail(other.getEmail());
+        ws.setCreateDate(other.getCreateDate());
+        ws.setDeleted(other.getDeleted());
+        ws.setInclude(other.getInclude() != null && other.getInclude().equals(1) );
+        return ws;
     }
+    
     
     private void setEntityFromUser(Integer userId) {
         // id the entity
@@ -90,8 +110,8 @@ public class ContactBL {
         }
     }
  
-    public void set(Integer userId, Integer contactTypeId) {
-        contact = contactDas.findContact(userId, contactTypeId);
+    public void set(Integer userId) {
+        contact = contactDas.findContact(userId);
         setEntityFromUser(userId);
     }
 
@@ -106,19 +126,13 @@ public class ContactBL {
         InvoiceBL invoice = new InvoiceBL(invoiceId);
         if (contact == null) {
             set(invoice.getEntity().getBaseUser().getUserId());
-
         } else {
             entityId = invoice.getEntity().getBaseUser().getCompany().getId();
             retValue = true;
         }
-
         return retValue;
     }
 
-    public Integer getPrimaryType(Integer entityId) {
-        return new ContactTypeDAS().findPrimary(entityId).getId();
-    }
-    
     /**
      * Rather confusing considering the previous method, but necessary
      * to follow the convention
@@ -132,7 +146,6 @@ public class ContactBL {
     public ContactDTOEx getVoidDTO(Integer myEntityId) {
         entityId = myEntityId;
         ContactDTOEx retValue = new ContactDTOEx();
-        retValue.setFieldsTable(initializeFields());
         return retValue;
     }
     
@@ -162,25 +175,6 @@ public class ContactBL {
             contact.getDeleted(),
             contact.getInclude());
         
-        LOG.debug("ContactDTO: getting custom fields");
-        try {
-            retValue.setFieldsTable(initializeFields());
-            for (ContactFieldDTO field: contact.getFields()) {
-                // now find the field of this type
-                ContactFieldDTO dto = (ContactFieldDTO) retValue
-                        .getFieldsTable().get(String.valueOf(field.getType().getId()));
-                if (field != null && dto != null) {
-                    dto.setContent(field.getContent() == null ? "" : field.getContent());
-                    dto.setId(field.getId());
-                }
-            }
-        } catch (Exception e) {
-            LOG.error("Error initializing fields", e);
-        } 
-        
-        LOG.debug("Returning dto with " + retValue.getFieldsTable().size() + 
-                " fields");
-        
         return retValue;
     }
     
@@ -188,62 +182,21 @@ public class ContactBL {
         List<ContactDTOEx> retValue = new ArrayList<ContactDTOEx>();
         UserBL user = new UserBL(userId);
         entityId = user.getEntityId(userId);
-        for (ContactTypeDTO type: user.getEntity().getEntity().getContactTypes()) {
-                contact = contactDas.findContact(userId, type.getId());
-            if (contact != null) {
-                ContactDTOEx dto = getDTO();
-                dto.setType(type.getId());
-                retValue.add(dto);
-            }
+        contact = contactDas.findContact(userId);
+        if (contact != null) {
+            ContactDTOEx dto = getDTO();
+            retValue.add(dto);
         }
         return retValue;
     }
-    
-    /**
-     * Create a Hashtable with the key beign the field type for the
-     * entity
-     * @return
-     */
-    private Hashtable<String, ContactFieldDTO> initializeFields() {
-        // now go over the entity specific fields
-        Hashtable<String, ContactFieldDTO> fields = new Hashtable<String, ContactFieldDTO>();
-        EntityBL entity = new EntityBL(entityId);
-        for (ContactFieldTypeDTO field: entity.getEntity().getContactFieldTypes()) {
-            ContactFieldDTO fieldDto = new ContactFieldDTO();
-            fieldDto.setType(field);
-            fieldDto.setContent(new String()); // can't be null
-            // the key HAS to be a String if we want struts to be able to
-            // read the Hashtabe
-            fields.put(String.valueOf(field.getId()), fieldDto);
-        }
-        
-        return fields;
-    }
-    
+
     private void init() {
         contactDas = new ContactDAS();
-        contactFieldDas = new ContactFieldDAS();
         jbDAS = (JbillingTableDAS) Context.getBean(Context.Name.JBILLING_TABLE_DAS);
         eLogger = EventLogger.getInstance();
     }
     
-    public Integer createPrimaryForUser(ContactDTOEx dto, Integer userId, Integer entityId) 
-            throws SessionInternalError {
-        // find which type id is the primary for this entity
-        try {
-            Integer retValue;
-            ContactTypeDTO type = new ContactTypeDAS().findPrimary(entityId);
 
-            retValue =  createForUser(dto, userId, type.getId());
-            // this is the primary contact, the only one with a user_id
-            // denormilized for performance
-            contact.setUserId(userId); 
-            return retValue;
-        } catch (Exception e) {
-            throw new SessionInternalError(e);
-        } 
-    }
-    
     /**
      * Finds what is the next contact type and creates a new
      * contact with it
@@ -252,22 +205,25 @@ public class ContactBL {
     public boolean append(ContactDTOEx dto, Integer userId) 
                 throws SessionInternalError {
         UserBL user = new UserBL(userId);
-        for (ContactTypeDTO type: user.getEntity().getEntity().getContactTypes()) {
-            set(userId, type.getId());
-            if (contact == null) {
-                // this one is available
-                createForUser(dto, userId, type.getId());
-                return true;
-            }
+        set(userId);
+        if (contact == null) {
+            // this one is available
+            createForUser(dto, userId, null);
+            return true;
         }
-        
-        return false; // no type was avaiable
+
+        return false;
     }
     
-    public Integer createForUser(ContactDTOEx dto, Integer userId, 
-            Integer typeId) throws SessionInternalError {
+    public Integer createForUser(ContactDTOEx dto, Integer userId, Integer executorUserId)
+            throws SessionInternalError {
         try {
-            return create(dto, Constants.TABLE_BASE_USER, userId, typeId);
+            //Null check for contact user_id field BugFix:5498
+            if(dto.getUserId()==null){
+                dto.setUserId(userId);
+                return create(dto, Constants.TABLE_BASE_USER, userId, executorUserId);
+            }
+            return create(dto, Constants.TABLE_BASE_USER, userId, executorUserId);
         } catch (Exception e) {
             LOG.debug("Error creating contact for " +
                     "user " + userId);
@@ -276,7 +232,7 @@ public class ContactBL {
     }
     
     public Integer createForInvoice(ContactDTOEx dto, Integer invoiceId) {
-        return create(dto, Constants.TABLE_INVOICE, invoiceId, new Integer(1));
+        return create(dto, Constants.TABLE_INVOICE, invoiceId, null);
     }
     
     /**
@@ -284,16 +240,14 @@ public class ContactBL {
      * @param dto
      * @param table
      * @param foreignId
-     * @param typeId Use 1 if it is not for a user (like and entity or invoice)
      * @return
      * @throws NamingException
      */
     public Integer create(ContactDTOEx dto, String table,  
-            Integer foreignId, Integer typeId) {
+            Integer foreignId, Integer executorUserId) {
         // first thing is to create the map to the user
         ContactMapDTO map = new ContactMapDTO();
         map.setJbillingTable(jbDAS.findByName(table));
-        map.setContactType(new ContactTypeDAS().find(typeId));
         map.setForeignId(foreignId);
         map = new ContactMapDAS().save(map);
         
@@ -302,65 +256,58 @@ public class ContactBL {
         dto.setDeleted(0);
         dto.setVersionNum(0);
         dto.setId(0);
-        
+
         contact = contactDas.save(new ContactDTO(dto)); // it won't take the Ex
         contact.setContactMap(map);
         map.setContact(contact);
-        
-        updateCreateFields(dto.getFieldsTable(), false);
         
         LOG.debug("created " + contact);
 
         // do an event if this is a user contact (invoices, companies, have
         // contacts too)
         if (table.equals(Constants.TABLE_BASE_USER)) {
-            NewContactEvent event = new NewContactEvent(contact, entityId);
+            NewContactEvent event = new NewContactEvent(contact.getUserId(), contact, entityId);
             EventManager.process(event);
 
-            eLogger.auditBySystem(entityId,
-                              contact.getUserId(),
-                              Constants.TABLE_CONTACT,
-                              contact.getId(),
-                              EventLogger.MODULE_USER_MAINTENANCE,
-                              EventLogger.ROW_CREATED, null, null, null);
+            if ( null != executorUserId) {
+                eLogger.audit(executorUserId,
+                        contact.getUserId(),
+                        Constants.TABLE_CONTACT,
+                        contact.getId(),
+                        EventLogger.MODULE_USER_MAINTENANCE,
+                        EventLogger.ROW_CREATED, null, null, null);
+            } else {
+                eLogger.auditBySystem(entityId,
+                                  contact.getUserId(),
+                                  Constants.TABLE_CONTACT,
+                                  contact.getId(),
+                                  EventLogger.MODULE_USER_MAINTENANCE,
+                                  EventLogger.ROW_CREATED, null, null, null);
+            }
         }
 
         return contact.getId();
     }
     
-    public void updatePrimaryForUser(ContactDTOEx dto, Integer userId) {
-        contact = contactDas.findPrimaryContact(userId);
-        update(dto);
-    }
 
-    public void createUpdatePrimaryForUser(ContactDTOEx dto, Integer userId, Integer entityId) {
-        contact = contactDas.findPrimaryContact(userId);
-
-        if (contact == null) {
-            createPrimaryForUser(dto, userId, entityId);
-        } else {
-            update(dto);
-        }
-    }
-    
-    public void updateForUser(ContactDTOEx dto, Integer userId,
-            Integer contactTypeId) throws SessionInternalError {
-        contact = contactDas.findContact(userId, contactTypeId);
+    public void updateForUser(ContactDTOEx dto, Integer userId, Integer executorUserId)
+            throws SessionInternalError {
+        contact = contactDas.findContact(userId);
         if (contact != null) {
             if (entityId == null) {
                 setEntityFromUser(userId);
             }
-            update(dto);
+            update(dto, executorUserId);
         } else {
             try {
-                createForUser(dto, userId, contactTypeId);
+                createForUser(dto, userId, executorUserId);
             } catch (Exception e1) {
                 throw new SessionInternalError(e1);
             }
         } 
     }
     
-    private void update(ContactDTOEx dto) {
+    private void update(ContactDTOEx dto, Integer executorUserId) {
         contact.setAddress1(dto.getAddress1());
         contact.setAddress2(dto.getAddress2());
         contact.setCity(dto.getCity());
@@ -385,7 +332,7 @@ public class ContactBL {
             setEntityFromUser(contact.getUserId());
         }
 
-        NewContactEvent event = new NewContactEvent(contact, entityId);
+        NewContactEvent event = new NewContactEvent(contact.getUserId(), contact, entityId);
         EventManager.process(event);
 
         eLogger.auditBySystem(entityId,
@@ -394,53 +341,8 @@ public class ContactBL {
                               contact.getId(),
                               EventLogger.MODULE_USER_MAINTENANCE,
                               EventLogger.ROW_UPDATED, null, null, null);
+    }
 
-        updateCreateFields(dto.getFieldsTable(), true);
-    }
-    
-    private void updateCreateFields(Hashtable fields, boolean isUpdate) {
-        if (fields == null) {
-            // if the fields are not there, do nothing
-            return;
-        }
-        // now the per-entity fields
-        for (Iterator it = fields.keySet().iterator(); it.hasNext();) {
-            String type = (String) it.next();
-            ContactFieldDTO field = (ContactFieldDTO) fields.get(type);
-            // we can't create or update custom fields with null value
-            if (field.getContent() == null) {
-                continue;
-            }
-            if (isUpdate) {
-                if (field.getId() != 0) {
-                    contactFieldDas.find(field.getId()).setContent(field.getContent());
-                } else {
-                    // it is un update, but don't know the field id
-                    ContactFieldDTO aField = contactFieldDas.findByType(Integer.valueOf(type), contact.getId());
-                    if (aField != null) {
-                        aField.setContent(field.getContent());
-                    } else {
-                        // not there yet. It's ok
-                        createContactField(Integer.valueOf(type), field.getContent());
-                    }
-                }
-            } else {
-                // create the new field
-                createContactField(Integer.valueOf(type), field.getContent());
-            }
-        }
-
-    }
-    
-    private void createContactField(Integer type, String content) {
-        ContactFieldDTO newField = new ContactFieldDTO();
-        newField.setType(new ContactFieldTypeDAS().find(type));
-        newField.setContent(content);
-        newField.setContact(contact);
-        newField = new ContactFieldDAS().save(newField);
-        contact.getFields().add(newField);
-    }
-    
     public void delete() {
         
         if (contact == null) return;
@@ -448,12 +350,6 @@ public class ContactBL {
         LOG.debug("Deleting contact " + contact.getId());
         // delete the map first
         new ContactMapDAS().delete(contact.getContactMap());
-        
-        // now the fields
-        for(ContactFieldDTO field: contact.getFields()) {
-            new ContactFieldDAS().delete(field);
-        }
-        contact.getFields().clear();
 
         // for the logger
         Integer entityId = this.entityId;
@@ -476,10 +372,96 @@ public class ContactBL {
     /**
      * Sets this contact object to that on the parent, taking the children id
      * as a parameter. 
-     * @param customerId
+     * @param userId
      */
     public void setFromChild(Integer userId) {
         UserBL customer = new UserBL(userId);
         set(customer.getEntity().getCustomer().getParent().getBaseUser().getUserId());
+    }
+
+    /**
+     * Builds a contact object for a user from meta fields. The meta fields used
+     * to build a contact object will always belong to one AIT group. If the
+     * <code>groupId</code> parameter is null than this method will return
+     * contcat object built from first AIT with non null email meta field.
+     * If the <code>groupId</code> than this method will return contact object
+     * build from the specified AIT group.
+     *
+     * @param userId - user for which we build contact object from meta fields
+     * @param groupId - the designated AIT group from which we want to build contact object, Could be AIT ID in future,
+     *                currently system defaults to 'use for notifications ait id'
+     * @param effectiveDate	-	Date instance for which ait meta fields will be get
+     * @return
+     */
+    public static ContactDTOEx buildFromMetaField(Integer userId, Integer groupId, Date effectiveDate){
+        if(null == userId) {
+            throw new IllegalArgumentException("userId argument can not be null");
+        }
+
+        UserBL userBl = new UserBL(userId);
+        CustomerDTO customer= userBl.getEntity().getCustomer();
+        ContactDTOEx contact = new ContactDTOEx();
+        
+        Integer preferredAITID  = null;
+        Integer customerId      = null;
+        if ( null != customer ) {
+            preferredAITID = customer.getAccountType().getPreferredNotificationAitId();
+            customerId     = customer.getId();
+        }
+
+        if ( null != preferredAITID && null != customerId) {
+
+            String email = getStringMetaFieldValue(customerId, MetaFieldType.EMAIL, preferredAITID, effectiveDate);
+            boolean emailPresent = StringUtils.isNotEmpty(email);
+
+            if ( emailPresent ) {
+                
+                contact.setEmail(getStringMetaFieldValue(customerId, MetaFieldType.EMAIL, preferredAITID, effectiveDate));
+
+                contact.setOrganizationName(getStringMetaFieldValue(customerId, MetaFieldType.ORGANIZATION, preferredAITID, effectiveDate));
+                contact.setAddress1(getStringMetaFieldValue(customerId, MetaFieldType.ADDRESS1, preferredAITID, effectiveDate));
+                contact.setAddress2(getStringMetaFieldValue(customerId, MetaFieldType.ADDRESS2, preferredAITID, effectiveDate));
+                contact.setCity(getStringMetaFieldValue(customerId, MetaFieldType.CITY, preferredAITID, effectiveDate));
+                contact.setStateProvince(getStringMetaFieldValue(customerId, MetaFieldType.STATE_PROVINCE, preferredAITID, effectiveDate));
+                contact.setPostalCode(getStringMetaFieldValue(customerId, MetaFieldType.POSTAL_CODE, preferredAITID, effectiveDate));
+                contact.setCountryCode(getStringMetaFieldValue(customerId, MetaFieldType.COUNTRY_CODE, preferredAITID, effectiveDate));
+
+                contact.setFirstName(getStringMetaFieldValue(customerId, MetaFieldType.FIRST_NAME, preferredAITID, effectiveDate));
+                contact.setLastName(getStringMetaFieldValue(customerId, MetaFieldType.LAST_NAME, preferredAITID, effectiveDate));
+                contact.setInitial(getStringMetaFieldValue(customerId, MetaFieldType.INITIAL, preferredAITID, effectiveDate));
+                contact.setTitle(getStringMetaFieldValue(customerId, MetaFieldType.TITLE, preferredAITID, effectiveDate));
+
+                contact.setPhoneCountryCode(getIntegerMetaFieldValue(customerId, MetaFieldType.PHONE_COUNTRY_CODE, preferredAITID, effectiveDate));
+                contact.setPhoneAreaCode(getIntegerMetaFieldValue(customerId, MetaFieldType.PHONE_AREA_CODE, preferredAITID, effectiveDate));
+                contact.setPhoneNumber(getStringMetaFieldValue(customerId, MetaFieldType.PHONE_NUMBER, preferredAITID, effectiveDate));
+
+                contact.setFaxCountryCode(getIntegerMetaFieldValue(customerId, MetaFieldType.FAX_COUNTRY_CODE, preferredAITID, effectiveDate));
+                contact.setFaxAreaCode(getIntegerMetaFieldValue(customerId, MetaFieldType.FAX_AREA_CODE, preferredAITID, effectiveDate));
+                contact.setFaxNumber(getStringMetaFieldValue(customerId, MetaFieldType.FAX_NUMBER, preferredAITID, effectiveDate));
+
+            }
+        }
+
+        return contact;
+    }
+
+    public static ContactDTOEx buildFromMetaField(Integer userId, Date effectiveDate) {
+        return buildFromMetaField(userId, null, effectiveDate);
+    }
+
+    private static String getStringMetaFieldValue(Integer customerId, MetaFieldType type, Integer group, Date effectiveDate){
+        MetaFieldDAS metaFieldDAS = new MetaFieldDAS();
+        List<Integer> values = metaFieldDAS.getCustomerFieldValues(customerId, type, group, effectiveDate);
+        Integer valueId = null != values && values.size() > 0 ? values.get(0) : null;
+        MetaFieldValue valueField = null != valueId ? metaFieldDAS.getStringMetaFieldValue(valueId) : null;
+        return null != valueField ? (String) valueField.getValue() : null;
+    }
+
+    private static Integer getIntegerMetaFieldValue(Integer customerId, MetaFieldType type, Integer group, Date effectiveDate){
+        MetaFieldDAS metaFieldDAS = new MetaFieldDAS();
+        List<Integer> values = metaFieldDAS.getCustomerFieldValues(customerId, type, group, effectiveDate);
+        Integer valueId = null != values && values.size() > 0 ? values.get(0) : null;
+        MetaFieldValue valueField = null != valueId ? metaFieldDAS.getIntegerMetaFieldValue(valueId) : null;
+        return null != valueField ? (Integer) valueField.getValue() : null;
     }
 }

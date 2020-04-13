@@ -29,8 +29,11 @@ import java.util.Calendar;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
 import com.sapienter.jbilling.server.payment.PaymentAuthorizationBL;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentResultDAS;
 import com.sapienter.jbilling.server.pluggableTask.PaymentTask;
@@ -63,22 +66,21 @@ public class PaymentBeanstreamTask extends PaymentTaskWithTimeout implements
 
     private static final String BeanstreamURL = "https://www.beanstream.com/scripts/process_transaction.asp";
 
-    private static final Logger LOG = Logger
-            .getLogger(PaymentBeanstreamTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaymentBeanstreamTask.class));
 
     public boolean process(PaymentDTOEx paymentInfo)
             throws PluggableTaskException {
-
+    	PaymentInformationBL piBl = new PaymentInformationBL();
         try {
 
-            if (paymentInfo.getCreditCard() == null) {
+            if (!piBl.isCreditCard(paymentInfo.getInstrument())) {
 
                 String error = "Credit card not present in payment";
                 LOG.error(error);
                 throw new TaskException(error);
             }
 
-            if (paymentInfo.getAch() != null) {
+            if (piBl.isACH(paymentInfo.getInstrument())) {
 
                 String error = "ACH not supported by Beanstream processing API";
                 LOG.error(error);
@@ -214,22 +216,22 @@ public class PaymentBeanstreamTask extends PaymentTaskWithTimeout implements
             LOG.error(error);
             throw new PluggableTaskException(error);
         }
-
+        	
+        PaymentInformationBL piBl = new PaymentInformationBL();
         try {
             ContactBL contact = new ContactBL();
             contact.set(paymentInfo.getUserId());
 
             Calendar cal = Calendar.getInstance();
-            cal.setTime(paymentInfo.getCreditCard().getCcExpiry());
+            cal.setTime(piBl.getDateMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.DATE));
 
             StringBuffer postVars = new StringBuffer("requestType=BACKEND&");
             postVars.append("merchant_id=" + merchantId + "&");
             postVars.append("username=" + username + "&");
-            postVars.append("password=" + password + "&");
             postVars.append("trnCardOwner="
-                    + paymentInfo.getCreditCard().getName() + "&");
+                    + piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.TITLE) + "&");
             postVars.append("trnCardNumber="
-                    + paymentInfo.getCreditCard().getNumber() + "&");
+                    + piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.PAYMENT_CARD_NUMBER) + "&");
             postVars.append("trnExpMonth="
                     + ((cal.get(Calendar.MONTH) < 10) ? ("0" + cal
                             .get(Calendar.MONTH)) : cal.get(Calendar.MONTH))
@@ -271,7 +273,12 @@ public class PaymentBeanstreamTask extends PaymentTaskWithTimeout implements
             postVars.append("scEnabled="
                     + ((sc_enabled != null && sc_enabled.equals("true")) ? 1
                             : 0));
-            LOG.debug("HTTP POST vars going to beanstream:  " + postVars);
+
+            //TODO: check this log also check values of postVars
+            String maskedCCNumber = postVars.toString().replaceAll("trnCardNumber=[^&]*", "trnCardNumber=*****");
+            LOG.debug("HTTP POST vars going to beanstream:  " + maskedCCNumber);
+
+            postVars.append("&").append("password=" + password);
 
             return postVars.toString();
         } catch (Exception e) {

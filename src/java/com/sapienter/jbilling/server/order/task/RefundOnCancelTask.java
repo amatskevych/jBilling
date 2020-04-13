@@ -25,6 +25,7 @@ import java.util.ResourceBundle;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.item.ItemBL;
 import com.sapienter.jbilling.server.item.ItemDecimalsException;
@@ -36,6 +37,7 @@ import com.sapienter.jbilling.server.order.db.OrderDTO;
 import com.sapienter.jbilling.server.order.db.OrderLineDTO;
 import com.sapienter.jbilling.server.order.db.OrderLineTypeDAS;
 import com.sapienter.jbilling.server.order.db.OrderStatusDAS;
+import com.sapienter.jbilling.server.order.OrderStatusFlag;
 import com.sapienter.jbilling.server.order.event.NewQuantityEvent;
 import com.sapienter.jbilling.server.order.event.PeriodCancelledEvent;
 import com.sapienter.jbilling.server.pluggableTask.PluggableTask;
@@ -47,20 +49,17 @@ import com.sapienter.jbilling.server.util.audit.EventLogger;
 
 public class RefundOnCancelTask extends PluggableTask implements IInternalEventsTask {
 
-    private static final Logger LOG = Logger.getLogger(RefundOnCancelTask.class);
-
-    private enum EventType { PERIOD_CANCELLED_EVENT, NEW_QUANTITY_EVENT } 
-
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(RefundOnCancelTask.class));
     @SuppressWarnings("unchecked")
     private static final Class<Event> events[] = new Class[] {
             PeriodCancelledEvent.class,
             NewQuantityEvent.class
     };
-   
+
     public Class<Event>[] getSubscribedEvents() {
         return events;
     }
-
+   
     public void process(Event event) {
         EventType eventType;
         OrderDTO order = null;
@@ -69,7 +68,7 @@ public class RefundOnCancelTask extends PluggableTask implements IInternalEvents
         if (event instanceof PeriodCancelledEvent) {
             order = ((PeriodCancelledEvent) event).getOrder();
             eventType = EventType.PERIOD_CANCELLED_EVENT;
-            LOG.debug("Plug in processing period cancelled event for order " + 
+            LOG.debug("Plug in processing period cancelled event for order " +
                     order.getId());
         } else if (event instanceof NewQuantityEvent) {
             NewQuantityEvent myEvent = (NewQuantityEvent) event;
@@ -84,7 +83,7 @@ public class RefundOnCancelTask extends PluggableTask implements IInternalEvents
                 return;
             }
             eventType = EventType.NEW_QUANTITY_EVENT;
-            LOG.debug("Plug in processing new quantity event for order " + 
+            LOG.debug("Plug in processing new quantity event for order " +
                     order.getId());
         } else {
             throw new SessionInternalError("Can't process anything but a period cancel event " +
@@ -116,7 +115,6 @@ public class RefundOnCancelTask extends PluggableTask implements IInternalEvents
         // ends where the original would invoice next
         newOrder.setActiveUntil(order.getNextBillableDay());
         newOrder.setNextBillableDay(null);
-        newOrder.setIsCurrent(0);
         // add some clarification notes
         String notesString = null;
         if (eventType == EventType.PERIOD_CANCELLED_EVENT) {
@@ -126,13 +124,13 @@ public class RefundOnCancelTask extends PluggableTask implements IInternalEvents
         }
         newOrder.setNotes(bundle.getString(notesString) + " " + order.getId());
         newOrder.setNotesInInvoice(0);
-        // 
+        //
         // order lines:
         //
         if (eventType == EventType.PERIOD_CANCELLED_EVENT) {
             for (OrderLineDTO line : order.getLines()) {
                 OrderLineDTO newLine = new OrderLineDTO(line);
-
+                newLine.getAssets().clear();
                 // reset so they get inserted
                 newLine.setId(0);
                 newLine.setVersionNum(null);
@@ -151,6 +149,8 @@ public class RefundOnCancelTask extends PluggableTask implements IInternalEvents
             newLine.setId(0);
             newLine.setVersionNum(null);
             newLine.setPurchaseOrder(newOrder);
+            newLine.getAssets().clear();
+            newLine.addAssets(myEvent.getOrderLine().getAssets());
             newOrder.getLines().add(newLine);
 
             // set quantity as the difference between the old and new quantities
@@ -169,7 +169,7 @@ public class RefundOnCancelTask extends PluggableTask implements IInternalEvents
             int itemId = Integer.parseInt((String) parameters.get(name));
             LOG.debug("adding item " + itemId + " to new order");
             ItemDTO item = new ItemDAS().findNow(itemId);
-            if (item == null || item.getEntity().getId() != event.getEntityId()) {
+            if (item == null || getEntityId() != event.getEntityId()) {
                 LOG.error("Item " + itemId + " not found");
                 continue;
             }
@@ -212,12 +212,13 @@ public class RefundOnCancelTask extends PluggableTask implements IInternalEvents
         // Update original order
         //
         if (eventType == EventType.PERIOD_CANCELLED_EVENT) {
-            order.setOrderStatus(new OrderStatusDAS().find(Constants.ORDER_STATUS_FINISHED));
+        	OrderStatusDAS orderStatusDAS = new OrderStatusDAS();
+            order.setOrderStatus(orderStatusDAS.find(orderStatusDAS.getDefaultOrderStatusId(OrderStatusFlag.FINISHED, entityId)));
             notesString = "order.cancelled.notes";
         } else {
             notesString = "order.cancelledPartial.notes";
         }
-        order.setNotes(order.getNotes() + " - " + 
+        order.setNotes(order.getNotes() + " - " +
                 bundle.getString(notesString) + " " + newOrderId);
 
         LOG.debug("Credit done with new order " + newOrderId);
@@ -227,5 +228,7 @@ public class RefundOnCancelTask extends PluggableTask implements IInternalEvents
     public String toString() {
         return "RefundOnCancelTask for events " + events;
     }
+
+    private enum EventType { PERIOD_CANCELLED_EVENT, NEW_QUANTITY_EVENT }
 
 }

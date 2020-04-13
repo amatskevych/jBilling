@@ -25,14 +25,14 @@ final targetDir = "${basedir}/target"
 target(jar: "Packages all core jbilling classes in a .jar file.") {
     depends(compile)
 
-    delete(dir: targetDir, includes: "${grailsAppName}.jar")
+    delete(dir: targetDir, includes: "${grailsAppName}-${grailsAppVersion}.jar")
 
     exec(executable: "git", outputproperty: "version") {
         arg(line: "describe --tags")
     }
 
     tstamp()
-    ant.jar(destfile: "${targetDir}/${grailsAppName}.jar", basedir: "${targetDir}/classes") {
+    ant.jar(destfile: "${targetDir}/${grailsAppName}-${grailsAppVersion}.jar", basedir: "${targetDir}/classes") {
         manifest {
             attribute(name: "Built-By", value: System.properties.'user.name')
             attribute(name: "Built-On", value: "${DSTAMP}-${TSTAMP}")

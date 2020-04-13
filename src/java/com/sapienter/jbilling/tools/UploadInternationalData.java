@@ -99,6 +99,8 @@ public class UploadInternationalData {
                 */
                 
                 String pColumn = fields[3].trim();
+                //SQL Injection prevention
+                pColumn = pColumn!=null?pColumn.replaceAll("'", "''"):null;
                 String content = fields[4].trim();
                 
                 // see if it is there

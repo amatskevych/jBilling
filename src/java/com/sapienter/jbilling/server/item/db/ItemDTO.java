@@ -17,41 +17,38 @@
  You should have received a copy of the GNU Affero General Public License
  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 package com.sapienter.jbilling.server.item.db;
 
+import com.sapienter.jbilling.common.CommonConstants;
+import com.sapienter.jbilling.server.item.ItemDependencyType;
+import com.sapienter.jbilling.server.metafields.MetaContent;
+import com.sapienter.jbilling.server.metafields.MetaFieldHelper;
+import com.sapienter.jbilling.server.metafields.EntityType;
+import com.sapienter.jbilling.server.metafields.db.MetaField;
 import com.sapienter.jbilling.server.invoice.db.InvoiceLineDTO;
+import com.sapienter.jbilling.server.metafields.EntityType;
+import com.sapienter.jbilling.server.metafields.MetaContent;
+import com.sapienter.jbilling.server.metafields.MetaFieldHelper;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue;
+import com.sapienter.jbilling.server.user.db.AccountTypeDTO;
 import com.sapienter.jbilling.server.order.db.OrderLineDTO;
 import com.sapienter.jbilling.server.user.db.CompanyDTO;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.csv.Exportable;
 import com.sapienter.jbilling.server.util.db.AbstractDescription;
+
 import org.hibernate.annotations.Cache;
-import org.hibernate.annotations.CacheConcurrencyStrategy;
+import org.hibernate.annotations.*;
 
 import javax.persistence.CascadeType;
-import javax.persistence.Column;
+import javax.persistence.*;
 import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.JoinTable;
-import javax.persistence.ManyToMany;
-import javax.persistence.ManyToOne;
-import javax.persistence.OneToMany;
+import javax.persistence.OrderBy;
 import javax.persistence.Table;
-import javax.persistence.TableGenerator;
-import javax.persistence.Transient;
-import javax.persistence.Version;
+
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 @Entity
 @TableGenerator(
@@ -64,10 +61,11 @@ import java.util.Set;
 )
 @Table(name = "item")
 @Cache(usage = CacheConcurrencyStrategy.NONSTRICT_READ_WRITE)
-public class ItemDTO extends AbstractDescription implements Exportable {
+public class ItemDTO extends AbstractDescription implements MetaContent, Exportable {
 
     private int id;
     private CompanyDTO entity;
+    private Set<CompanyDTO> entities = new HashSet<CompanyDTO>(0);
     private String internalNumber;
     private String glCode;
     private BigDecimal percentage;
@@ -75,21 +73,47 @@ public class ItemDTO extends AbstractDescription implements Exportable {
     private Integer priceManual;
     private Integer deleted;
     private Integer hasDecimals;
-    private Set<OrderLineDTO> orderLineDTOs = new HashSet<OrderLineDTO>(0);
     private Set<ItemTypeDTO> itemTypes = new HashSet<ItemTypeDTO>(0);
     private Set<InvoiceLineDTO> invoiceLines = new HashSet<InvoiceLineDTO>(0);
     private Set<ItemPriceDTO> itemPrices = new HashSet<ItemPriceDTO>(0);
+    private List<MetaFieldValue> metaFields = new LinkedList<MetaFieldValue>();
+    private Set<MetaField> orderLineMetaFields = new HashSet<MetaField>();
+    private Set<OrderLineDTO> orderLineDTOs = new HashSet<OrderLineDTO>(0); 
+    private boolean standardAvailability = true;
+    private boolean global = false;
+    private List<AccountTypeDTO> accountTypeAvailability = new ArrayList<AccountTypeDTO>();
+
+    /** If the item will do asset management. Only possible if one linked ItemTypeDTO allows asset management */
+    private Integer assetManagementEnabled;
     private int versionNum;
+
+    private Set<ItemDependencyDTO> dependencies = new HashSet<ItemDependencyDTO>();
 
     // transient
     private Integer[] types = null;
     private Integer[] excludedTypeIds = null;
+    private Integer[] accountTypeIds = null;
+    private Integer[] dependencyIds = null;
+
+
+    private List<Integer> childEntityIds = null;
+    private List<Integer> parentAndChildIds = null;
+
     private Collection<String> strTypes = null; // for rules 'contains' operator
     private String promoCode = null;
     private Integer currencyId = null;
     private BigDecimal price = null;
     private Integer orderLineTypeId = null;
+    
+    private Integer priceModelCompanyId = null;
+    
+    private Date activeSince;
+    private Date activeUntil;
 
+    private BigDecimal standardPartnerPercentage;
+    private BigDecimal masterPartnerPercentage;
+    private boolean isPercentage;
+    private Integer reservationDuration;
     // all the prices.ItemPriceDTOEx  
     private List prices = null;
 
@@ -100,8 +124,8 @@ public class ItemDTO extends AbstractDescription implements Exportable {
         this.id = id;
     }
 
-    public ItemDTO(int id, String internalNumber, String glCode, BigDecimal percentage, Integer priceManual,
-            Integer hasDecimals, Integer deleted, CompanyDTO entity) {
+    public ItemDTO(int id, String internalNumber, String glCode,BigDecimal percentage, Integer priceManual,
+                   Integer hasDecimals, Integer deleted, CompanyDTO entity, Integer assetManagementEnabled) {
         this.id = id;
         this.internalNumber = internalNumber;
         this.glCode = glCode;
@@ -110,41 +134,45 @@ public class ItemDTO extends AbstractDescription implements Exportable {
         this.hasDecimals = hasDecimals;
         this.deleted = deleted;
         this.entity = entity;
+        this.assetManagementEnabled = assetManagementEnabled;
     }
-    
-    public ItemDTO(int id, Integer priceManual, Integer deleted, Integer hasDecimals) {
+
+    public ItemDTO(int id, Integer priceManual, Integer deleted, Integer hasDecimals, Integer assetManagementEnabled) {
         this.id = id;
-        this.priceManual = priceManual;
         this.deleted = deleted;
+        this.priceManual = priceManual;
         this.hasDecimals = hasDecimals;
+        this.assetManagementEnabled = assetManagementEnabled;
     }
 
     public ItemDTO(int id, CompanyDTO entity, String internalNumber, String glCode, BigDecimal percentage, Integer priceManual,
                    Integer deleted, Integer hasDecimals, Set<OrderLineDTO> orderLineDTOs, Set<ItemTypeDTO> itemTypes,
                    Set<InvoiceLineDTO> invoiceLines, Set<ItemPriceDTO> itemPrices) {
-       this.id = id;
-       this.entity = entity;
-       this.internalNumber = internalNumber;
+        this.id = id;
+        this.entity = entity;
+        this.internalNumber = internalNumber;
         this.glCode = glCode;
-       this.percentage = percentage;
-       this.priceManual = priceManual;
-       this.deleted = deleted;
-       this.hasDecimals = hasDecimals;
-       this.orderLineDTOs = orderLineDTOs;
-       this.itemTypes = itemTypes;
-       this.invoiceLines = invoiceLines;
-       this.itemPrices = itemPrices;
+        this.percentage = percentage;
+        this.priceManual = priceManual;
+        this.deleted = deleted;
+        this.hasDecimals = hasDecimals;
+        this.orderLineDTOs = orderLineDTOs;
+        this.itemTypes = itemTypes;
+        this.invoiceLines = invoiceLines;
+        this.itemPrices = itemPrices;
     }
 
     // ItemDTOEx
-    public ItemDTO(int id,String number, String glCode, CompanyDTO entity, String description, Integer priceManual, Integer deleted,
+    public ItemDTO(int id, String number, String glCode, CompanyDTO entity, String description, Integer deleted, Integer priceManual,
                    Integer currencyId, BigDecimal price, BigDecimal percentage, Integer orderLineTypeId,
-                   Integer hasDecimals) {
-        this(id, number, glCode, percentage, priceManual, hasDecimals, deleted, entity);
+                   Integer hasDecimals, Integer assetManagementEnabled , boolean isPercentage) {
+
+        this(id, number, glCode, percentage, priceManual, hasDecimals, deleted, entity, assetManagementEnabled);
         setDescription(description);
         setCurrencyId(currencyId);
-        setPrice(price);
         setOrderLineTypeId(orderLineTypeId);
+        setIsPercentage(isPercentage);
+        setPrice(price);
     }
 
 
@@ -172,6 +200,39 @@ public class ItemDTO extends AbstractDescription implements Exportable {
     public void setEntity(CompanyDTO entity) {
         this.entity = entity;
     }
+    
+    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE, CascadeType.REFRESH}, fetch = FetchType.LAZY)
+    @JoinTable(name = "item_entity_map", joinColumns = { 
+    		@JoinColumn(name = "item_id", updatable = true) }, inverseJoinColumns = { 
+    		@JoinColumn(name = "entity_id", updatable = true) })
+    public Set<CompanyDTO> getEntities() {
+        return this.entities;
+    }
+
+    public void setEntities(Set<CompanyDTO> entities) {
+        this.entities = entities;
+    }
+    
+    @Transient
+    public List<Integer> getChildEntitiesIds() {
+        if (this.childEntityIds == null) {
+            this.childEntityIds = new ArrayList<Integer>();
+            for(CompanyDTO dto : this.entities) {
+            	this.childEntityIds.add(dto.getId());
+            }
+
+        }
+        return this.childEntityIds;
+    }
+
+    @Column(name = "asset_management_enabled")
+    public Integer getAssetManagementEnabled() {
+        return assetManagementEnabled;
+    }
+
+    public void setAssetManagementEnabled(Integer assetManagementEnabled) {
+        this.assetManagementEnabled = assetManagementEnabled;
+    }
 
     @Column(name = "internal_number", length = 50)
     public String getInternalNumber() {
@@ -191,7 +252,7 @@ public class ItemDTO extends AbstractDescription implements Exportable {
 		this.glCode = glCode;
 	}
 
-    @Column(name = "percentage")
+	@Transient
     public BigDecimal getPercentage() {
         return this.percentage;
     }
@@ -199,7 +260,7 @@ public class ItemDTO extends AbstractDescription implements Exportable {
     public void setPercentage(BigDecimal percentage) {
         this.percentage = percentage;
     }
-    
+
     @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JoinTable(name = "item_type_exclude_map",
                joinColumns = {@JoinColumn(name = "item_id", updatable = false)},
@@ -211,17 +272,18 @@ public class ItemDTO extends AbstractDescription implements Exportable {
 
     public void setExcludedTypes(Set<ItemTypeDTO> excludedTypes) {
         this.excludedTypes = excludedTypes;
-    }    
-    
+    }
+
     @Column(name="price_manual", nullable=false)
     public Integer getPriceManual() {
         return this.priceManual;
     }
-    
+
+
     public void setPriceManual(Integer priceManual) {
         this.priceManual = priceManual;
     }
-    
+
     @Column(name = "deleted", nullable = false)
     public Integer getDeleted() {
         return this.deleted;
@@ -238,15 +300,6 @@ public class ItemDTO extends AbstractDescription implements Exportable {
 
     public void setHasDecimals(Integer hasDecimals) {
         this.hasDecimals = hasDecimals;
-    }
-    
-    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "item")
-    public Set<OrderLineDTO> getOrderLines() {
-        return this.orderLineDTOs;
-    }
-
-    public void setOrderLines(Set<OrderLineDTO> orderLineDTOs) {
-        this.orderLineDTOs = orderLineDTOs;
     }
 
     @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
@@ -278,24 +331,25 @@ public class ItemDTO extends AbstractDescription implements Exportable {
         return null;
     }
 
-    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "item")
-    public Set<InvoiceLineDTO> getInvoiceLines() {
-        return this.invoiceLines;
-    }
-
-    public void setInvoiceLines(Set<InvoiceLineDTO> invoiceLines) {
-        this.invoiceLines = invoiceLines;
-    }
-
     @OneToMany(cascade=CascadeType.ALL, fetch=FetchType.LAZY, mappedBy="item")
     public Set<ItemPriceDTO> getItemPrices() {
         return this.itemPrices;
     }
-    
+
     public void setItemPrices(Set<ItemPriceDTO> itemPrices) {
         this.itemPrices = itemPrices;
     }
-
+    
+    @Transient
+    public List getPrices() {
+        return prices;
+    }
+    
+    @Transient
+    public void setPrices(List prices) {
+        this.prices = prices;
+    }
+    
     @Version
     @Column(name = "OPTLOCK")
     public int getVersionNum() {
@@ -304,6 +358,155 @@ public class ItemDTO extends AbstractDescription implements Exportable {
 
     public void setVersionNum(int versionNum) {
         this.versionNum = versionNum;
+    }
+
+    @OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @Cascade(org.hibernate.annotations.CascadeType.DELETE_ORPHAN)
+    @JoinTable(
+            name = "item_meta_field_map",
+            joinColumns = @JoinColumn(name = "item_id"),
+            inverseJoinColumns = @JoinColumn(name = "meta_field_value_id")
+    )
+    @Sort(type = SortType.COMPARATOR, comparator = MetaFieldHelper.MetaFieldValuesOrderComparator.class)
+    public List<MetaFieldValue> getMetaFields() {
+        return metaFields;
+    }
+
+    @OneToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "order_line_meta_fields_map",
+            joinColumns = { @JoinColumn(name = "item_id", referencedColumnName="id") },
+            inverseJoinColumns = { @JoinColumn(name = "meta_field_id", referencedColumnName="id", unique = true)}
+    )
+    @OrderBy("displayOrder")
+    public Set<MetaField> getOrderLineMetaFields() {
+        return orderLineMetaFields;
+    }
+
+    public void setOrderLineMetaFields(Set<MetaField> orderLineMetaFields) {
+        this.orderLineMetaFields = orderLineMetaFields;
+    }
+
+    @Column(name = "standard_availability", nullable = false)
+    public boolean isStandardAvailability() {
+        return standardAvailability;
+    }
+
+    public void setStandardAvailability(boolean standardAvailability) {
+        this.standardAvailability = standardAvailability;
+    }
+
+    @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JoinTable(name = "item_account_type_availability",
+            joinColumns = {@JoinColumn(name = "item_id", updatable = false)},
+            inverseJoinColumns = {@JoinColumn(name = "account_type_id", updatable = false)}
+    )
+	public List<AccountTypeDTO> getAccountTypeAvailability() {
+		return accountTypeAvailability;
+	}
+    
+    @Column(name = "global", nullable = false, updatable = true)
+    public boolean isGlobal() {
+		return global;
+	}
+
+	public void setGlobal(boolean global) {
+		this.global = global;
+	}
+	
+	public void setAccountTypeAvailability(
+			List<AccountTypeDTO> accountTypeAvailability) {
+		this.accountTypeAvailability = accountTypeAvailability;
+	}
+
+    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "item", orphanRemoval = true)
+    public Set<ItemDependencyDTO> getDependencies() {
+        return dependencies;
+    }
+
+    @Transient
+    public List<ItemDTO> getDependItems() {
+        List<ItemDTO> dependItems = new ArrayList<ItemDTO>();
+        for(ItemDependencyDTO itemDependencyDTO : dependencies) {
+            dependItems.add((ItemDTO) itemDependencyDTO.getDependent());
+        }
+        return dependItems;
+    }
+
+    @Column(name = "standard_partner_percentage")
+    public BigDecimal getStandardPartnerPercentage () {
+        return standardPartnerPercentage;
+    }
+
+    public void setStandardPartnerPercentage (BigDecimal standardPartnerPercentage) {
+        this.standardPartnerPercentage = standardPartnerPercentage;
+    }
+
+    @Column(name = "master_partner_percentage")
+    public BigDecimal getMasterPartnerPercentage () {
+        return masterPartnerPercentage;
+    }
+
+    public void setMasterPartnerPercentage (BigDecimal masterPartnerPercentage) {
+        this.masterPartnerPercentage = masterPartnerPercentage;
+    }
+
+    @Column(name = "reservation_duration")
+    public Integer getReservationDuration() {
+        return reservationDuration;
+    }
+
+    public void setReservationDuration(Integer reservationDuration) {
+        this.reservationDuration = reservationDuration;
+    }
+
+    public void setDependencies(Set<ItemDependencyDTO> dependencies) {
+        this.dependencies = dependencies;
+        dependencyIds = null;
+    }
+
+    public void addDependency(ItemDependencyDTO dependencyDTO) {
+        dependencies.add(dependencyDTO);
+        dependencyDTO.setItem(this);
+    }
+
+    @Transient
+    public void setMetaFields(List<MetaFieldValue> fields) {
+        this.metaFields = fields;
+    }
+
+    @Transient
+    public MetaFieldValue getMetaField(String name) {
+        return MetaFieldHelper.getMetaField(this, name);
+    }
+
+    @Transient
+    public MetaFieldValue getMetaField(String name, Integer groupId) {
+        return MetaFieldHelper.getMetaField(this, name, groupId);
+    }
+
+    @Transient
+    public MetaFieldValue getMetaField(Integer metaFieldNameId) {
+        return MetaFieldHelper.getMetaField(this, metaFieldNameId);
+    }
+
+    @Transient
+    public void setMetaField(MetaFieldValue field, Integer groupId) {
+        MetaFieldHelper.setMetaField(this, field, groupId);
+    }
+
+    @Transient
+    public void setMetaField(Integer entitId, Integer groupId, String name, Object value) throws IllegalArgumentException {
+        MetaFieldHelper.setMetaField(entitId, groupId, this, name, value);
+    }
+
+    @Transient
+    public void updateMetaFieldsWithValidation(Integer entitId, Integer accountTypeId, MetaContent dto) {
+        MetaFieldHelper.updateMetaFieldsWithValidation(entitId, accountTypeId, this, dto);
+    }
+
+    @Transient
+    public EntityType[] getCustomizedEntityType() {
+        return new EntityType[] { EntityType.PRODUCT };
     }
 
     @Transient
@@ -346,7 +549,27 @@ public class ItemDTO extends AbstractDescription implements Exportable {
     public boolean hasType(Integer typeId) {
         return Arrays.asList(getTypes()).contains(typeId);
     }
+    
+    @Temporal(TemporalType.DATE)
+    @Column(name="active_since", length=13)
+    public Date getActiveSince() {
+        return this.activeSince;
+    }
 
+    public void setActiveSince(Date activeSince) {
+        this.activeSince = activeSince;
+    }
+
+    @Temporal(TemporalType.DATE)
+    @Column(name="active_until", length=13)
+    public Date getActiveUntil() {
+        return this.activeUntil;
+    }
+
+    public void setActiveUntil(Date activeUntil) {
+        this.activeUntil = activeUntil;
+    }
+    
     @Transient
     public Integer[] getExcludedTypeIds() {
         if (this.excludedTypeIds == null && excludedTypes != null) {
@@ -369,8 +592,89 @@ public class ItemDTO extends AbstractDescription implements Exportable {
         return Arrays.asList(getExcludedTypeIds()).contains(typeId);
     }
 
+	@Transient
+	public Integer[] getAccountTypeIds() {
+		if (this.accountTypeIds == null && accountTypeAvailability != null) {
+			Integer[] types = new Integer[accountTypeAvailability.size()];
+			int i = 0;
+			for (AccountTypeDTO type : accountTypeAvailability) {
+				types[i++] = type.getId();
+			}
+			setAccountTypeIds(types);
+		}
+		return accountTypeIds;
+	}
+
+    public void setAccountTypeIds(Integer[] accountTypeIds) {
+        this.accountTypeIds = accountTypeIds;
+    }
 
     /**
+     * Return all ItemDependencyDTO objects contained in dependencies with the
+     * given type.
+     *
+     * @param type
+     * @return
+     */
+    public Collection<ItemDependencyDTO> getDependenciesOfType(ItemDependencyType type) {
+        ArrayList<ItemDependencyDTO> result = new ArrayList<ItemDependencyDTO>();
+        if(dependencies != null) {
+            for(ItemDependencyDTO dependency : dependencies) {
+                if(dependency.getType().equals(type)) {
+                    result.add(dependency);
+                }
+            }
+        }
+        return result;
+    }
+
+    @Transient
+    public Integer[] getDependencyIds() {
+        if (this.dependencyIds == null && dependencies != null) {
+            Integer[] dependencyIds = new Integer[dependencies.size()];
+            int i = 0;
+            for (ItemDependencyDTO dependency : dependencies) {
+                dependencyIds[i++] = dependency.getId();
+            }
+            setDependencyIds(types);
+        }
+        return dependencyIds;
+    }
+
+    /**
+     * From the dependencies extract the ids of those of type {@code type }
+     * which has a minimum required qty of 1
+     *
+     * @param type Type of dependecies to extract
+     * @return
+     */
+    public Integer[] getMandatoryDependencyIdsOfType(ItemDependencyType type) {
+        ArrayList<Integer> result = new ArrayList<Integer>();
+        if(dependencies != null) {
+            for(ItemDependencyDTO dependency : dependencies) {
+                if(dependency.getType().equals(type) && dependency.getMinimum() > 0) {
+                    result.add(dependency.getDependentObjectId());
+                }
+            }
+        }
+        return result.toArray(new Integer[result.size()]);
+    }
+
+    @Transient
+    public void setDependencyIds(Integer[] ids) {
+        this.dependencyIds = types;
+    }
+
+    @Transient
+    public List<Integer> getParentAndChildIds() {
+		return parentAndChildIds;
+	}
+
+	public void setParentAndChildIds(List<Integer> parentAndChildIds) {
+		this.parentAndChildIds = parentAndChildIds;
+	}
+
+	/**
      * Rules 'contains' operator only works on a collections of strings
      * @return collection of ItemTypeDTO ID's as strings.
      */
@@ -398,7 +702,7 @@ public class ItemDTO extends AbstractDescription implements Exportable {
 
     @Transient
     public Integer getEntityId() {
-        return getEntity().getId();
+        return getEntity() != null ? getEntity().getId() : null;
     }
 
     @Transient
@@ -432,20 +736,41 @@ public class ItemDTO extends AbstractDescription implements Exportable {
     }
 
     @Transient
-    public List getPrices() {
-        return prices;
-    }
+    public Integer getPriceModelCompanyId() {
+		return priceModelCompanyId;
+	}
 
     @Transient
-    public void setPrices(List prices) {
-        this.prices = prices;
-    }
+	public void setPriceModelCompanyId(Integer priceModelCompanyId) {
+		this.priceModelCompanyId = priceModelCompanyId;
+	}
 
-    @Override
+	@Override
     public String toString() {
         return "ItemDTO: id=" + getId();
     }
 
+    public ItemTypeDTO findItemTypeWithAssetManagement() {
+        for(ItemTypeDTO type : itemTypes) {
+            if(type.getAllowAssetManagement().intValue() == 1) return type;
+        }
+        return null;
+    }
+    @Transient
+    public boolean isPercentage() {
+		return isPercentage;
+	}
+
+	public void setIsPercentage(boolean isPercentage) {
+		this.isPercentage = isPercentage;
+	}
+    
+    /*public ItemTypeDTO findItemWithAssetManagement(ItemDTO item) {
+        for(ItemDTO type : item) {
+            if(type.getAssetManagementEnabled().intValue() == 1) return type;
+        }
+        return null;
+    }*/
     @Transient
     public String[] getFieldNames() {
         return new String[] {
@@ -455,7 +780,7 @@ public class ItemDTO extends AbstractDescription implements Exportable {
                 "hasDecimals",
                 "priceManual",
                 "percentage",
-                "prices"
+                "prices",
         };
     }
 
@@ -463,29 +788,26 @@ public class ItemDTO extends AbstractDescription implements Exportable {
     public Object[][] getFieldValues() {
         StringBuilder itemTypes = new StringBuilder();
         for (ItemTypeDTO type : this.itemTypes) {
-            itemTypes.append(type.getDescription()).append(" ");
+            itemTypes.append(type.getDescription()).append(' ');
         }
-
         StringBuilder prices = new StringBuilder();
         for (Iterator<ItemPriceDTO> it = this.itemPrices.iterator(); it.hasNext();) {
-            ItemPriceDTO price = it.next();
-            prices.append(price.getPrice()).append(" ").append(price.getCurrency().getCode());
-
-            if (it.hasNext()) prices.append(",");
-        }
+    	    ItemPriceDTO price = it.next();
+    	    prices.append(price.getPrice()).append(" ").append(price.getCurrency().getCode());
+    	    if (it.hasNext()) prices.append(",");
+    	}
 
         return new Object[][] {
-                {
-                    id,
-                    internalNumber,
-                    itemTypes.toString(),
-                    hasDecimals,
-                    priceManual,
-                    percentage,
-                    prices.toString()
-                }
+            {
+                id,
+                internalNumber,
+                itemTypes.toString(),
+                hasDecimals,
+                priceManual,
+                percentage,
+                prices.toString(),
+            }
         };
     }
+
 }
-
-

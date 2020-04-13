@@ -25,6 +25,7 @@ import org.apache.log4j.Logger;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.user.ContactBL;
 import com.sapienter.jbilling.server.user.ContactDTOEx;
@@ -32,8 +33,8 @@ import com.sapienter.jbilling.server.user.ContactDTOEx;
 @Transactional( propagation = Propagation.REQUIRED )
 public class CustomerSessionBean implements ICustomerSessionBean {
 
-    private static final Logger LOG = Logger.getLogger(
-            CustomerSessionBean.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(
+            CustomerSessionBean.class));
 
     public ContactDTOEx getPrimaryContactDTO(Integer userId)
             throws SessionInternalError {

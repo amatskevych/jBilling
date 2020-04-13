@@ -32,16 +32,19 @@ import org.apache.commons.httpclient.NameValuePair;
 import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.item.CurrencyBL;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
 import com.sapienter.jbilling.server.payment.PaymentAuthorizationBL;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentResultDAS;
 import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.user.ContactBL;
-import com.sapienter.jbilling.server.user.CreditCardBL;
 import com.sapienter.jbilling.server.util.Constants;
+
 import java.util.ArrayList;
 
 public class PaymentAuthorizeNetTask extends PluggableTask
@@ -54,6 +57,8 @@ public class PaymentAuthorizeNetTask extends PluggableTask
         new ParameterDescription("transaction", true, ParameterDescription.Type.STR);
     public static final ParameterDescription PARAMETER_TEST = 
         new ParameterDescription("test", false, ParameterDescription.Type.STR);
+    public static final ParameterDescription PARAMETER_USE_TEST_URL =
+        new ParameterDescription("use_test_url", false, ParameterDescription.Type.STR);
     public static final ParameterDescription PARAMETER_AVS = 
         new ParameterDescription("submit_avs", false, ParameterDescription.Type.STR);
     
@@ -62,14 +67,16 @@ public class PaymentAuthorizeNetTask extends PluggableTask
     	descriptions.add(PARAMETER_LOGIN); 
         descriptions.add(PARAMETER_TRANSACTION); 
         descriptions.add(PARAMETER_TEST); 
-        descriptions.add(PARAMETER_AVS); 
+        descriptions.add(PARAMETER_USE_TEST_URL);
+        descriptions.add(PARAMETER_AVS);
     }
     
     //private static final String url = "https://certification.authorize.net/gateway/transact.dll";
     private static final String url = "https://secure.authorize.net/gateway/transact.dll";
+    private static final String test_url = "https://test.authorize.net/gateway/transact.dll";
     private static final int timeOut = 10000; // in millisec
     
-    private static final Logger LOG = Logger.getLogger(PaymentAuthorizeNetTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaymentAuthorizeNetTask.class));
     
     /* (non-Javadoc)
      * @see com.sapienter.jbilling.server.pluggableTask.PaymentTask#process(com.sapienter.betty.server.payment.PaymentDTOEx)
@@ -94,27 +101,19 @@ public class PaymentAuthorizeNetTask extends PluggableTask
         */
         try {
             int method = -1; // 1 cc , 2 ach
-            
-            if (paymentInfo.getCreditCard() == null &&
-                    paymentInfo.getAch() == null) {
+            PaymentInformationBL piBl = new PaymentInformationBL();
+            if (!piBl.isCreditCard(paymentInfo.getInstrument()) &&
+            		!piBl.isACH(paymentInfo.getInstrument())) {
                 LOG.error("Can't process without a credit card or ach");
                 throw new TaskException("Credit card/ACH not present in payment");
             }
             
-            if (paymentInfo.getCreditCard() != null) {
+            if (piBl.isCreditCard(paymentInfo.getInstrument())) {
                 method = 1;
             }
-            if (paymentInfo.getAch() != null) {
+            if (piBl.isACH(paymentInfo.getInstrument())) {
                 method = 2;
             }
-            
-            if (paymentInfo.getCreditCard() != null &&
-                    paymentInfo.getAch() != null) {
-                LOG.warn("Both cc and ach are present");
-                method = 2; // default to ach (cheaper)
-            }
-            
-            
             
             if (paymentInfo.getIsRefund() == 1 &&
                     (paymentInfo.getPayment() == null ||
@@ -127,8 +126,7 @@ public class PaymentAuthorizeNetTask extends PluggableTask
             
             String expiry = null;
             if (method == 1) {
-                expiry = CreditCardBL.get4digitExpiry(
-                        paymentInfo.getCreditCard());
+                expiry = piBl.get4digitExpiry(paymentInfo.getInstrument());
             }
             
             String login = (String) parameters.get(PARAMETER_LOGIN.getName());
@@ -138,12 +136,12 @@ public class PaymentAuthorizeNetTask extends PluggableTask
                     transaction.length() == 0) {
                 throw new TaskException("invalid parameters");
             }
-            
-            String testStr = (String) parameters.get(PARAMETER_TEST.getName());
-            if (testStr != null) {
+
+            String testStr = parameters.get(PARAMETER_TEST.getName());
+            if (testStr != null && Boolean.valueOf(testStr)) {
                 isTest = true;
             }
-            
+
             // find the currency code of this payment
             CurrencyBL currencyBL = new CurrencyBL(
                     paymentInfo.getCurrency().getId());
@@ -157,12 +155,12 @@ public class PaymentAuthorizeNetTask extends PluggableTask
                 if (paymentInfo.getIsRefund() == 0) {
                     data = getChargeData(login, transaction, isTest, 
                             paymentInfo.getAmount(), 
-                            paymentInfo.getCreditCard().getNumber(), expiry,
+                            piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.PAYMENT_CARD_NUMBER), expiry,
                             currencyCode, true, paymentInfo.getId());
                 } else {
                     data = getRefundData(login, transaction, isTest, 
                             paymentInfo.getAmount(), 
-                            paymentInfo.getCreditCard().getNumber(), expiry,
+                            piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.PAYMENT_CARD_NUMBER), expiry,
                             paymentInfo.getPayment().getAuthorization().
                                 getTransactionId());
                 }
@@ -170,20 +168,20 @@ public class PaymentAuthorizeNetTask extends PluggableTask
                 if (paymentInfo.getIsRefund() == 0) {
                     data = getACHChargeData(login, transaction, isTest, 
                             paymentInfo.getAmount(), 
-                            paymentInfo.getAch().getAbaRouting(),
-                            paymentInfo.getAch().getBankAccount(),
-                            paymentInfo.getAch().getAccountType(),
-                            paymentInfo.getAch().getBankName(),
-                            paymentInfo.getAch().getAccountName(),
+                            piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ROUTING_NUMBER),
+                            piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ACCOUNT_NUMBER),
+                            piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ACCOUNT_TYPE).equalsIgnoreCase(Constants.ACH_CHECKING) ? new Integer(1) : new Integer(2),
+                            piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_NAME),
+                            piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.TITLE),
                             currencyCode);
                 } else {
                     data = getACHRefundData(login, transaction, isTest, 
                             paymentInfo.getAmount(),
-                            paymentInfo.getAch().getAbaRouting(),
-                            paymentInfo.getAch().getBankAccount(),
-                            paymentInfo.getAch().getAccountType(),
-                            paymentInfo.getAch().getBankName(),
-                            paymentInfo.getAch().getAccountName(),
+                            piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ROUTING_NUMBER),
+                            piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ACCOUNT_NUMBER),
+                            piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ACCOUNT_TYPE).equalsIgnoreCase(Constants.ACH_CHECKING) ? new Integer(1) : new Integer(2),
+                            piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_NAME),
+                            piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.TITLE),
                             paymentInfo.getPayment().getAuthorization().
                                 getTransactionId());
                 }               
@@ -193,7 +191,21 @@ public class PaymentAuthorizeNetTask extends PluggableTask
             String doAvs = (String) parameters.get(PARAMETER_AVS.getName());
             if (doAvs != null && doAvs.equals("true")) {
                 data = addAVSFields(paymentInfo.getUserId(), data);
-                LOG.debug("returning after avs " + data);
+
+                /* #12686: credit card number must not be logged */
+                NameValuePair[] dataToLog = null;
+                if(method==1) {
+                    dataToLog = data.clone();
+                    for(NameValuePair valuePair : dataToLog) {
+                        if(valuePair.getName().equals("x_Card_Num")) {
+                            valuePair.setValue("******");
+                        }
+                    }
+                    NameValuePair nameValue = new NameValuePair();
+                    dataToLog[0]=new NameValuePair();
+                }
+
+                LOG.debug("returning after avs " + dataToLog);
             }
             
             AuthorizeNetResponseDTO response = makeCall(data);
@@ -421,8 +433,13 @@ public class PaymentAuthorizeNetTask extends PluggableTask
             client.getState().setCredentials(null, null, creds);
         }
 
-        PostMethod post = new PostMethod(url);
-        
+        PostMethod post;
+        if (parameters.get(PARAMETER_USE_TEST_URL.getName()) != null && Boolean.valueOf(parameters.get(PARAMETER_USE_TEST_URL.getName()))) {
+            post = new PostMethod(test_url);
+        } else {
+            post = new PostMethod(url);
+        }
+
         post.setRequestBody(data);
 
         //execute the method
@@ -440,52 +457,81 @@ public class PaymentAuthorizeNetTask extends PluggableTask
 
         return dto;
     }
-    
+
     /**
      * The argument 'payment' has to have
-     *   - currency
-     *   - amount
-     *   - credit card
-     *   - the id of the existing payment row
+     * - currency
+     * - amount
+     * - credit card
+     * - the id of the existing payment row
+     *
      * @return The information with the results of the pre-authorization, or null if the was
-     * a problem, such as the processor being unavailable
+     *         a problem, such as the processor being unavailable
      */
-    public boolean preAuth(PaymentDTOEx payment) 
+    public boolean preAuth(PaymentDTOEx payment)
             throws PluggableTaskException {
         String login = (String) parameters.get(PARAMETER_LOGIN.getName());
         String transaction = (String) parameters.get(PARAMETER_TRANSACTION.getName());
-        
+        boolean isTest = false;
+
         if (login == null || login.length() == 0 || transaction == null ||
                 transaction.length() == 0) {
             throw new PluggableTaskException("invalid parameters");
         }
-        
+        PaymentInformationBL piBl = new PaymentInformationBL();
         try {
             CurrencyBL currencyBL = new CurrencyBL(payment.getCurrency().getId());
             String currencyCode = currencyBL.getEntity().getCode();
 
-            NameValuePair data[] = getChargeData(login, transaction, false, 
-                    payment.getAmount(), payment.getCreditCard().getNumber(), 
-                    CreditCardBL.get4digitExpiry(payment.getCreditCard()),
+            String testStr = parameters.get(PARAMETER_TEST.getName());
+            if (testStr != null && Boolean.valueOf(testStr)) {
+                isTest = true;
+            }
+
+            NameValuePair data[] = getChargeData(login, transaction, isTest,
+                    payment.getAmount(), piBl.getStringMetaFieldByType(payment.getInstrument(), MetaFieldType.PAYMENT_CARD_NUMBER),
+                    piBl.get4digitExpiry(payment.getInstrument()),
                     currencyCode, false, new Integer(0));
-            
+
             AuthorizeNetResponseDTO response = makeCall(data);
-            
+
             // save this authorization into the DB
             PaymentAuthorizationBL bl = new PaymentAuthorizationBL();
-            PaymentAuthorizationDTO  authDto = new PaymentAuthorizationDTO(
+            PaymentAuthorizationDTO authDto = new PaymentAuthorizationDTO(
                     response.getPaymentAuthorizationDTO());
             authDto.setProcessor("Authorize.net");
             bl.create(authDto, payment.getId());
             // since this is just an authorization, without a related payment
             // we leave it like this, no links to the payment table
-            
+
             payment.setAuthorization(authDto);
+
+            // the result of this request goes in the dto
+            if (Integer.valueOf(response.getPaymentAuthorizationDTO().
+                    getCode1()) == 1) {
+                payment.setPaymentResult(new PaymentResultDAS().find(Constants.RESULT_OK));
+                LOG.debug("result is ok");
+            } else {
+                // there are actually two other codes, 2 is decalined, but
+                // 3 is just 'error' may be for a 3 it should just return true
+                // to try another processor. Now we only do that for exceptions
+                payment.setPaymentResult(new PaymentResultDAS().find(Constants.RESULT_FAIL));
+                LOG.debug("result is fail");
+            }
+
             return false;
-        } catch (Exception e) {
-            LOG.info("error trying to pre-authorize", e);
+        } catch (HttpException e) {
+            LOG.warn("Http exception when calling Authorize.net", e);
+            payment.setPaymentResult(new PaymentResultDAS().find(Constants.RESULT_UNAVAILABLE));
             return true;
-        } 
+        } catch (IOException e) {
+            LOG.warn("IO exception when calling Authorize.net", e);
+            payment.setPaymentResult(new PaymentResultDAS().find(Constants.RESULT_UNAVAILABLE));
+            return true;
+        } catch (Exception e) {
+            LOG.error("Exception", e);
+            throw new PluggableTaskException(e);
+        }
     }
     
     public boolean confirmPreAuth(PaymentAuthorizationDTO auth, 

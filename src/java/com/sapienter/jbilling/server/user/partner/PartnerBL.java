@@ -25,60 +25,46 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Collections;
-import java.util.Date;
-import java.util.GregorianCalendar;
-import java.util.Iterator;
+import java.util.ArrayList;
 import java.util.List;
 
 import javax.naming.NamingException;
-
-import org.apache.log4j.Logger;
-
+import javax.sql.DataSource;
 import javax.sql.rowset.CachedRowSet;
 
-import com.sapienter.jbilling.common.CommonConstants;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.log4j.Logger;
+
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
-import com.sapienter.jbilling.server.item.CurrencyBL;
 import com.sapienter.jbilling.server.list.ResultList;
-import com.sapienter.jbilling.server.notification.INotificationSessionBean;
-import com.sapienter.jbilling.server.notification.MessageDTO;
-import com.sapienter.jbilling.server.notification.NotificationBL;
-import com.sapienter.jbilling.server.notification.NotificationNotFoundException;
-import com.sapienter.jbilling.server.payment.PaymentBL;
-import com.sapienter.jbilling.server.payment.PaymentDTOEx;
-import com.sapienter.jbilling.server.payment.db.PaymentDAS;
-import com.sapienter.jbilling.server.payment.db.PaymentDTO;
-import com.sapienter.jbilling.server.payment.db.PaymentResultDAS;
-import com.sapienter.jbilling.server.pluggableTask.TaskException;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
-import com.sapienter.jbilling.server.user.PartnerRangeComparator;
+import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskManager;
 import com.sapienter.jbilling.server.user.PartnerSQL;
+import com.sapienter.jbilling.server.user.UserBL;
+import com.sapienter.jbilling.server.user.db.CustomerDTO;
 import com.sapienter.jbilling.server.user.db.UserDAS;
-import com.sapienter.jbilling.server.user.db.UserDTO;
-import com.sapienter.jbilling.server.user.partner.db.Partner;
+import com.sapienter.jbilling.server.user.partner.db.CommissionDTO;
+import com.sapienter.jbilling.server.user.partner.db.PartnerCommissionExceptionDTO;
 import com.sapienter.jbilling.server.user.partner.db.PartnerDAS;
+import com.sapienter.jbilling.server.user.partner.db.PartnerDTO;
 import com.sapienter.jbilling.server.user.partner.db.PartnerPayout;
 import com.sapienter.jbilling.server.user.partner.db.PartnerPayoutDAS;
-import com.sapienter.jbilling.server.user.partner.db.PartnerRange;
-import com.sapienter.jbilling.server.user.partner.db.PartnerRangeDAS;
+import com.sapienter.jbilling.server.user.partner.db.PartnerReferralCommissionDTO;
+import com.sapienter.jbilling.server.user.partner.task.IPartnerCommissionTask;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.Context;
-import com.sapienter.jbilling.server.util.MapPeriodToCalendar;
 import com.sapienter.jbilling.server.util.audit.EventLogger;
-import com.sapienter.jbilling.server.util.db.CurrencyDAS;
-import java.util.ArrayList;
-import javax.sql.DataSource;
 
 /**
  * @author Emil
  */
 public class PartnerBL extends ResultList implements PartnerSQL {
-    private static final Logger LOG = Logger.getLogger(PartnerBL.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PartnerBL.class));
 
     private PartnerDAS partnerDAS = null;
-    private Partner partner = null;
-    private PartnerRange partnerRange = null;
+    private PartnerDTO partner = null;
     private PartnerPayout payout = null;
     private EventLogger eLogger = null;
 
@@ -86,328 +72,63 @@ public class PartnerBL extends ResultList implements PartnerSQL {
         init();
         set(partnerId);
     }
-    
+
     public PartnerBL() {
         init();
     }
-    
-    public PartnerBL(Partner entity) {
+
+    public PartnerBL(PartnerDTO entity) {
         partner = entity;
         init();
     }
-    
+
     public void set(Integer partnerId) {
         partner = partnerDAS.find(partnerId);
     }
-    
+
     public void setPayout(Integer payoutId) {
         payout = new PartnerPayoutDAS().find(payoutId);
     }
 
     private void init() {
-        eLogger = EventLogger.getInstance();        
+        eLogger = EventLogger.getInstance();
         payout = null;
-        partnerRange = null;
         partnerDAS = new PartnerDAS();
     }
 
-    public Partner getEntity() {
+    public PartnerDTO getEntity() {
         return partner;
     }
-    
-    public Integer create(Partner dto) throws SessionInternalError {
+
+    public Integer create(PartnerDTO dto) throws SessionInternalError {
         LOG.debug("creating partner");
-        
+
         dto.setTotalPayments(BigDecimal.ZERO);
         dto.setTotalPayouts(BigDecimal.ZERO);
         dto.setTotalRefunds(BigDecimal.ZERO);
         dto.setDuePayout(BigDecimal.ZERO);
         partner = partnerDAS.save(dto);
 
-        setRelatedClerk(partner, dto.getRelatedClerkUserId());
-        
         LOG.debug("created partner id " + partner.getId());
-        
+
         return partner.getId();
     }
-    
-    public void update(Integer executorId, Partner dto) {
-        eLogger.audit(executorId, dto.getBaseUser().getId(), 
+
+    public void update(Integer executorId, PartnerDTO dto) {
+        dto.getBaseUser();
+        dto.getBaseUser().getId();
+        partner.getId();
+        eLogger.audit(executorId, dto.getBaseUser().getId(),
                 Constants.TABLE_PARTNER, partner.getId(),
-                EventLogger.MODULE_USER_MAINTENANCE, 
-                EventLogger.ROW_UPDATED, null, null, 
+                EventLogger.MODULE_USER_MAINTENANCE,
+                EventLogger.ROW_UPDATED, null, null,
                 null);
-        setRelatedClerk(partnerDAS.save(dto), dto.getRelatedClerkUserId());
-    }
-    
-    private void setRelatedClerk(Partner dto, Integer id) {
-        UserDTO user = new UserDAS().find(id);
-        dto.setBaseUserByRelatedClerk(user);
-        user.getPartnersForRelatedClerk().add(dto);
-    }
-    
-    /**
-     * This is called from a new transaction
-     * @param partnerId
-     */
-    public void processPayout(Integer partnerId) 
-            throws SQLException, SessionInternalError, PluggableTaskException, TaskException, NamingException {
-        boolean notPaid;
-        partner = partnerDAS.find(partnerId);
-        // find out the date ranges for this payout
-        Date startDate, endDate, dates[];
-        dates = calculatePayoutDates();
-        startDate = dates[0];
-        endDate = dates[1];
-       
-        // see if this partner should be paid on-line
-        boolean doProcess = partner.getAutomaticProcess() == 1;
-        
-        // some handy data
-        Integer currencyId = partner.getUser().getCurrencyId();
-        Integer entityId = partner.getUser().getEntity().getId();
-        Integer userId = partner.getUser().getUserId();
-        
-        if (doProcess) {
-            // now creating the row
-            payout = new PartnerPayout();
-            payout.setStartingDate(startDate);
-            payout.setEndingDate(endDate);
-            payout.setBalanceLeft(BigDecimal.ZERO);
-            payout.setPaymentsAmount(BigDecimal.ZERO);
-            payout.setRefundsAmount(BigDecimal.ZERO);
-            payout.setPartner(partner);
-            payout = new PartnerPayoutDAS().save(payout);
-            partner.getPartnerPayouts().add(payout);
-        } else {
-            payout = null; // to avoid confustion
-        }
-        
-        // get the total for this payout
-        PartnerPayout dto = calculatePayout(startDate, endDate, 
-                currencyId);
-        
-        if (doProcess) {
-            PaymentDTOEx payment = PaymentBL.findPaymentInstrument(entityId,
-                    userId);
-            if (payment == null) {
-                // this partner doesn't have a way to get paid
-                eLogger.warning(entityId, userId, partnerId, 
-                        EventLogger.MODULE_USER_MAINTENANCE, 
-                        EventLogger.CANT_PAY_PARTNER, 
-                        Constants.TABLE_PARTNER);
-                notPaid = true;
-            } else {
-                payment.setAmount(dto.getPayment().getAmount());
-                payment.setCurrency(partner.getUser().getCurrency());
-                payment.setUserId(userId);
-                payment.setPaymentDate(partner.getNextPayoutDate());
-                notPaid = !processPayment(payment, entityId, dto, true);
-             }
-        } else {
-            notPaid = true;
-            // just notify to the clerk in charge
-            notifyPayout(entityId, partner.getBaseUserByRelatedClerk().getLanguageIdField(),
-                         dto.getPayment().getAmount(), startDate, endDate, true);
-        }
-        
-        if (notPaid) {
-            // let know that this partner should have been paid.
-            notifyPayout(entityId, partner.getBaseUserByRelatedClerk().getLanguageIdField(),
-                         dto.getPayment().getAmount(), startDate, endDate, true);
-            // set the partner due payout
-            partner.setDuePayout(dto.getPayment().getAmount());
-        }
 
+        // update meta fields and run validations
+        partner.updateMetaFieldsWithValidation(dto.getBaseUser().getCompany().getId(), null, dto);
     }
-    
-    /**
-     * This is to be called from the client, when creating a manual payout
-     * @param partnerId
-     * @param start
-     * @param end
-     * @param payment
-     * @return
-     */
-    public Integer processPayout(Integer partnerId, Date start, Date end,
-            PaymentDTOEx payment, Boolean process) 
-            throws SessionInternalError, SQLException, NamingException {
-        
-        partner = partnerDAS.find(partnerId);
-        payout = new PartnerPayout();
-        payout.setStartingDate(start);
-        payout.setEndingDate(end);
-        payout.setBalanceLeft(BigDecimal.ZERO);
-        payout.setPaymentsAmount(BigDecimal.ZERO);
-        payout.setRefundsAmount(BigDecimal.ZERO);
-        payout.setPartner(partner);
-        payout = new PartnerPayoutDAS().save(payout);
-        partner.getPartnerPayouts().add(payout);
-        
-        // get the total for this payout
-        PartnerPayout dto = calculatePayout(start, end, 
-                payment.getCurrency().getId());
-    
-        // finish the payment
-        payment.setIsRefund(new Integer(1));
-        payment.setAttempt(new Integer(1));
-        processPayment(payment, partner.getUser().getEntity().getId(), dto,
-                process.booleanValue());
-        return payment.getPaymentResult().getId();
-    }
-    
-    public Date[] calculatePayoutDates() throws NamingException, SQLException, SessionInternalError{
-        Date retValue[] = new Date[2];        
-        // for this I have to find the last payout for this partner
-        Integer payoutId = getLastPayout(partner.getId());
-        Date lastEndDate;
-        // the return value of 'empty' from a function (max) could vary from db to db
-        if (payoutId != null && payoutId.intValue() != 0) {
-            PartnerPayout previousPayout = 
-                    new PartnerPayoutDAS().find(payoutId);
-            lastEndDate = previousPayout.getEndingDate();
-        } else {
-            // if this is the first payout, calculate from the creation of the partner
-            lastEndDate = partner.getUser().getCreateDatetime();
-        }
-        retValue[0] = lastEndDate;
-        GregorianCalendar cal = new GregorianCalendar();
-        cal.setTime(lastEndDate);
-        cal.add(MapPeriodToCalendar.map(partner.getPeriodUnit().getId()), 
-                partner.getPeriodValue());
-        retValue[1] = cal.getTime();
-        LOG.debug("Dates for partner " + partner.getId() + " start= " + retValue[0] +
-                " end " + retValue[1]);
-        return retValue;
-    }
-    
-    private boolean processPayment(PaymentDTOEx payment, Integer entityId,
-            PartnerPayout dto, boolean process) 
-            throws NamingException, SessionInternalError {
-        PaymentBL paymentBL = new PaymentBL();
-        boolean retValue;
-        PaymentDTO createdPayment = null;
-        // isRefund is not null, so having to decide it is better to use refund.
-        payment.setPayoutId(payout.getId());
-        payment.setIsRefund(new Integer(1));
-        payment.setAttempt(new Integer(1));
-        payment.setBalance(BigDecimal.ZERO);
-                
-        // process the payment realtime
-        Integer result = Constants.RESULT_OK;
-        if (process) {
-            result = paymentBL.processPayment(entityId, payment);
-            createdPayment = paymentBL.getEntity();
-            if (result == null) { // means no pluggable task config.
-                result = Constants.RESULT_UNAVAILABLE;
-            }
-        } else {
-            // create the payment row
-            paymentBL.create(payment);
-            createdPayment = paymentBL.getEntity();
-        }
-        // and link it to this payout row
-        payout.setPayment(new PaymentDAS().find(paymentBL.getEntity().getId()));
-                
-        // update this partner fields if the payment went through
-        if (result.equals(Constants.RESULT_OK)) {
-            applyPayout(dto);
 
-            // this partner just got a full payout
-            partner.setDuePayout(BigDecimal.ZERO);
 
-            // if there was something paid, notify
-            if (BigDecimal.ZERO.compareTo(dto.getPayment().getAmount()) < 0) {                
-                LOG.debug("payout notification partner = " + partner.getId()
-                            + " with language = " + partner.getUser().getLanguageIdField());
-                notifyPayout(entityId, partner.getUser().getLanguageIdField(), dto.getPayment().getAmount(),
-                             dto.getStartingDate(), dto.getEndingDate(), false);
-            }
-            retValue = true;
-        } else {
-            retValue = false;
-        }
-        createdPayment.setPaymentResult(new PaymentResultDAS().find(result));
-        payment.setPaymentResult(createdPayment.getPaymentResult());
-
-        return retValue;
-    }
-    
-    /**
-     * Goes over the payments/refunds of the current partner for the
-     * given period. It will update the records selected linking them to 
-     * the new payout record and the totals of the payout record if 
-     * such record has been initialized.
-     * @param start
-     * @param end
-     * @return
-     */
-    public PartnerPayout calculatePayout(Date start, Date end, Integer currencyId) 
-            throws NamingException, SQLException, SessionInternalError {
-        BigDecimal total = new BigDecimal("0");
-        BigDecimal paymentTotal = new BigDecimal("0");
-        BigDecimal refundTotal = new BigDecimal("0");
-        
-        LOG.debug("Calculating payout partner " + partner.getId() + " from " + 
-                start + " to " + end);
-        Connection conn = ((DataSource) Context.getBean(Context.Name.DATA_SOURCE)).getConnection();
-        PreparedStatement stmt = conn.prepareStatement(paymentsInPayout);
-        stmt.setInt(1, partner.getId());
-        stmt.setDate(2, new java.sql.Date(start.getTime()));
-        stmt.setDate(3, new java.sql.Date(end.getTime()));
-        ResultSet result = stmt.executeQuery();
-        // since esql doesn't support dates, a direct call is necessary
-        while (result.next()) {
-            PaymentBL payment = new PaymentBL(new Integer(result.getInt(1)));
-            Integer paymentCurrencyId = payment.getEntity().getCurrency().getId();
-            Integer entityId = partner.getUser().getEntity().getId();
-            
-            // the amount will have to be in the requested currency
-            // convert then the payment amout
-            CurrencyBL currency = new CurrencyBL();
-            BigDecimal paymentAmount = currency.convert(paymentCurrencyId, currencyId, payment.getEntity().getAmount(), entityId);
-            LOG.debug("payment amount = " + paymentAmount);
-            BigDecimal amount = calculateCommission(paymentAmount, currencyId, payment.getEntity().getBaseUser(), payout != null); 
-            LOG.debug("commission = " + amount);
-            
-            // payments add, refunds take
-            if (payment.getEntity().getIsRefund() == 0) {
-                total = total.add(amount);
-                paymentTotal = paymentTotal.add(amount);
-            } else {
-                total = total.subtract(amount);
-                refundTotal = refundTotal.add(amount);
-            }
-            if (payout != null) {
-                // update the payment record with the new payout
-                payment.getEntity().setPayoutIncludedIn(payout);
-            }
-        }
-        result.close();
-        stmt.close();
-        conn.close();
-        
-        if (payout != null) {
-            // update the payout row
-            payout.setPaymentsAmount(paymentTotal);
-            payout.setRefundsAmount(refundTotal);
-        }
-        
-        LOG.debug("total " + total + " currency = " + currencyId);
-        PartnerPayout retValue = new PartnerPayout();
-        PaymentDTO payment = new PaymentDTO();
-        payment.setAmount(total);
-        payment.setCurrency(new CurrencyDAS().find(currencyId));
-        payment.setBaseUser(partner.getBaseUser());
-        retValue.setPayment(payment);
-        retValue.setRefundsAmount(refundTotal);
-        retValue.setPaymentsAmount(paymentTotal);
-        retValue.setStartingDate(start);
-        retValue.setEndingDate(end);
-        
-        return retValue;
-    }
-    
     /**
      * This will return the id of the lates payout that was successfull
      * @param partnerId
@@ -415,7 +136,7 @@ public class PartnerBL extends ResultList implements PartnerSQL {
      * @throws NamingException
      * @throws SQLException
      */
-    private Integer getLastPayout(Integer partnerId) 
+    private Integer getLastPayout(Integer partnerId)
             throws NamingException, SQLException {
         Integer retValue = null;
         Connection conn = ((DataSource) Context.getBean(Context.Name.DATA_SOURCE)).getConnection();
@@ -432,136 +153,8 @@ public class PartnerBL extends ResultList implements PartnerSQL {
         LOG.debug("Finding last payout ofr partner " + partnerId + " result = " + retValue);
         return retValue;
     }
-    
-    /**
-     * Will update the partner fields with the total of this payout
-     * @param dto
-     */
-    public void applyPayout(PartnerPayout dto) 
-            throws SessionInternalError {
 
-        // the balance goes down with a payout
-        BigDecimal balance = partner.getBalance().subtract(dto.getPayment().getAmount());
-        partner.setBalance(balance);
-        
-        // add this payout to her total
-        BigDecimal total = partner.getTotalPayouts().add(dto.getPayment().getAmount());
-        partner.setTotalPayouts(total);
-        
-        // the next payout
-        GregorianCalendar cal = new GregorianCalendar();
-        cal.setTime(partner.getNextPayoutDate());
-        cal.add(MapPeriodToCalendar.map(partner.getPeriodUnit().getId()), partner.getPeriodValue());
-        partner.setNextPayoutDate(cal.getTime());
-    }
-    
-    public void notifyPayout(Integer entityId, Integer languageId, BigDecimal total, Date start, Date end,
-                             boolean clerk) throws NamingException, SessionInternalError {
-        // make the notification
-        NotificationBL notification = new NotificationBL();
-        try {
-            MessageDTO message = notification.getPayoutMessage(entityId,
-                    languageId, total, start, end, clerk, partner.getId());
-     
-            INotificationSessionBean notificationSess = 
-                    (INotificationSessionBean) Context.getBean(
-                    Context.Name.NOTIFICATION_SESSION);
-            if (!clerk) {
-                notificationSess.notify(partner.getUser(), message);
-            } else {
-                notificationSess.notify(partner.getBaseUserByRelatedClerk(), message);
-
-            }
-        } catch (NotificationNotFoundException e) {
-            //  this entity has not defined
-            // a message for the payout
-            LOG.warn("A payout message shoule've been sent, but entity " + 
-                    entityId + " has not defined a notification");
-        }
-    }
-    
-    public BigDecimal calculateCommission(BigDecimal amount, Integer currencyId,
-            UserDTO user, boolean update) 
-            throws SessionInternalError, NamingException, SQLException {
-        LOG.debug("Calculating commision on " + amount); 
-        BigDecimal result;
-        if (partner.getOneTime() == 1) {
-            // this partner gets paid once per customer she brings
-            Integer flag = user.getCustomer().getReferralFeePaid();
-            if (flag == null || flag.intValue() == 0) {
-                if (update) { // otherwise just calculate
-                    user.getCustomer().setReferralFeePaid(
-                            new Integer(1));
-                }
-            } else {
-                // it got a fee from this guy already
-                return BigDecimal.ZERO;
-            }
-        } 
-        
-        // find the rate
-        BigDecimal rate = null;
-        BigDecimal fee = null;
-        if (partner.getRanges().size() > 0) {
-            getRangedCommission();
-            rate = partnerRange.getPercentageRate() == null ? null : 
-                    new BigDecimal(partnerRange.getPercentageRate().toString());
-            fee = partnerRange.getReferralFee() == null ? null : 
-                    new BigDecimal(partnerRange.getReferralFee().toString());
-        } else {
-            rate = partner.getPercentageRate();
-            fee = partner.getReferralFee();
-        }
-
-        LOG.debug("using rate " + rate + " fee " + fee);
-        // apply the rate to get the commission value
-        if (rate != null && (rate.compareTo(BigDecimal.ZERO) != 0)) {
-            result = amount.divide(new BigDecimal("100"),
-                    CommonConstants.BIGDECIMAL_SCALE,
-                    CommonConstants.BIGDECIMAL_ROUND).multiply(rate);
-        } else if (fee != null && (fee.compareTo(BigDecimal.ZERO) != 0)) {
-            CurrencyBL currency = new CurrencyBL();
-            Integer partnerCurrencyId = partner.getFeeCurrency().getId();
-            if (partnerCurrencyId == null) {
-                LOG.info("Partner without currency, using entity's as default");
-                partnerCurrencyId = partner.getUser().getEntity().getCurrencyId();
-            }
-            result = currency.convert(partnerCurrencyId, currencyId, fee,
-                    partner.getUser().getEntity().getId());
-        } else {
-            throw new SessionInternalError(
-                    "Partner without commission configuration");
-        }
-        LOG.debug("result = " + result);
-        return result;
-    }
-    
-    /**
-     * Go over the rates for this partner and return the right
-     * range for the amount of customers
-     * After the call, the variable partnerRange is set to the right range
-     */
-    private void getRangedCommission() 
-            throws NamingException, SQLException {
-        int totalCustomers = getCustomersCount();
-        // if there were more than just 20 rows, this would have to
-        // be done all with plain sql instead of ejbs
-        List<PartnerRange> rates = new ArrayList(partner.getRanges());
-        Collections.sort(rates, new PartnerRangeComparator());
-        partnerRange = null; // to get an exception if there are no ranges
-        
-        for (int f=0; f < rates.size(); f++) {
-            partnerRange = rates.get(f);
-            if (partnerRange.getRangeFrom() <= totalCustomers &&
-                    partnerRange.getRangeTo() >= totalCustomers) {
-                break;
-            }
-        }
-        // we will always return a rate. If none were found, the last one
-        // (biggest) is returned
-    }
-    
-    private int getCustomersCount() 
+    private int getCustomersCount()
             throws SQLException, NamingException {
         int retValue = 0;
         Connection conn = ((DataSource) Context.getBean(Context.Name.DATA_SOURCE)).getConnection();
@@ -577,16 +170,31 @@ public class PartnerBL extends ResultList implements PartnerSQL {
         conn.close();
         return retValue;
     }
-    
-    public Partner getDTO() {
-        partner.setRelatedClerkUserId(partner.getBaseUserByRelatedClerk().getId());
+
+	public static final PartnerPayoutWS getPartnerPayoutWS(PartnerPayout dto) {
+
+		PartnerPayoutWS ws = new PartnerPayoutWS();
+		ws.setId(dto.getId());
+		ws.setPartnerId(dto.getPartner() != null ? dto.getPartner().getId()
+				: null);
+		ws.setPaymentId(dto.getPayment() != null ? dto.getPayment().getId()
+				: null);
+		ws.setStartingDate(dto.getStartingDate());
+		ws.setEndingDate(dto.getEndingDate());
+		ws.setPaymentsAmount(dto.getPaymentsAmount());
+		ws.setRefundsAmount(dto.getRefundsAmount());
+		ws.setBalanceLeft(dto.getBalanceLeft());
+		return ws;
+	}
+ 
+    public PartnerDTO getDTO() {
         return partner;
     }
-    
-    public PartnerPayout getLastPayoutDTO(Integer partnerId) 
+
+    public PartnerPayout getLastPayoutDTO(Integer partnerId)
             throws SQLException, NamingException {
         PartnerPayout retValue = null;
-        
+
         Integer payoutId = getLastPayout(partnerId);
         if (payoutId != null && payoutId.intValue() != 0) {
             payout = new PartnerPayoutDAS().find(payoutId);
@@ -594,13 +202,50 @@ public class PartnerBL extends ResultList implements PartnerSQL {
         }
         return retValue;
     }
-    
-    public PartnerPayout getPayoutDTO() 
+
+    public PartnerPayout getPayoutDTO()
             throws NamingException {
         payout.touch();
         return payout;
     }
     
+	public static final PartnerReferralCommissionWS getPartnerReferralCommissionWS(
+			PartnerReferralCommissionDTO dto) {
+
+		PartnerReferralCommissionWS ws = new PartnerReferralCommissionWS();
+		ws.setId(dto.getId());
+		ws.setReferralId(dto.getReferral() != null ? dto.getReferral().getId()
+				: null);
+		ws.setReferrerId(dto.getReferrer() != null ? dto.getReferrer().getId()
+				: null);
+		ws.setStartDate(dto.getStartDate());
+		ws.setEndDate(dto.getEndDate());
+		ws.setPercentage(dto.getPercentage());
+		ws.setOwningUserId(getOwningUserId(ws));
+		return ws;
+	}
+	
+	 private static final Integer getOwningUserId (PartnerReferralCommissionWS ws) {
+	        if (ws.getReferralId() != null && ws.getReferralId() > 0) {
+	            return new PartnerBL(ws.getReferralId()).getEntity().getBaseUser().getId();
+	        } else {
+	            return null;
+	        }
+	    }
+	
+	public static final PartnerReferralCommissionDTO getDTO(PartnerReferralCommissionWS ws){
+	        PartnerReferralCommissionDTO referralCommission = new PartnerReferralCommissionDTO();
+	        referralCommission.setId(0);
+	        referralCommission.setReferral(new PartnerDAS().find(ws.getReferralId()));
+	        referralCommission.setReferrer(new PartnerDAS().find(ws.getReferrerId()));
+	        referralCommission.setStartDate(ws.getStartDate());
+	        referralCommission.setEndDate(ws.getEndDate());
+	        referralCommission.setPercentage(ws.getPercentageAsDecimal());
+	        return referralCommission;
+	    }
+
+    
+
     public CachedRowSet getList(Integer entityId)
             throws SQLException, Exception{
 
@@ -620,38 +265,74 @@ public class PartnerBL extends ResultList implements PartnerSQL {
         conn.close();
         return cachedResults;
     }
-    
+
     /**
-     * Remove the existing ranges and create rows with 
-     * the values of the parameter
-     * @param ranges
+     * Deletes the composed Partner object from the system
+     * by first deleting the associated user and then deleting the Partner record.
+     * @param executorId
+     * @throws SessionInternalError
      */
-    public void setRanges(Integer executorId, PartnerRange[] ranges) {
-        eLogger.audit(executorId, partner.getBaseUser().getId(), 
-                Constants.TABLE_PARTNER_RANGE, partner.getId(),
-                EventLogger.MODULE_USER_MAINTENANCE, 
-                EventLogger.ROW_UPDATED, null, null, null);
-        // remove existing ranges (a clear will only set the partner_id = null)
-        for (Iterator it = partner.getRanges().iterator(); it.hasNext();) {
-            partnerRange = (PartnerRange) it.next();
-            it.remove();
-            new PartnerRangeDAS().delete(partnerRange);
+    public void delete(Integer executorId) throws SessionInternalError {
+        validateDelete();
+        Integer userId= partner.getBaseUser().getId();
+        Integer partnerId=partner.getId();
+
+        UserBL userBl= new UserBL(userId);
+        userBl.getEntity().setPartner(null);
+        partner.setBaseUser(null);
+
+        userBl.delete(executorId);
+        
+        for (CustomerDTO customer : partner.getCustomers()) {
+        	customer.setPartner(null);
         }
         
-        // may be this is a delete
-        if (ranges == null) {
-            return;
+        partner.getCustomers().clear();
+        
+        partnerDAS.delete(partner);
+        
+        if (executorId != null) {
+            eLogger.audit(executorId, userId, Constants.TABLE_BASE_USER,
+                    partnerId, EventLogger.MODULE_USER_MAINTENANCE,
+                    EventLogger.ROW_DELETED, null, null, null);
         }
-        // go through the array creating the rows
-        for (int f = 0; f < ranges.length; f++) {
-            PartnerRange range = new PartnerRange();
-            range.setPartner(partner);
-            range.setRangeFrom(ranges[f].getRangeFrom());
-            range.setRangeTo(ranges[f].getRangeTo());
-            range.setPercentageRate(ranges[f].getPercentageRate());
-            range.setReferralFee(ranges[f].getReferralFee());
-            partnerRange = new PartnerRangeDAS().save(range);
-            partner.getRanges().add(partnerRange);
+    }
+
+    private void validateDelete() {
+        if (partner == null) {
+            throw new SessionInternalError("The partner has to be set before delete");
+        }
+
+        List<Integer> childList= partnerDAS.findChildList(partner.getId());
+        if (CollectionUtils.isNotEmpty(childList)) {
+            LOG.debug("Partner Id " + partner.getId() + " cannot be deleted. Child agents exists.");
+            String errorMessages[] = new String[1];
+            errorMessages[0] = "PartnerWS,childIds,partner.error.parent.cannot.be.deleted," + childList;
+            throw new SessionInternalError("Cannot delete Parent Partner. Child ID(s) " + childList +" exists.", errorMessages);
+        }
+        if (partner.getCommissions() != null && partner.getCommissions().size() > 0) {
+            String errorMessages[] = new String[1];
+            errorMessages[0] = "PartnerWS,commissions,partner.error.cannot.be.deleted.commissions,";
+            throw new SessionInternalError("Cannot delete Partner. Commissions exists.", errorMessages);
+        }
+    }
+
+    /**
+     * This method triggers the commission process calculation.
+     * @param entityId
+     */
+    public void calculateCommissions(Integer entityId){
+        try {
+            PluggableTaskManager taskManager = new PluggableTaskManager(
+                    entityId,
+                    Constants.PLUGGABLE_TASK_PARTNER_COMMISSION);
+            IPartnerCommissionTask task = (IPartnerCommissionTask) taskManager.getNextClass();
+            if (task != null){
+                task.calculateCommissions(entityId);
+            }
+        }catch (PluggableTaskException e){
+            LOG.fatal("Problems handling partner commission task.", e);
+            throw new SessionInternalError("Problems handling partner commission task.");
         }
     }
 
@@ -661,8 +342,160 @@ public class PartnerBL extends ResultList implements PartnerSQL {
      * @param dto dto to convert
      * @return converted web-service object
      */
-    public static PartnerWS getWS(Partner dto) {
-        return dto != null ? new PartnerWS(dto) : null;
-    }
+	public static final PartnerWS getWS(PartnerDTO dto) {
+
+		if (null == dto)
+			return null;
+
+		PartnerWS ws = new PartnerWS();
+
+		ws.setId(dto.getId());
+		ws.setUserId(dto.getUser() != null ? dto.getUser().getId() : null);
+		ws.setTotalPayments(dto.getTotalPayments());
+		ws.setTotalRefunds(dto.getTotalRefunds());
+		ws.setTotalPayouts(dto.getTotalPayouts());
+		ws.setDuePayout(dto.getDuePayout());
+
+		// partner payouts
+		ws.setPartnerPayouts(new ArrayList<PartnerPayoutWS>(dto
+				.getPartnerPayouts().size()));
+		for (PartnerPayout payout : dto.getPartnerPayouts())
+			ws.getPartnerPayouts().add(PartnerBL.getPartnerPayoutWS(payout));
+
+		// partner customer ID's
+		ws.setCustomerIds(new ArrayList<Integer>(dto.getCustomers().size()));
+		for (CustomerDTO customer : dto.getCustomers())
+			ws.getCustomerIds().add(customer.getId());
+
+		if (dto.getType() != null) {
+			ws.setType(dto.getType().name());
+		}
+
+		ws.setParentId(dto.getParent() != null ? dto.getParent().getId() : null);
+
+		ws.setChildIds(new Integer[dto.getChildren().size()]);
+		int index = 0;
+		for (PartnerDTO partner : dto.getChildren()) {
+			ws.getChildIds()[index] = partner.getId();
+			index++;
+		}
+
+		ws.setCommissions(new CommissionWS[dto.getCommissions().size()]);
+		index = 0;
+		for (CommissionDTO commission : dto.getCommissions()) {
+			ws.getCommissions()[index] = CommissionProcessConfigurationBL
+					.getCommissionWS(commission);
+			index++;
+		}
+
+		ws.setCommissionExceptions(new PartnerCommissionExceptionWS[dto
+				.getCommissionExceptions().size()]);
+		index = 0;
+		for (PartnerCommissionExceptionDTO commissionException : dto
+				.getCommissionExceptions()) {
+			ws.getCommissionExceptions()[index] = CommissionProcessConfigurationBL
+					.getPartnerCommissionExceptionWS(commissionException);
+			index++;
+		}
+
+		ws.setReferralCommissions(new PartnerReferralCommissionWS[dto
+				.getReferralCommissions().size()]);
+		index = 0;
+		for (PartnerReferralCommissionDTO referralCommission : dto
+				.getReferralCommissions()) {
+			ws.getReferralCommissions()[index] = getPartnerReferralCommissionWS(referralCommission);
+			index++;
+		}
+
+		ws.setReferrerCommissions(new PartnerReferralCommissionWS[dto
+				.getReferrerCommissions().size()]);
+		index = 0;
+		for (PartnerReferralCommissionDTO referrerCommission : dto
+				.getReferrerCommissions()) {
+			ws.getReferrerCommissions()[index] = getPartnerReferralCommissionWS(referrerCommission);
+			index++;
+		}
+
+		if (dto.getCommissionType() != null) {
+			ws.setCommissionType(dto.getCommissionType().name());
+		}
+		return ws;
+	}
+	
+	
+	public static final PartnerDTO getPartnerDTO(PartnerWS ws) {
+
+		PartnerDTO partner = null;
+		if (ws.getId() != null) {
+			PartnerBL partnerBl = new PartnerBL(ws.getId());
+			partner = partnerBl.getEntity();
+		} else {
+			partner = new PartnerDTO();
+			partner.setId(0);
+		}
+
+		if (null != ws.getUserId() && ws.getUserId().intValue() > 0) {
+			partner.setBaseUser(new UserDAS().find(ws.getUserId()));
+		}
+
+		partner.setTotalPayments(ws.getTotalPaymentsAsBigDecimal());
+		partner.setTotalRefunds(ws.getTotalRefundsAsDecimal());
+		partner.setTotalPayouts(ws.getTotalPayoutsAsDecimal());
+		partner.setDuePayout(ws.getDuePayoutAsDecimal());
+		partner.setType(PartnerType.valueOf(ws.getType()));
+		partner.setParent(new PartnerDAS().find(ws.getParentId()));
+
+		if (ws.getCommissions() != null) {
+			partner.getCommissions().clear();
+			for (CommissionWS commissionWS : ws.getCommissions()) {
+				CommissionDTO cm = CommissionProcessConfigurationBL
+						.getDTO(commissionWS);
+				cm.setPartner(partner);
+				partner.getCommissions().add(cm);
+			}
+		}
+
+		if (ws.getCommissionExceptions() != null) {
+			partner.getCommissionExceptions().clear();
+			for (PartnerCommissionExceptionWS commissionExceptionWS : ws
+					.getCommissionExceptions()) {
+				PartnerCommissionExceptionDTO commissionException = CommissionProcessConfigurationBL
+						.getDTO(commissionExceptionWS);
+				commissionException.setPartner(partner);
+				partner.getCommissionExceptions().add(commissionException);
+			}
+		}
+
+		if (ws.getReferralCommissions() != null) {
+			partner.getReferralCommissions().clear();
+			for (PartnerReferralCommissionWS referralCommissionWS : ws
+					.getReferralCommissions()) {
+				PartnerReferralCommissionDTO referralCommission = PartnerBL
+						.getDTO(referralCommissionWS);
+				referralCommission.setReferral(partner);
+				partner.getReferralCommissions().add(referralCommission);
+			}
+		}
+
+		if (ws.getReferrerCommissions() != null) {
+			partner.getReferrerCommissions().clear();
+			for (PartnerReferralCommissionWS referrerCommissionWS : ws
+					.getReferrerCommissions()) {
+				PartnerReferralCommissionDTO referrerCommission = PartnerBL
+						.getDTO(referrerCommissionWS);
+				referrerCommission.setReferrer(partner);
+				partner.getReferrerCommissions().add(referrerCommission);
+			}
+		}
+
+		if (StringUtils.isBlank(ws.getCommissionType())) {
+			partner.setCommissionType(null);
+		} else {
+			partner.setCommissionType(PartnerCommissionType.valueOf(ws
+					.getCommissionType()));
+		}
+
+		return partner;
+	}
 
 }

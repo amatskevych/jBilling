@@ -33,8 +33,11 @@ import org.apache.xmlrpc.client.XmlRpcClient;
 import org.apache.xmlrpc.client.XmlRpcClientConfigImpl;
 import org.apache.xmlrpc.client.XmlRpcCommonsTransportFactory;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
 import com.sapienter.jbilling.server.payment.PaymentAuthorizationBL;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentResultDAS;
 import com.sapienter.jbilling.server.pluggableTask.PaymentTaskWithTimeout;
@@ -42,9 +45,10 @@ import com.sapienter.jbilling.server.pluggableTask.TaskException;
 import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.user.ContactBL;
-import com.sapienter.jbilling.server.user.CreditCardBL;
 import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
 import com.sapienter.jbilling.server.util.Constants;
+
+import javax.swing.text.MaskFormatter;
 
 public class PaymentAtlasTask extends PaymentTaskWithTimeout {
 
@@ -68,7 +72,7 @@ public class PaymentAtlasTask extends PaymentTaskWithTimeout {
 
     private static final int REPLY_TIME_OUT = 30000; // in millisec
 
-    private Logger log = Logger.getLogger(PaymentAtlasTask.class);
+    private FormatLogger log = new FormatLogger(Logger.getLogger(PaymentAtlasTask.class));
 
     //initializer for pluggable params
     { 
@@ -82,20 +86,16 @@ public class PaymentAtlasTask extends PaymentTaskWithTimeout {
     public boolean process(PaymentDTOEx paymentInfo)
             throws PluggableTaskException {
         boolean retValue = false;
-
+        
         if (paymentInfo.getPayoutId() != null) {
             return true;
         }
         try {
-            if (paymentInfo.getCreditCard() == null) {
+            if (!new PaymentInformationBL().isCreditCard(paymentInfo.getInstrument())) {
                 log.error("Can't process without a credit card");
                 throw new TaskException("Credit card not present in payment");
             }
-            if (paymentInfo.getAch() != null) {
-                log.error("Can't process with a cheque");
-                throw new TaskException("Can't process ACH charge");
-            }
-
+            
             if (paymentInfo.getIsRefund() == 1
                     && (paymentInfo.getPayment() == null || paymentInfo
                             .getPayment().getAuthorization() == null)) {
@@ -114,7 +114,13 @@ public class PaymentAtlasTask extends PaymentTaskWithTimeout {
 
             if ("true".equals(getOptionalParameter(PARAMETER_AVS.getName(), "false"))) {
                 addAVSFields(paymentInfo.getUserId(), data);
-                log.debug("returning after avs " + data);
+
+                /* #12686 - We do not want to log credit card numbers */
+                Map<String, Object> dataLog = (Map<String, Object>) ((HashMap<String, Object>) data).clone();
+                //dataLog.remove("accountNumber");
+                dataLog.put("accountNumber", "******");
+                //TODO: check this log
+                log.debug("returning after avs " + dataLog);
             }
 
             PaymentAuthorizationDTO response = makeCall(data, true);
@@ -160,21 +166,23 @@ public class PaymentAtlasTask extends PaymentTaskWithTimeout {
 
     private Map<String, Object> getData(PaymentDTOEx paymentInfo)
             throws PluggableTaskException {
+    	PaymentInformationBL piBl = new PaymentInformationBL();
         Map<String, Object> data = new HashMap<String, Object>();
         data.put("merchantAccountCode",
                 ensureGetParameter(PARAMETER_MERCHANT_ACCOUNT_CODE.getName()));
         if (paymentInfo.getUserId() != null)
             data.put("customerAccountCode", String.valueOf(paymentInfo
                     .getUserId()));
-        data.put("accountNumber", paymentInfo.getCreditCard().getNumber());
-        data.put("name", paymentInfo.getCreditCard().getName());
+        data.put("accountNumber", piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.PAYMENT_CARD_NUMBER));
+        data.put("name", piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.TITLE));
         data.put("amount", paymentInfo.getAmount().multiply(new BigDecimal("100")).intValue());
         data.put("taxAmount", 0);
-        String securityCode = paymentInfo.getCreditCard().getSecurityCode();
-        if (securityCode != null)
-            data.put("cvv2", securityCode);
-        data.put("expirationDate", CreditCardBL.get4digitExpiry(paymentInfo
-                .getCreditCard()));
+//		  This was not being set in previous code too
+//        String securityCode = paymentInfo.getCreditCard().getSecurityCode();
+//        if (securityCode != null)
+//            data.put("cvv2", securityCode);
+        data.put("expirationDate", piBl.get4digitExpiry(paymentInfo
+                .getInstrument()));
         data.put("transactionDate", paymentInfo.getPaymentDate());
         data.put("transactionCode", paymentInfo.getId() + "");
         return data;

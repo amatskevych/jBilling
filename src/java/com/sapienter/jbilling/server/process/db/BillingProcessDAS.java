@@ -22,11 +22,14 @@ package com.sapienter.jbilling.server.process.db;
 
 import java.util.Date;
 import java.util.Iterator;
+import java.util.List;
 
+import com.sapienter.jbilling.server.order.OrderStatusFlag;
 import com.sapienter.jbilling.server.util.Constants;
 import org.hibernate.Criteria;
 import org.hibernate.Query;
 import org.hibernate.ScrollableResults;
+import org.hibernate.criterion.CriteriaSpecification;
 import org.hibernate.criterion.Projections;
 import org.hibernate.criterion.Restrictions;
 
@@ -46,8 +49,7 @@ public class BillingProcessDAS extends AbstractDAS<BillingProcessDTO> {
         dto.setBillingDate(billingProcess);
         dto.setPeriodUnit(period);
         dto.setPeriodValue(periodValue);
-        dto.setIsReview(0);
-        dto.setRetriesToDo(retries);
+        dto.setIsReview(0);        
 
         return save(dto);
     }
@@ -73,9 +75,13 @@ public class BillingProcessDAS extends AbstractDAS<BillingProcessDTO> {
         Criteria criteria = getSession().createCriteria(UserDTO.class)
                 .add(Restrictions.eq("deleted", 0))
                 .createAlias("company", "c")
-                    .add(Restrictions.eq("c.id", entityId))
+                .add(Restrictions.eq("c.id", entityId))
                 .createAlias("userStatus", "us")
-                    .add(Restrictions.lt("us.id", UserDTOEx.STATUS_SUSPENDED))
+                .createAlias("us.ageingEntityStep", "agStep", CriteriaSpecification.LEFT_JOIN)
+                .add(Restrictions.or(
+                        Restrictions.eq("us.id", UserDTOEx.STATUS_ACTIVE),
+                        Restrictions.eq("agStep.suspend", 0)
+                ))
                 .setProjection(Projections.id())
                 .setComment("BillingProcessDAS.findUsersToProcess " + entityId);
         return criteria.scroll();
@@ -86,7 +92,7 @@ public class BillingProcessDAS extends AbstractDAS<BillingProcessDTO> {
         getSession().clear();
     }
     
-    public Iterator getCountAndSum(Integer processId) {
+    public List getCountAndSum(Integer processId) {
         final String hql =
                 "select count(id), sum(total), currency.id " +
                 "  from InvoiceDTO " +
@@ -95,9 +101,9 @@ public class BillingProcessDAS extends AbstractDAS<BillingProcessDTO> {
 
         Query query = getSession().createQuery(hql);
         query.setParameter("processId", processId);
-        return query.iterate();
+        return query.list();
     }
-
+    
     /**
      * Search succesfull payments in Payment_Invoice map (with quantity > 0)
      * and returns result, groupped by currency
@@ -105,7 +111,7 @@ public class BillingProcessDAS extends AbstractDAS<BillingProcessDTO> {
      * @param processId
      * @return Iterator with currency, method and sum of amount fields of query
      */
-    public Iterator getSuccessfulProcessCurrencyMethodAndSum(Integer processId) {
+    public List getSuccessfulProcessCurrencyMethodAndSum(Integer processId) {
         final String hql =
                 "select invoice.currency.id, method.id, sum(invoice.total) " +
                 "  from InvoiceDTO invoice inner join invoice.paymentMap paymentMap " +
@@ -116,7 +122,7 @@ public class BillingProcessDAS extends AbstractDAS<BillingProcessDTO> {
 
         Query query = getSession().createQuery(hql);
         query.setParameter("processId", processId);
-        return query.iterate();
+        return query.list();
     }
 
     /**
@@ -125,7 +131,7 @@ public class BillingProcessDAS extends AbstractDAS<BillingProcessDTO> {
      * @param processId
      * @return Iterator with currency and amount value
      */
-    public Iterator getFailedProcessCurrencyAndSum(Integer processId) {
+    public List getFailedProcessCurrencyAndSum(Integer processId) {
         final String hql =
                 "select invoice.currency.id, sum(invoice.total) " +
                 "  from InvoiceDTO invoice left join invoice.paymentMap paymentMap" +
@@ -135,7 +141,7 @@ public class BillingProcessDAS extends AbstractDAS<BillingProcessDTO> {
 
         Query query = getSession().createQuery(hql);
         query.setParameter("processId", processId);
-        return query.iterate();
+        return query.list();
     }
 
     private static final String BILLABLE_USERS_TO_PROCESS =
@@ -164,7 +170,7 @@ public class BillingProcessDAS extends AbstractDAS<BillingProcessDTO> {
             + " where "
             + "     user.deleted = 0 "
             + "     and user.company.id = :entity_id "
-            + "     and purchaseOrder.orderStatus.id = :active_status_id "
+            + "     and purchaseOrder.orderStatus.orderStatusFlag = :active_status_flag "
             + "     and ( "
             + "         purchaseOrder.nextBillableDay is null"
             + "         or cast(purchaseOrder.nextBillableDay as date) <= :process_date "
@@ -181,7 +187,7 @@ public class BillingProcessDAS extends AbstractDAS<BillingProcessDTO> {
     public ScrollableResults findBillableUsersWithOrdersToProcess(int entityId, Date processDate) {
         Query query = getSession().createQuery(BILLABLE_USERS_WITH_ORDER_HQL);
         query.setParameter("entity_id", entityId);
-        query.setParameter("active_status_id", Constants.ORDER_STATUS_ACTIVE);
+        query.setParameter("active_status_flag", OrderStatusFlag.INVOICE.ordinal());
         query.setParameter("process_date", processDate);
         
         return query.scroll();

@@ -20,31 +20,87 @@
 
 import org.codehaus.groovy.grails.orm.hibernate.cfg.GrailsAnnotationConfiguration
 
+def dbUser = System.getenv("JBILLING_DB_USER") ?: "jbilling"
+def dbName = System.getenv("JBILLING_DB_NAME") ?: "jbilling_test"
+def dbHost = System.getenv("JBILLING_DB_HOST") ?: "localhost"
+
 dataSource {
     /*
-      Database dialect:
-        org.hibernate.dialect.HSQLDialect
-        org.hibernate.dialect.MySQLDialect
-        org.hibernate.dialect.Oracle9Dialect
-    */
+        Database dialects
+
+            org.hibernate.dialect.HSQLDialect
+            org.hibernate.dialect.MySQLDialect
+            org.hibernate.dialect.Oracle9Dialect
+            org.hibernate.dialect.PostgreSQLDialect
+
+*/
     dialect = "org.hibernate.dialect.PostgreSQLDialect"
     driverClassName = "org.postgresql.Driver"
-    username = "jbilling"
+    username = dbUser
     password = ""
-    url = "jdbc:postgresql://localhost:5432/jbilling_test"
+    url = "jdbc:postgresql://${dbHost}:5432/${dbName}"
 
     /*
-     Other database configuration settings. Do not change unless you know what you are doing!
-     See resources.groovy for additional configuration options
+    dialect = "org.hibernate.dialect.MySQLDialect"
+    driverClassName = "com.mysql.jdbc.Driver"
+    username = "jbilling"
+    password = ""
+    url = "jdbc:mysql://localhost:3306/jbilling_test"
+    */
+
+    /*
+        Other database configuration settings. Do not change unless you know what you are doing!
+        See resources.groovy for additional configuration options
     */
     pooled = true
     configClass = GrailsAnnotationConfiguration.class
-    dbCreate = "none"
-
 }
 
 hibernate {
     cache.use_second_level_cache = true
     cache.use_query_cache = true
-    cache.provider_class = 'net.sf.ehcache.hibernate.EhCacheProvider'
+    cache.region.factory_class = 'net.sf.ehcache.hibernate.EhCacheRegionFactory'
 }
+
+environments {
+    development {
+        /*hibernate {
+            config.location = [
+                "file:grails-app/conf/hibernate/hibernate.cfg.xml",
+                "file:grails-app/conf/hibernate/hibernate-debug.cfg.xml"]
+            cache.use_query_cache = false
+        }*/
+    }
+}
+/*
+environments {
+    development {
+        dataSource {
+            url = "jdbc:postgresql://localhost:5432/jbilling_test"
+        }
+    }
+    test {
+        dataSource {
+            url = "jdbc:postgresql://localhost:5432/jbilling_test"
+        }
+    }
+    production {
+        dataSource {
+            url = "jdbc:postgresql://localhost:5432/jbilling_prod"
+            username = "jbilling"
+            password = "my-password"
+
+            properties {
+               maxActive = -1
+               minEvictableIdleTimeMillis=1800000
+               timeBetweenEvictionRunsMillis=1800000
+               numTestsPerEvictionRun=3
+               testOnBorrow=true
+               testWhileIdle=true
+               testOnReturn=true
+               validationQuery="SELECT 1"
+            }
+        }
+    }
+}
+*/

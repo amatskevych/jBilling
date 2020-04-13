@@ -59,7 +59,6 @@ public class WebServicesConstants {
     public final static String GET_USERS_IN_STATUS = "getUsersInStatus";
     public final static String GET_USERS_NOT_IN_STATUS = "getUsersNotInStatus";
     public final static String CREATE_ORDER_PREAUTH = "createOrderPreAuthorize";
-    public final static String UPDATE_CREDIT_CARD = "updateCreditCard";
     public final static String UPDATE_USER = "updateUser";
     public final static String UPDATE_ORDER = "updateOrder";
     public final static String UPDATE_ORDERLINE = "updateOrderLine";

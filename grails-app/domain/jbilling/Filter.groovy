@@ -54,6 +54,7 @@ class Filter implements Serializable {
         decimalHighValue(nullable:true)
         startDateValue(nullable:true)
         endDateValue(nullable:true)
+        fieldKeyData(nullable:true)
     }
 
     static belongsTo = [filterSet: FilterSet]
@@ -71,7 +72,7 @@ class Filter implements Serializable {
     BigDecimal decimalHighValue
     Date startDateValue
     Date endDateValue
-
+    String fieldKeyData
     def Filter() {
     }
 
@@ -86,6 +87,7 @@ class Filter implements Serializable {
         this.integerValue = filter.integerValue
         this.startDateValue = filter.startDateValue
         this.endDateValue = filter.endDateValue
+        this.fieldKeyData = filter.fieldKeyData
     }
 
     void setVisible(Boolean visible) {
@@ -133,6 +135,7 @@ class Filter implements Serializable {
         decimalHighValue = null
         startDateValue = null
         endDateValue = null
+        fieldKeyData = null
     }
 
     @Override
@@ -226,6 +229,22 @@ class Filter implements Serializable {
             case FilterConstraint.IS_NOT_EMPTY:
                 if (booleanValue) {
                     return Restrictions.isNotEmpty(field)
+                }
+                break
+                case FilterConstraint.IS_NULL:
+                if (booleanValue) {
+                    return Restrictions.isNull(field)
+                }
+                break
+
+            case FilterConstraint.IS_NOT_NULL:
+                if (booleanValue) {
+                    return Restrictions.isNotNull(field)
+                }
+                break
+            case FilterConstraint.IN:
+                if(stringValue){
+                    return Restrictions.in(field, stringValue.split(',').collect {Integer.parseInt(it)})
                 }
                 break
         }

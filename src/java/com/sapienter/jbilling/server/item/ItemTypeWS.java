@@ -19,12 +19,15 @@
  */
 package com.sapienter.jbilling.server.item;
 
-import com.sapienter.jbilling.server.item.db.ItemTypeDTO;
+import com.sapienter.jbilling.server.metafields.MetaFieldValueWS;
+import com.sapienter.jbilling.server.metafields.MetaFieldWS;
 
+import javax.validation.Valid;
 import javax.validation.constraints.Size;
 import javax.validation.constraints.Min;
 
 import java.io.Serializable;
+import java.util.*;
 
 /**
  * @author Brian Cowdery
@@ -40,22 +43,88 @@ public class ItemTypeWS implements Serializable {
     @Min(value = 1, message="validation.error.min,1")
     private Integer orderLineTypeId;
 
+    private Integer parentItemTypeId;
+    
+    private boolean global;
+    private boolean internal;
+
+    private Integer entityId;
+    private List<Integer> entities = new ArrayList<Integer>(0);
+
+    private Integer allowAssetManagement = new Integer(0);
+    private String assetIdentifierLabel;
+    @Valid
+    private Set<AssetStatusDTOEx> assetStatuses = new HashSet<AssetStatusDTOEx>(0);
+
+    @Valid
+    private Set<MetaFieldWS> assetMetaFields = new HashSet<MetaFieldWS>(0);
+
+    @Valid
+    private MetaFieldValueWS[] metaFields;
+    private SortedMap<Integer, MetaFieldValueWS[]> metaFieldsMap = new TreeMap<Integer, MetaFieldValueWS[]>();
+
+    private boolean onePerCustomer = false;
+    private boolean onePerOrder = false;
+    
     public ItemTypeWS() {
     }
 
-    public ItemTypeWS(Integer id, String description, Integer orderLineTypeId) {
+    public ItemTypeWS(Integer id, String description, Integer orderLineTypeId, Integer allowAssetManagement) {
         this.id = id;
         this.description = description;
         this.orderLineTypeId = orderLineTypeId;
+        this.allowAssetManagement = allowAssetManagement;
     }
 
-    public ItemTypeWS(ItemTypeDTO item) {
-        this.id = item.getId();
-        this.description = item.getDescription();
-        this.orderLineTypeId = item.getOrderLineTypeId();
+    public String getAssetIdentifierLabel() {
+        return assetIdentifierLabel;
     }
 
-    public Integer getId() {
+    public void setAssetIdentifierLabel(String assetIdentifierLabel) {
+        this.assetIdentifierLabel = assetIdentifierLabel;
+    }
+
+    public Integer getAllowAssetManagement() {
+        return allowAssetManagement;
+    }
+
+    public void setAllowAssetManagement(Integer allowAssetManagement) {
+        this.allowAssetManagement = allowAssetManagement;
+    }
+
+    public Set<AssetStatusDTOEx> getAssetStatuses() {
+        return assetStatuses;
+    }
+
+    public void setAssetStatuses(Set<AssetStatusDTOEx> assetStatuses) {
+        this.assetStatuses = assetStatuses;
+    }
+
+    public Set<MetaFieldWS> getAssetMetaFields() {
+        return assetMetaFields;
+    }
+
+    public void setAssetMetaFields(Set<MetaFieldWS> assetMetaFields) {
+        this.assetMetaFields = assetMetaFields;
+    }
+
+    public boolean isOnePerCustomer() {
+		return onePerCustomer;
+	}
+
+	public void setOnePerCustomer(boolean onePerCustomer) {
+		this.onePerCustomer = onePerCustomer;
+	}
+
+	public boolean isOnePerOrder() {
+		return onePerOrder;
+	}
+
+	public void setOnePerOrder(boolean onePerOrder) {
+		this.onePerOrder = onePerOrder;
+	}
+
+	public Integer getId() {
         return id;
     }
 
@@ -80,6 +149,62 @@ public class ItemTypeWS implements Serializable {
         this.orderLineTypeId = orderLineTypeId;
     }
 
+    public Integer getParentItemTypeId() {
+        return parentItemTypeId;
+    }
+
+    public void setParentItemTypeId(Integer parentItemTypeId) {
+        this.parentItemTypeId = parentItemTypeId;
+    }
+
+    public boolean isGlobal() {
+		return global;
+	}
+
+	public void setGlobal(boolean global) {
+		this.global = global;
+	}
+
+    public boolean isInternal() {
+        return internal;
+    }
+
+    public void setInternal(boolean internal) {
+        this.internal = internal;
+    }
+
+    public Integer getEntityId() {
+        return this.entityId;
+    }
+
+    public void setEntityId(Integer entityId) {
+        this.entityId = entityId;
+    }
+
+	public List<Integer> getEntities() {
+		return entities;
+	}
+
+	public void setEntities(List<Integer> entities) {
+		this.entities = entities;
+	}
+
+    public MetaFieldValueWS[] getMetaFields() {
+        return metaFields;
+    }
+
+    public void setMetaFields(MetaFieldValueWS[] metaFields) {
+        this.metaFields = metaFields;
+    }
+
+    public SortedMap<Integer, MetaFieldValueWS[]> getMetaFieldsMap() {
+        return metaFieldsMap;
+    }
+
+    public void setMetaFieldsMap(SortedMap<Integer, MetaFieldValueWS[]> metaFieldsMap) {
+        this.metaFieldsMap = metaFieldsMap;
+    }
+
     @Override
     @SuppressWarnings("RedundantIfStatement")
     public boolean equals(Object o) {
@@ -94,6 +219,7 @@ public class ItemTypeWS implements Serializable {
         if (description != null ? !description.equals(that.description) : that.description != null) return false;
         if (!id.equals(that.id)) return false;
         if (!orderLineTypeId.equals(that.orderLineTypeId)) return false;
+        if (parentItemTypeId != null ? !parentItemTypeId.equals(that.parentItemTypeId) : that.parentItemTypeId != null) return false;
 
         return true;
     }
@@ -103,6 +229,7 @@ public class ItemTypeWS implements Serializable {
         int result = id != null ? id.hashCode() : 0;
         result = 31 * result + (description != null ? description.hashCode() : 0);
         result = 31 * result + orderLineTypeId.hashCode();
+        result = 31 * result + (parentItemTypeId != null ? parentItemTypeId.hashCode() : 0);
         return result;
     }
 }

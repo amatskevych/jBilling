@@ -25,6 +25,7 @@ import java.util.ResourceBundle;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.item.ItemBL;
 import com.sapienter.jbilling.server.item.ItemDecimalsException;
@@ -46,9 +47,10 @@ import com.sapienter.jbilling.server.system.event.task.IInternalEventsTask;
 import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.util.Constants;
 
+@Deprecated
 public class CancellationFeeRulesTask extends RulesItemManager implements IInternalEventsTask {
 
-    private static final Logger LOG = Logger.getLogger(CancellationFeeRulesTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(CancellationFeeRulesTask.class));
 
     private enum EventType { NEW_ACTIVE_UNTIL_EVENT, NEW_QUANTITY_EVENT } 
 

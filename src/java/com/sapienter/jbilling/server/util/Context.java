@@ -32,19 +32,17 @@ public class Context {
     // defined bean names
     public enum Name {
         // jbilling session beans
-        ITEM_SESSION                    ("itemSession"),
-        NOTIFICATION_SESSION            ("notificationSession"),
-        CUSTOMER_SESSION                ("customerSession"),
-        LIST_SESSION                    ("listSession"),
-        USER_SESSION                    ("userSession"),
-        INVOICE_SESSION                 ("invoiceSession"),
-        ORDER_SESSION                   ("orderSession"),
-        PLUGGABLE_TASK_SESSION          ("pluggableTaskSession"),
-        PAYMENT_SESSION                 ("paymentSession"),
-        MEDIATION_SESSION               ("mediationSession"),
-        BILLING_PROCESS_SESSION         ("billingProcessSession"),
-        PROVISIONING_PROCESS_SESSION    ("provisioningProcessSession"),
-        WEB_SERVICES_SESSION            ("webServicesSession"),
+        ITEM_SESSION                    		("itemSession"),
+        NOTIFICATION_SESSION            		("notificationSession"),
+        CUSTOMER_SESSION                		("customerSession"),
+        LIST_SESSION                    		("listSession"),
+        USER_SESSION                    		("userSession"),
+        INVOICE_SESSION                 		("invoiceSession"),
+        ORDER_SESSION                   		("orderSession"),
+        PLUGGABLE_TASK_SESSION          		("pluggableTaskSession"),
+        PAYMENT_SESSION                 		("paymentSession"),
+        BILLING_PROCESS_SESSION         		("billingProcessSession"),
+        WEB_SERVICES_SESSION 					("webServicesSession"),
 
         // jbilling data access service beans
         DESCRIPTION_DAS     ("internationalDescriptionDAS"),
@@ -52,7 +50,6 @@ public class Context {
         PLUGGABLE_TASK_DAS  ("pluggableTaskDAS"),
 
         // jbilling beans
-        PROVISIONING                        ("provisioning"),
         INTERNAL_EVENTS_RULES_TASK_CONFIG   ("internalEventsRulesTaskConfig"),
 
         // persistence
@@ -61,30 +58,61 @@ public class Context {
         HIBERNATE_SESSION   ("sessionFactory"),
         JDBC_TEMPLATE       ("jdbcTemplate"),
 
+        //batch
+        BATCH_ASYNC_JOB_LAUNCHER    ("asyncJobLauncher"),
+        BATCH_SYNC_JOB_LAUNCHER     ("jobLauncher"),
+        BATCH_JOB_EXPLORER          ("jobExplorer"),
+        BATCH_ASSET_LOAD_JOB        ("assetLoadJob"),
+
+        BATCH_JOB_GENERATE_INVOICES         ("generateInvoicesJob"),
+        BATCH_JOB_AGEING_PROCESS         	("ageingProcessJob"),
+
+        HBASE_CONFIGURATION ("hbaseConfiguration"),
+        HBASE_TEMPLATE      ("hbaseTemplate"),
+
         // security
         SPRING_SECURITY_SERVICE ("springSecurityService"),
         AUTHENTICATION_MANAGER  ("authenticationManager"),
         PASSWORD_ENCODER        ("passwordEncoder"),
+        PASSWORD_SERVICE        ("passwordService"),
 
         // cache
         CACHE                           ("cacheProviderFacade"),
-        CACHE_MODEL_ITEM_PRICE          ("cacheModelItemPrice"),
-        CACHE_FLUSH_MODEL_ITEM_PRICE    ("flushModelItemPrice"),
         CACHE_MODEL_READONLY            ("cacheModelReadOnly"),
         CACHE_MODEL_RW                  ("cacheModelPTDTO"),
         CACHE_FLUSH_MODEL_RW            ("flushModelPTDTO"),
+        CACHE_MODEL_ITEM_PRICE     		("cacheModelItemPrice"),
+        CACHE_FLUSH_MODEL_ITEM_PRICE    ("flushModelItemPrice"),
+        CURRENCY_CACHE_MODEL            ("cacheModelCurrency"),
+        CURRENCY_FLUSH_MODEL            ("flushModelCurrency"),
+
+        PREFERENCE_CACHE_MODEL			("cacheModelPreference"),
+        PREFERENCE_FLUSH_MODEL			("flushModelPreference"),
+        
+        // HSQLDB data loader cache
+        MEMCACHE_DATASOURCE                 ("memcacheDataSource"),
+        MEMCACHE_JDBC_TEMPLATE              ("memcacheJdbcTemplate"),
+        MEMCACHE_TX_TEMPLATE                ("memcacheTransactionTemplate"),
+        PRICING_FINDER                      ("pricingFinder"),
+        NANPA_CALL_IDENTIFICATION_FINDER    ("callIdentificationFinder"),
 
         // jms
         JMS_TEMPLATE                            ("jmsTemplate"),
         PROCESSORS_DESTINATION                  ("processorsDestination"),
-        PROVISIONING_COMMANDS_DESTINATION       ("provisioningCommandsDestination"),
-        PROVISIONING_COMMANDS_REPLY_DESTINATION ("provisioningCommandsReplyDestination"),
+        NOTIFICATIONS_DESTINATION               ("notificationsDestination"),
+        
+        // Diameter RO support
+        DIAMETER_HELPER       ("diameterHelper"),
+        DIAMETER_USER_LOCATOR ("diameterUserLocator"),
+        DIAMETER_ITEM_LOCATOR ("diameterItemLocator"),
 
         // misc
         CAI                 ("cai"),
         MMSC                ("mmsc"),
-        VELOCITY            ("velocityEngine");
-       
+        VELOCITY            ("velocityEngine"),
+        DATA_ENCRYPTER      ("dataEncrypter"),
+        JMR_PROCESSOR       ("JMRProcessor");
+        
         private String name;
         Name(String name) { this.name = name; }
         public String getName() { return name; }

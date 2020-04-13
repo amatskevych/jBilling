@@ -39,13 +39,6 @@ public class BusinessDaysTest extends TestCase {
     // class under test
     BusinessDays businessDays = new BusinessDays();
 
-    public BusinessDaysTest() {
-    }
-
-    public BusinessDaysTest(String name) {
-        super(name);
-    }
-
     @Override
     protected void setUp() throws Exception {
         super.setUp();

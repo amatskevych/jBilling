@@ -116,4 +116,5 @@ public class ReportTypeDTO extends AbstractDescription implements Serializable {
                + ", name='" + name + '\''
                + '}';
     }
+
 }

@@ -126,4 +126,5 @@ public class ProcessRunTotalPmDTO implements Serializable {
         return " ProcessRunTotalPmDTO: id: " + id + " paymentMethod: " + paymentMethod +
                 " total: " + total;
     }
+
 }

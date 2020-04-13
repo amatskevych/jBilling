@@ -20,20 +20,23 @@
 package com.sapienter.jbilling.server.payment.tasks;
 
 import com.sapienter.jbilling.common.Constants;
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.Util;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
 import com.sapienter.jbilling.server.payment.IExternalCreditCardStorage;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentDAS;
 import com.sapienter.jbilling.server.payment.db.PaymentDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentMethodDAS;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.user.ContactBL;
 import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
-import com.sapienter.jbilling.server.user.db.AchDTO;
 import com.sapienter.jbilling.server.user.db.UserDTO;
+
 import org.apache.log4j.Logger;
 
 import java.math.BigDecimal;
@@ -44,7 +47,7 @@ import java.util.Date;
  * @since 20-10-2009
  */
 public class PaymentWorldPayExternalTask extends PaymentWorldPayBaseTask implements IExternalCreditCardStorage {
-    private static final Logger LOG = Logger.getLogger(PaymentWorldPayExternalTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaymentWorldPayExternalTask.class));
 
     @Override
     String getProcessorName() { return "WorldPay"; }    
@@ -59,10 +62,11 @@ public class PaymentWorldPayExternalTask extends PaymentWorldPayBaseTask impleme
 
             if the payment amount is negative or refund is set, do a Credit transaction.
          */
+        PaymentInformationBL piBl = new PaymentInformationBL();
         prepareExternalPayment(payment);
         SvcType transaction = (BigDecimal.ZERO.compareTo(payment.getAmount()) > 0 || payment.getIsRefund() != 0
                                ? SvcType.REFUND_CREDIT
-                               : (payment.getCreditCard().useGatewayKey()
+                               : (piBl.useGatewayKey(payment.getInstrument())
                                   ? SvcType.RE_AUTHORIZE
                                   : SvcType.SALE));
 
@@ -98,7 +102,7 @@ public class PaymentWorldPayExternalTask extends PaymentWorldPayBaseTask impleme
             LOG.warn("The processor of the pre-auth is not " + getProcessorName() + ", is " + auth.getProcessor());
         }
 
-        CreditCardDTO card = payment.getCreditCard();
+        PaymentInformationDTO card = payment.getInstrument();
         if (card == null) {
             throw new PluggableTaskException("Credit card is required, capturing payment: " + payment.getId());
         }
@@ -130,9 +134,10 @@ public class PaymentWorldPayExternalTask extends PaymentWorldPayBaseTask impleme
      * @param payment payment to prepare for processing from external storage
      */
     public void prepareExternalPayment(PaymentDTOEx payment) {
-        if (payment.getCreditCard().useGatewayKey()) {
+    	
+        if (new PaymentInformationBL().useGatewayKey(payment.getInstrument())) {
             LOG.debug("credit card is obscured, retrieving from database to use external store.");
-            payment.setCreditCard(new UserBL(payment.getUserId()).getCreditCard());
+            payment.setInstrument(payment.getInstrument());
         } else {
             LOG.debug("new credit card or previously un-obscured, using as is.");
         }
@@ -147,14 +152,14 @@ public class PaymentWorldPayExternalTask extends PaymentWorldPayBaseTask impleme
      *  */
     public void updateGatewayKey(PaymentDTOEx payment) {
         PaymentAuthorizationDTO auth = payment.getAuthorization();
-
+        PaymentInformationBL piBl = new PaymentInformationBL();
         // update the gateway key with the returned RBS WorldPay ORDER_ID
-        CreditCardDTO card = payment.getCreditCard();
-        card.setGatewayKey(auth.getTransactionId());
+        PaymentInformationDTO card = payment.getInstrument();
+        piBl.updateStringMetaField(card, auth.getTransactionId(), MetaFieldType.GATEWAY_KEY);
 
         // obscure new credit card numbers
-        if (!Constants.PAYMENT_METHOD_GATEWAY_KEY.equals(card.getCcType()))
-            card.obscureNumber();
+        if (!Constants.PAYMENT_METHOD_GATEWAY_KEY.equals(card.getPaymentMethod().getId()))
+            piBl.obscureCreditCardNumber(card);
     }    
 
     /**
@@ -163,21 +168,21 @@ public class PaymentWorldPayExternalTask extends PaymentWorldPayBaseTask impleme
      * Creates a payment of zero dollars and returns the RBC WorldPay ORDER_ID as the gateway
      * key to be stored for future transactions.
      */
-    public String storeCreditCard(ContactDTO contact, CreditCardDTO creditCard, AchDTO ach) {
+    public String storeCreditCard(ContactDTO contact, PaymentInformationDTO instrument) {
         UserDTO user;
         if (contact != null) {
             UserBL bl = new UserBL(contact.getUserId());
             user = bl.getEntity();
-            creditCard = bl.getCreditCard(); 
-        } else if (creditCard != null && !creditCard.getBaseUsers().isEmpty()) {
-            user = creditCard.getBaseUsers().iterator().next();
+            // do not load card from db, use the one that has been provided it should be a fresh fetch 
+        } else if (instrument != null && instrument.getUser() != null) {
+            user = instrument.getUser();
         } else {
             LOG.error("Could not determine user id for external credit card storage");
             return null;
         }
 
         // new contact that has not had a credit card created yet
-        if (creditCard == null) {
+        if (instrument == null) {
             LOG.warn("No credit card to store externally.");
             return null;
         }
@@ -192,8 +197,8 @@ public class PaymentWorldPayExternalTask extends PaymentWorldPayBaseTask impleme
         paymentInfo.setBaseUser(user);
         paymentInfo.setCurrency(user.getCurrency());
         paymentInfo.setAmount(BigDecimal.ZERO);
-        paymentInfo.setCreditCard(creditCard);
-        paymentInfo.setPaymentMethod(new PaymentMethodDAS().find(Util.getPaymentMethod(creditCard.getNumber())));
+        paymentInfo.setCreditCard(instrument);
+        paymentInfo.setPaymentMethod(new PaymentMethodDAS().find(Util.getPaymentMethod(new PaymentInformationBL().getStringMetaFieldByType(instrument, MetaFieldType.PAYMENT_CARD_NUMBER))));
         paymentInfo.setIsRefund(0);
         paymentInfo.setIsPreauth(0);
         paymentInfo.setDeleted(0);
@@ -220,7 +225,7 @@ public class PaymentWorldPayExternalTask extends PaymentWorldPayBaseTask impleme
     /**
      * 
      */
-    public String deleteCreditCard(ContactDTO contact, CreditCardDTO creditCard, AchDTO ach) {
+    public String deleteCreditCard(ContactDTO contact, PaymentInformationDTO instrument) {
         //noop
         return null;
     }
@@ -238,19 +243,20 @@ public class PaymentWorldPayExternalTask extends PaymentWorldPayBaseTask impleme
         request.add(WorldPayParams.General.AMOUNT, formatDollarAmount(payment.getAmount()));
         request.add(WorldPayParams.General.SVC_TYPE, transaction.getCode());
 
-        CreditCardDTO card = payment.getCreditCard();
+        PaymentInformationDTO card = payment.getInstrument();
 
         /*  Sale transactions do not support the use of the ORDER_ID gateway key. After an initial sale
             transaction RBS WorldPay will have a record of our transactions for reference - so all
             other transaction types are safe for use with the stored gateway key.
          */
+        PaymentInformationBL piBl = new PaymentInformationBL();
         if (SvcType.SALE.equals(transaction)
-                && Constants.PAYMENT_METHOD_GATEWAY_KEY.equals(Util.getPaymentMethod(card.getNumber()))) {
+                && Constants.PAYMENT_METHOD_GATEWAY_KEY.equals(Util.getPaymentMethod(piBl.getStringMetaFieldByType(card, MetaFieldType.PAYMENT_CARD_NUMBER)))) {
             throw new PluggableTaskException("Cannot process a SALE transaction with an obscured credit card!");
         }
-
-        if (card.useGatewayKey()) {
-            request.add(WorldPayParams.ReAuthorize.ORDER_ID, card.getGatewayKey());
+        
+        if (piBl.useGatewayKey(card)) {
+            request.add(WorldPayParams.ReAuthorize.ORDER_ID, piBl.getStringMetaFieldByType(card, MetaFieldType.GATEWAY_KEY));
 
         } else {
             ContactBL contact = new ContactBL();
@@ -266,12 +272,8 @@ public class PaymentWorldPayExternalTask extends PaymentWorldPayBaseTask impleme
             request.add(WorldPayParams.General.COUNTRY, contact.getEntity().getCountryCode());
 
 
-            request.add(WorldPayParams.CreditCard.CARD_NUMBER, card.getNumber());
-            request.add(WorldPayParams.CreditCard.EXPIRATION_DATE, EXPIRATION_DATE_FORMAT.format(card.getCcExpiry()));
-
-            if (card.getSecurityCode() != null) {
-                request.add(WorldPayParams.CreditCard.CVV2, String.valueOf(payment.getCreditCard().getSecurityCode()));
-            }
+            request.add(WorldPayParams.CreditCard.CARD_NUMBER, piBl.getStringMetaFieldByType(card, MetaFieldType.PAYMENT_CARD_NUMBER));
+            request.add(WorldPayParams.CreditCard.EXPIRATION_DATE, EXPIRATION_DATE_FORMAT.print(piBl.getDateMetaFieldByType(card, MetaFieldType.DATE).getTime()));
         }
 
         return request;

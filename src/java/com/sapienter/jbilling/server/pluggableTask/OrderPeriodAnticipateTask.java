@@ -29,7 +29,9 @@ import java.util.GregorianCalendar;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
+import com.sapienter.jbilling.server.util.Constants;
 
 /**
  * @author Emil
@@ -38,13 +40,17 @@ import com.sapienter.jbilling.server.order.db.OrderDTO;
 public class OrderPeriodAnticipateTask extends BasicOrderPeriodTask {
     
 
-    private static final Logger LOG = Logger.getLogger(OrderPeriodAnticipateTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(OrderPeriodAnticipateTask.class));
     
     public Date calculateEnd(OrderDTO order, Date processDate,
             int maxPeriods, Date periodStarts) 
             throws TaskException {
 
-        viewLimit = getViewLimit(order.getOrderPeriod(), processDate);
+        if (order.getOrderPeriod().getId() ==  Constants.ORDER_PERIOD_ONCE) {
+            return null;
+        }
+
+        viewLimit = getViewLimit(order.getUser().getId(), processDate);
 
         if (order.getAnticipatePeriods() != null &&
                 order.getAnticipatePeriods().intValue() > 0) {

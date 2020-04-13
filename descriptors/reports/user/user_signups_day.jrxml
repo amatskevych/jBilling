@@ -5,6 +5,7 @@
 	<property name="ireport.y" value="0"/>
 	<subDataset name="chart_dataset">
 		<parameter name="entityId" class="java.lang.Integer"/>
+		<parameter name="childEntities" class="java.util.List"/>
 		<parameter name="startDate" class="java.util.Date"/>
 		<parameter name="endDate" class="java.util.Date"/>
 		<queryString>
@@ -15,11 +16,11 @@
                 base_user u
                 inner join user_role_map r on r.user_id = u.id
             where
-                u.entity_id = $P{entityId}
+                (u.entity_id = $P{entityId} or $X{IN,u.entity_id,childEntities})
                 and u.deleted = 0
-                and r.role_id = 5 -- is a customer
+                and r.role_id in (select id from role where role_type_id = 5 ) -- is a customer
                 and u.create_datetime >= $P{startDate}
-                and u.create_datetime <= $P{endDate}
+                and u.create_datetime < $P{endDate}
             group by create_date
             order by create_date]]>
 		</queryString>
@@ -27,6 +28,7 @@
 		<field name="create_date" class="java.sql.Date"/>
 	</subDataset>
 	<parameter name="entityId" class="java.lang.Integer"/>
+	<parameter name="childEntities" class="java.util.List"/>
 	<parameter name="startDate" class="java.util.Date"/>
 	<parameter name="endDate" class="java.util.Date"/>
 	<queryString>
@@ -37,11 +39,11 @@
             base_user u
             inner join user_role_map r on r.user_id = u.id
         where
-            u.entity_id = $P{entityId}
+            (u.entity_id = $P{entityId} or $X{IN,u.entity_id,childEntities})
             and u.deleted = 0
-            and r.role_id = 5 -- is a customer
+            and r.role_id in (select id from role where role_type_id = 5 ) -- is a customer
             and u.create_datetime >= $P{startDate}
-            and u.create_datetime <= $P{endDate}
+            and u.create_datetime < $P{endDate}
         group by create_date
         order by create_date]]>
 	</queryString>
@@ -65,6 +67,9 @@
 						<datasetRun subDataset="chart_dataset">
 							<datasetParameter name="entityId">
 								<datasetParameterExpression><![CDATA[$P{entityId}]]></datasetParameterExpression>
+							</datasetParameter>
+							<datasetParameter name="childEntities">
+								<datasetParameterExpression><![CDATA[$P{childEntities}]]></datasetParameterExpression>
 							</datasetParameter>
 							<datasetParameter name="startDate">
 								<datasetParameterExpression><![CDATA[$P{startDate}]]></datasetParameterExpression>

@@ -18,15 +18,28 @@
  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import org.codehaus.groovy.grails.plugins.springsecurity.SpringSecurityUtils
+
+import com.sapienter.jbilling.server.user.IUserSessionBean
+import com.sapienter.jbilling.server.util.Context
+import grails.plugin.springsecurity.SpringSecurityUtils
 
 class LogoutController {
-
+	static scope = "singleton"
 	/**
 	 * Index action. Redirects to the Spring security logout uri.
 	 */
-	def index = {
-		// TODO  put any pre-logout code here
+	def filterService
+	def index () {
+        //get bean to update event audit log during log out
+        IUserSessionBean iUserSessionBean = (IUserSessionBean) Context.getBean(Context.Name.USER_SESSION)
+        iUserSessionBean.logout(session['user_id'])
+
+		def filters = filterService.getCurrentFilters();
+        filters?.each{
+            if (!it.name.isEmpty())
+                it.visible = false
+				it.clear()
+        }
 		redirect uri: SpringSecurityUtils.securityConfig.logout.filterProcessesUrl // '/j_spring_security_logout'
 	}
 }

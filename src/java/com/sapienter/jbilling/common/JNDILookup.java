@@ -43,7 +43,7 @@ public class JNDILookup {
 
     private static final String DATABASE_JNDI = "java:/ApplicationDS";
     // this is then custom treated for serialization
-    private static Logger log = null;
+    private static FormatLogger log = null;
     // this one is always checked for null
     private transient static JNDILookup aFactorySingleton = null;
     private transient Context ctx = null;
@@ -52,7 +52,7 @@ public class JNDILookup {
      * EJBHomeFactory private constructor.
      */
     private JNDILookup(boolean test) throws NamingException {
-        log = Logger.getLogger(JNDILookup.class);
+        log = new FormatLogger(Logger.getLogger(JNDILookup.class));
         if (test) {
             Hashtable env = new Hashtable();
             env.put(

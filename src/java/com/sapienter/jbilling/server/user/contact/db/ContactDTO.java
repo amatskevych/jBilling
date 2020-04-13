@@ -19,9 +19,8 @@
  */
 package com.sapienter.jbilling.server.user.contact.db;
 
+import java.io.Serializable;
 import java.util.Date;
-import java.util.HashSet;
-import java.util.Set;
 
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
@@ -31,7 +30,6 @@ import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
-import javax.persistence.OneToMany;
 import javax.persistence.OneToOne;
 import javax.persistence.Table;
 import javax.persistence.TableGenerator;
@@ -82,8 +80,7 @@ public class ContactDTO  implements java.io.Serializable {
      private Integer userId;
      private UserDTO baseUser;
      private ContactMapDTO contactMap = null;
-     private Set<ContactFieldDTO> fields = new HashSet<ContactFieldDTO>(0);
-     private int versionNum;
+    private int versionNum;
 
     public ContactDTO() {
     }
@@ -94,7 +91,7 @@ public class ContactDTO  implements java.io.Serializable {
         this.createDate = createDatetime;
         this.deleted = deleted;
     }
-    public ContactDTO(Integer id, String organizationName, String streetAddres1, String streetAddres2, String city, String stateProvince, String postalCode, String countryCode, String lastName, String firstName, String personInitial, String personTitle, Integer phoneCountryCode, Integer phoneAreaCode, String phonePhoneNumber, Integer faxCountryCode, Integer faxAreaCode, String faxPhoneNumber, String email, Date createDatetime, int deleted, Integer notificationInclude, Integer userId, ContactMapDTO contactMap, Set<ContactFieldDTO> contactFields) {
+    public ContactDTO(Integer id, String organizationName, String streetAddres1, String streetAddres2, String city, String stateProvince, String postalCode, String countryCode, String lastName, String firstName, String personInitial, String personTitle, Integer phoneCountryCode, Integer phoneAreaCode, String phonePhoneNumber, Integer faxCountryCode, Integer faxAreaCode, String faxPhoneNumber, String email, Date createDatetime, int deleted, Integer notificationInclude, Integer userId, ContactMapDTO contactMap) {
        this.id = id;
        this.organizationName = organizationName;
        this.address1 = streetAddres1;
@@ -119,7 +116,6 @@ public class ContactDTO  implements java.io.Serializable {
        this.include = notificationInclude;
        this.userId = userId;
        this.contactMap = contactMap;
-       this.fields = contactFields;
     }
     
     public ContactDTO(ContactDTO other) {
@@ -147,7 +143,6 @@ public class ContactDTO  implements java.io.Serializable {
         setInclude(other.getInclude());
         setUserId(other.getUserId());
         setContactMap(other.getContactMap());
-        setFields(other.getFields());
         setVersionNum(other.getVersionNum());
     }
    
@@ -292,10 +287,10 @@ public class ContactDTO  implements java.io.Serializable {
         StringBuilder phone = new StringBuilder();
 
         if (phoneCountryCode != null)
-            phone.append(phoneCountryCode).append(" ");
+            phone.append(phoneCountryCode).append(' ');
 
         if (phoneAreaCode != null)
-            phone.append(phoneAreaCode).append(" ");
+            phone.append(phoneAreaCode).append(' ');
 
         if (phoneNumber != null)
             phone.append(phoneNumber);
@@ -335,10 +330,10 @@ public class ContactDTO  implements java.io.Serializable {
         StringBuilder phone = new StringBuilder();
 
         if (faxCountryCode != null)
-            phone.append(faxCountryCode).append(" ");
+            phone.append(faxCountryCode).append(' ');
 
         if (faxAreaCode != null)
-            phone.append(faxAreaCode).append(" ");
+            phone.append(faxAreaCode).append(' ');
 
         if (faxNumber != null)
             phone.append(faxNumber);
@@ -414,18 +409,6 @@ public class ContactDTO  implements java.io.Serializable {
     public void setContactMap(ContactMapDTO contactMap) {
         this.contactMap = contactMap;
     }
-    
-    @OneToMany(cascade=CascadeType.ALL, fetch=FetchType.LAZY, mappedBy="contact")
-    public Set<ContactFieldDTO> getFields() {
-        if (fields == null) {
-            fields = new HashSet<ContactFieldDTO>(0);
-        }
-        return this.fields;
-    }
-    
-    public void setFields(Set<ContactFieldDTO> contactFields) {
-        this.fields = contactFields;
-    }
 
     @Version
     @Column(name="OPTLOCK")
@@ -462,8 +445,6 @@ public class ContactDTO  implements java.io.Serializable {
         " userId " + getUserId() +
         " contactMap = null " + getContactMap() +
         " versionNum " + getVersionNum();
-
-
     }
 }
 

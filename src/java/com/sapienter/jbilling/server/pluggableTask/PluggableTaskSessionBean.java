@@ -45,7 +45,19 @@ import com.sapienter.jbilling.server.util.Context;
 @Transactional( propagation = Propagation.REQUIRED )
 public class PluggableTaskSessionBean implements IPluggableTaskSessionBean {
 
-    //private static final Logger LOG = Logger.getLogger(PluggableTaskSessionBean.class);
+    //private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PluggableTaskSessionBean.class));
+
+    public PluggableTaskDTO getDTO(Integer id){
+        try {
+            PluggableTaskBL bl = new PluggableTaskBL();
+            bl.set(id);
+            PluggableTaskDTO dto = bl.getDTO();
+            dto.touch();//so that we don't need the session after this call
+            return dto;
+        } catch (Exception e) {
+            throw new SessionInternalError(e);
+        }
+    }
 
     public PluggableTaskDTO getDTO(Integer typeId, 
             Integer entityId) throws SessionInternalError {

@@ -19,6 +19,7 @@
  */
 package com.sapienter.jbilling.server.process.db;
 
+import java.io.Serializable;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
@@ -36,6 +37,7 @@ import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.TableGenerator;
 import javax.persistence.Version;
+
 import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
 
@@ -192,4 +194,5 @@ public class ProcessRunDTO implements java.io.Serializable {
 
         return ret.toString();
     }
+
 }

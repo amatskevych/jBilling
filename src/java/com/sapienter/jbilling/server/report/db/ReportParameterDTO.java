@@ -110,4 +110,5 @@ public abstract class ReportParameterDTO<T> implements Serializable {
                + ", name='" + name + '\''
                + '}';
     }
+
 }

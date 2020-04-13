@@ -25,7 +25,6 @@ import java.util.Locale;
 import java.util.List;
 
 import javax.naming.NamingException;
-
 import javax.sql.rowset.CachedRowSet;
 
 import com.sapienter.jbilling.common.SessionInternalError;
@@ -34,10 +33,14 @@ import com.sapienter.jbilling.server.user.contact.db.ContactDAS;
 import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
 import com.sapienter.jbilling.server.user.db.CompanyDAS;
 import com.sapienter.jbilling.server.user.db.CompanyDTO;
+import com.sapienter.jbilling.server.user.permisson.db.RoleDAS;
+import com.sapienter.jbilling.server.user.permisson.db.RoleDTO;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.audit.EventLogger;
+import com.sapienter.jbilling.server.util.db.CurrencyDAS;
 import com.sapienter.jbilling.server.util.db.LanguageDAS;
 import com.sapienter.jbilling.server.util.db.LanguageDTO;
+
 import java.util.ArrayList;
 
 /**
@@ -65,6 +68,38 @@ public class EntityBL extends ResultList
         entity = entityHome.findByExternalId(externalId);
     }
     */
+    
+    public static final CompanyWS getCompanyWS(CompanyDTO companyDto) {
+    	
+    	CompanyWS ws = new CompanyWS();
+        ws.setId(companyDto.getId());
+        ws.setCurrencyId(companyDto.getCurrencyId());
+        ws.setLanguageId(companyDto.getLanguageId());
+        ws.setDescription(companyDto.getDescription());
+
+        ContactDTO contact = new EntityBL(new Integer(ws.getId())).getContact();
+
+        if (contact != null) {
+            ws.setContact(new ContactWS(contact.getId(),
+                                         contact.getAddress1(),
+                                         contact.getAddress2(),
+                                         contact.getCity(),
+                                         contact.getStateProvince(),
+                                         contact.getPostalCode(),
+                                         contact.getCountryCode(),
+                                         contact.getDeleted()));
+        }
+        return ws;
+    }
+    
+    public static final  CompanyDTO getDTO(CompanyWS ws){
+        CompanyDTO dto = new CompanyDAS().find(new Integer(ws.getId()));
+        dto.setCurrency(new CurrencyDAS().find(ws.getCurrencyId()));
+        dto.setLanguage(new LanguageDAS().find(ws.getLanguageId()));
+        dto.setDescription(ws.getDescription());
+        return dto;
+    }
+    
     
     private void init() {
         das = new CompanyDAS();
@@ -131,8 +166,10 @@ public class EntityBL extends ResultList
     
     public Integer getRootUser(Integer entityId) {
         try {
+        	RoleDTO rootRole = new RoleDAS().findByRoleTypeIdAndCompanyId(Constants.TYPE_ROOT, entityId);
             prepareStatement(EntitySQL.findRoot);
             cachedResults.setInt(1, entityId);
+            cachedResults.setInt(2, rootRole.getId());
 
             execute();
             conn.close();
@@ -146,7 +183,7 @@ public class EntityBL extends ResultList
     }
     
     public void updateEntityAndContact(CompanyWS companyWS, Integer entityId, Integer userId) {
-        CompanyDTO dto= companyWS.getDTO();
+        CompanyDTO dto= EntityBL.getDTO(companyWS);
             ContactWS contactWs= companyWS.getContact();
             ContactBL contactBl= new ContactBL();
             contactBl.setEntity(entityId);

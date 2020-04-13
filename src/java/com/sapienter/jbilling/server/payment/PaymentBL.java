@@ -20,11 +20,34 @@
 
 package com.sapienter.jbilling.server.payment;
 
+import java.math.BigDecimal;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.GregorianCalendar;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+
+import javax.persistence.EntityNotFoundException;
+import javax.sql.rowset.CachedRowSet;
+
+import org.apache.log4j.Logger;
+import org.springframework.dao.EmptyResultDataAccessException;
+
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
+import com.sapienter.jbilling.server.invoice.InvoiceBL;
 import com.sapienter.jbilling.server.invoice.InvoiceIdComparator;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDAS;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
 import com.sapienter.jbilling.server.list.ResultList;
+import com.sapienter.jbilling.server.metafields.MetaFieldBL;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue;
 import com.sapienter.jbilling.server.notification.INotificationSessionBean;
 import com.sapienter.jbilling.server.notification.MessageDTO;
 import com.sapienter.jbilling.server.notification.NotificationBL;
@@ -32,61 +55,81 @@ import com.sapienter.jbilling.server.notification.NotificationNotFoundException;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentDAS;
 import com.sapienter.jbilling.server.payment.db.PaymentDTO;
-import com.sapienter.jbilling.server.payment.db.PaymentInfoChequeDAS;
-import com.sapienter.jbilling.server.payment.db.PaymentInfoChequeDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDAS;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentInstrumentInfoDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentInvoiceMapDAS;
 import com.sapienter.jbilling.server.payment.db.PaymentInvoiceMapDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentMethodDAS;
 import com.sapienter.jbilling.server.payment.db.PaymentMethodDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentMethodTypeDAS;
 import com.sapienter.jbilling.server.payment.db.PaymentResultDAS;
 import com.sapienter.jbilling.server.payment.db.PaymentResultDTO;
 import com.sapienter.jbilling.server.payment.event.AbstractPaymentEvent;
 import com.sapienter.jbilling.server.payment.event.PaymentDeletedEvent;
+import com.sapienter.jbilling.server.payment.event.PaymentUnlinkedFromInvoiceEvent;
+import com.sapienter.jbilling.server.payment.tasks.PaymentFilterTask;
 import com.sapienter.jbilling.server.pluggableTask.PaymentInfoTask;
 import com.sapienter.jbilling.server.pluggableTask.PaymentTask;
 import com.sapienter.jbilling.server.pluggableTask.TaskException;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskManager;
 import com.sapienter.jbilling.server.system.event.EventManager;
-import com.sapienter.jbilling.server.user.AchBL;
-import com.sapienter.jbilling.server.user.CreditCardBL;
+import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.user.db.CompanyDTO;
-import com.sapienter.jbilling.server.user.db.CreditCardDAS;
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
 import com.sapienter.jbilling.server.user.db.UserDAS;
 import com.sapienter.jbilling.server.user.partner.db.PartnerPayout;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.Context;
 import com.sapienter.jbilling.server.util.audit.EventLogger;
-import org.apache.log4j.Logger;
-import org.springframework.dao.EmptyResultDataAccessException;
-import javax.sql.rowset.CachedRowSet;
-
-import javax.persistence.EntityNotFoundException;
-import java.math.BigDecimal;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
 
 public class PaymentBL extends ResultList implements PaymentSQL {
 
-    private static final Logger LOG = Logger.getLogger(PaymentBL.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaymentBL.class));
 
     private PaymentDAS paymentDas = null;
-    private PaymentInfoChequeDAS chequeDas = null;
-    private CreditCardDAS ccDas = null;
     private PaymentMethodDAS methodDas = null;
     private PaymentInvoiceMapDAS mapDas = null;
     private PaymentDTO payment = null;
     private EventLogger eLogger = null;
-
+    
+    private PaymentInformationDAS piDas = null;
     public PaymentBL(Integer paymentId) {
         init();
         set(paymentId);
+    }
+
+    /**
+     * Validates that a refund payment must be linked to a payment and the amount of the refund payment should
+     * be equal to the linked payment. Return true if valid.
+     * @param refundPayment
+     * @return boolean
+     */
+    public static synchronized Boolean validateRefund(PaymentWS refundPayment) {
+        if(refundPayment.getPaymentId() == null) {
+            LOG.debug("There is no linked payment with this refund");
+            return false;
+        }
+        // fetch the linked payment from database
+        PaymentDTO linkedPayment =  new PaymentBL(refundPayment.getPaymentId()).getEntity();
+        /*if(linkedPayment.getAmount().compareTo(refundPayment.getAmountAsDecimal()) !=0 ) {
+            LOG.debug("The linked payment amount is different than the refund value amount");
+            return false;
+        }*/
+        
+        BigDecimal refundableBalance= linkedPayment.getBalance(); 
+        LOG.debug("The payment %d selected can been refunded for %s", linkedPayment.getId(), refundableBalance);
+		if (refundPayment.getAmountAsDecimal().compareTo(refundableBalance) > 0) {
+			LOG.debug("Cannot refund more than the refundableBalance");
+			return false;
+		} else if (BigDecimal.ZERO.compareTo(refundableBalance) >= 0) {
+            LOG.debug("Cannot refund a zero or negative refundable balance");
+            return false;
+        } else if (BigDecimal.ZERO.compareTo(refundPayment.getAmountAsDecimal()) >= 0) {
+            LOG.debug("Cannot refund a zero or negative refund amount");
+            return false;
+		}
+        return true;
     }
 
     public PaymentBL() {
@@ -105,15 +148,14 @@ public class PaymentBL extends ResultList implements PaymentSQL {
     private void init() {
         try {
             eLogger = EventLogger.getInstance();
+            
             paymentDas = new PaymentDAS();
-
-            chequeDas = new PaymentInfoChequeDAS();
-
-            ccDas = new CreditCardDAS();
 
             methodDas = new PaymentMethodDAS();
 
             mapDas = new PaymentInvoiceMapDAS();
+            
+            piDas = new PaymentInformationDAS();
         } catch (Exception e) {
             throw new SessionInternalError(e);
         }
@@ -129,6 +171,7 @@ public class PaymentBL extends ResultList implements PaymentSQL {
 
     public String getMethodDescription(PaymentMethodDTO method, Integer languageId) {
         // load directly from the DB, otherwise proxies get in the way
+    	LOG.debug("Loading description for method: " + method);
         return new PaymentMethodDAS().find(method.getId()).getDescription(languageId);
     }
 
@@ -136,46 +179,37 @@ public class PaymentBL extends ResultList implements PaymentSQL {
         payment = paymentDas.find(id);
     }
 
-    public void create(PaymentDTOEx dto) {
+    public void create(PaymentDTOEx dto, Integer executorUserId) {
         // create the record
-        payment = paymentDas.create(dto.getAmount(), dto.getPaymentMethod(),
+    	// The method column here is null now because method of payment will be decided after the payment processing
+        payment = paymentDas.create(dto.getAmount(), null,
                 dto.getUserId(), dto.getAttempt(), dto.getPaymentResult(), dto.getCurrency());
+        // if the payment result is set and its Constants.RESULT_ENTERED then payment method should be set 
+        // and may bepayment instrument info record should be created
+        if(dto.getPaymentResult() != null && dto.getPaymentResult().getId() == Constants.RESULT_ENTERED) {
+        	if(dto.getInstrument() != null && dto.getPaymentInstruments().size() > 0) {
+        		payment.setPaymentMethod(dto.getInstrument().getPaymentMethod());
+        		payment.getPaymentInstrumentsInfo().add(new PaymentInstrumentInfoDTO(payment, 
+        				dto.getPaymentResult(),dto.getInstrument().getPaymentMethod(), dto.getInstrument().getSaveableDTO()));
+        	}
 
+        	if(dto.getPaymentMethod() != null) {
+        		payment.setPaymentMethod(dto.getPaymentMethod());
+        	}
+        }
+        
         payment.setPaymentDate(dto.getPaymentDate());
         payment.setBalance(dto.getBalance());
-        // now verify if an info record should be created as well
-        if (dto.getCheque() != null) {
-            // create the db record
-            PaymentInfoChequeDTO cheque = chequeDas.create();
-            cheque.setBank(dto.getCheque().getBank());
-            cheque.setNumber(dto.getCheque().getNumber());
-            cheque.setDate(dto.getCheque().getDate());
-
-            // update the relationship dto-info
-            payment.setPaymentInfoCheque(cheque);
-        }
-
-        if (dto.getCreditCard() != null) {
-            dto.getCreditCard().getPayments().add(payment); // back reference to payment
-            CreditCardBL cc = new CreditCardBL();
-            cc.create(dto.getCreditCard());
-
-            payment.setCreditCard(cc.getEntity());
-        }
-
-        if (dto.getAch() != null) {
-            dto.getAch().getPayments().add(payment); // back reference to payment
-            AchBL achBl = new AchBL();
-            achBl.create(dto.getAch());
-            payment.setAch(achBl.getEntity());
-        }
-
+               
         // may be this is a refund
         if (dto.getIsRefund() == 1) {
             payment.setIsRefund(new Integer(1));
-            // now all refunds have balance = 0
+            
+            // refund balance is always set to ZERO
             payment.setBalance(BigDecimal.ZERO);
+            LOG.debug("dto of paymentDTOEX contains %s", dto);
             if (dto.getPayment() != null) {
+                LOG.debug("Refund is linked to some payment %s", dto.getPayment());
                 // this refund is link to a payment
                 PaymentBL linkedPayment = new PaymentBL(dto.getPayment().getId());
                 payment.setPayment(linkedPayment.getEntity());
@@ -187,7 +221,7 @@ public class PaymentBL extends ResultList implements PaymentSQL {
             payment.setIsPreauth(1);
         }
 
-// the payment period length this payment was expected to last
+        // the payment period length this payment was expected to last
         if (dto.getPaymentPeriod() != null){
             payment.setPaymentPeriod(dto.getPaymentPeriod());
 
@@ -197,16 +231,33 @@ public class PaymentBL extends ResultList implements PaymentSQL {
             payment.setPaymentNotes(dto.getPaymentNotes());
         }
 
+        // meta fields
+        payment.updateMetaFieldsWithValidation(
+        		new UserBL().getEntityId(dto.getUserId()), null, dto);
+
         dto.setId(payment.getId());
         dto.setCurrency(payment.getCurrency());
+
+        //Update real amount from PaymentDTO into PaymentDTOEx
+        dto.setAmount(payment.getAmount());
+        dto.setBalance(payment.getAmount());
+//        dto.setPublicNumber(payment.getPublicNumber());
+
+        dto.setPayment(payment.getPayment());
         paymentDas.save(payment);
         // add a log row for convenience
         UserDAS user = new UserDAS();
-        eLogger.auditBySystem(user.find(dto.getUserId()).getCompany().getId(),
-                dto.getUserId(), Constants.TABLE_PAYMENT, dto.getId(),
-                EventLogger.MODULE_PAYMENT_MAINTENANCE,
-                EventLogger.ROW_CREATED, null, null, null);
-
+        
+        if ( null != executorUserId ) {
+            eLogger.audit(executorUserId, dto.getUserId(), Constants.TABLE_PAYMENT, dto.getId(),
+                    EventLogger.MODULE_PAYMENT_MAINTENANCE,
+                    EventLogger.ROW_CREATED, null, null, null);
+        } else {
+            eLogger.auditBySystem(user.find(dto.getUserId()).getCompany().getId(),
+                    dto.getUserId(), Constants.TABLE_PAYMENT, dto.getId(),
+                    EventLogger.MODULE_PAYMENT_MAINTENANCE,
+                    EventLogger.ROW_CREATED, null, null, null);
+        }
 
     }
 
@@ -250,20 +301,6 @@ public class PaymentBL extends ResultList implements PaymentSQL {
         payment.setBalance(dto.getAmount());
         payment.setPaymentDate(dto.getPaymentDate());
 
-        // now the records related to the method
-        if (dto.getCheque() != null) {
-            PaymentInfoChequeDTO cheque = payment.getPaymentInfoCheque();
-            cheque.setBank(dto.getCheque().getBank());
-            cheque.setNumber(dto.getCheque().getNumber());
-            cheque.setDate(dto.getCheque().getDate());
-        } else if (dto.getCreditCard() != null) {
-            CreditCardBL cc = new CreditCardBL(payment.getCreditCard());
-            cc.update(executorId, dto.getCreditCard(), null);
-        } else if (dto.getAch() != null) {
-            AchBL achBl = new AchBL(payment.getAch());
-            achBl.update(executorId, dto.getAch());
-        }
-
         // the payment period length this payment was expected to last
         if (dto.getPaymentPeriod() != null){
             payment.setPaymentPeriod(dto.getPaymentPeriod());
@@ -273,6 +310,9 @@ public class PaymentBL extends ResultList implements PaymentSQL {
         if (dto.getPaymentNotes() != null){
             payment.setPaymentNotes(dto.getPaymentNotes());
         }
+
+        payment.updateMetaFieldsWithValidation(
+        		new UserBL().getEntityId(dto.getUserId()), null, dto);
     }
 
     /**
@@ -284,92 +324,161 @@ public class PaymentBL extends ResultList implements PaymentSQL {
      * @return the constant of the result allowing for the caller to attempt it
      *         again with different payment information (like another cc number)
      */
-    public Integer processPayment(Integer entityId, PaymentDTOEx info)
+    public Integer processPayment(Integer entityId, PaymentDTOEx info, Integer executorUserId)
             throws SessionInternalError {
         Integer retValue = null;
         try {
-            PluggableTaskManager taskManager = new PluggableTaskManager(
-                    entityId, Constants.PLUGGABLE_TASK_PAYMENT);
+            PluggableTaskManager taskManager = new PluggableTaskManager(entityId, Constants.PLUGGABLE_TASK_PAYMENT);
             PaymentTask task = (PaymentTask) taskManager.getNextClass();
 
             if (task == null) {
-                // at least there has to be one task configurated !
-                LOG.warn("No payment pluggable" + "tasks configurated for entity " + entityId);
+                LOG.warn("No payment pluggable tasks configured for entity %s", entityId);
                 return null;
             }
 
-            create(info);
+            create(info, executorUserId);
             boolean processorUnavailable = true;
             while (task != null && processorUnavailable) {
                 // see if this user has pre-auths
+            	PaymentInformationBL piBl = new PaymentInformationBL();
                 PaymentAuthorizationBL authBL = new PaymentAuthorizationBL();
-                PaymentAuthorizationDTO auth = authBL.getPreAuthorization(info.getUserId());
-                if (auth != null) {
-                    processorUnavailable = task.confirmPreAuth(auth, info);
-                    if (!processorUnavailable) {
-                        if (new Integer(info.getPaymentResult().getId()).equals(Constants.RESULT_FAIL)) {
-                            processorUnavailable = task.process(info);
-                        }
-                        // in any case, don't use this preAuth again
-                        authBL.markAsUsed(info);
-                    }
-                } else {
-                    // get this payment processed
-                    processorUnavailable = task.process(info);
-                }
-
-                // allow the pluggable task to do something if the payment
-                // failed (like notification, suspension, etc ... )
-                if (!processorUnavailable && new Integer(info.getPaymentResult().getId()).equals(Constants.RESULT_FAIL)) {
-                    task.failure(info.getUserId(), info.getAttempt());
-                }
-                // trigger an event
-                AbstractPaymentEvent event = AbstractPaymentEvent.forPaymentResult(entityId, info);
-
-                if (event != null) {
-                    EventManager.process(event);
+                PaymentAuthorizationDTO auth = null;
+                LOG.debug("Total instruments for processing are : " + info.getPaymentInstruments().size());
+                Iterator<PaymentInformationDTO> iterator = info.getPaymentInstruments().iterator();
+                while(iterator.hasNext()) {
+                	PaymentInformationDTO instrument = iterator.next();
+                	// check if the instrument was blacklisted by filter if yes, then get the next ones
+                	while(instrument.isBlacklisted() && iterator.hasNext()) {
+                		instrument = iterator.next();
+                	}
+                	// if all the list is exhausted but we are still on black listed then move on to next processor
+                	if(instrument.isBlacklisted())
+                		break;
+                	
+                	auth = authBL.getPreAuthorization(info.getUserId());
+                	
+                	PaymentInformationDTO newInstrument;
+                	// load fresh instrument if its a saved one or refresh its relations if its a new one
+                	if(instrument.getId() != null) {
+                		newInstrument = piDas.find(instrument.getId());
+                		newInstrument.setPaymentMethod(methodDas.find(piBl.getPaymentMethodForPaymentMethodType(newInstrument)));
+                	} else {
+                		newInstrument = instrument.getDTO();
+                		refreshRequiredRelations(newInstrument);
+                	}
+                	info.setInstrument(newInstrument);
+                	LOG.debug("Processing payment with instrument : " + newInstrument);
+                	
+                	if (auth != null) {
+	                    processorUnavailable = task.confirmPreAuth(auth, info);
+	                    if (!processorUnavailable) {
+	                        if (new Integer(info.getPaymentResult().getId()).equals(Constants.RESULT_FAIL)) {
+	                            processorUnavailable = task.process(info);
+	                        }
+	                        // in any case, don't use this preAuth again
+	                        authBL.markAsUsed(info);
+	                    }
+	                } else {
+	                    processorUnavailable = task.process(info);
+	                }
+                
+                	// if this is an output of filter when filter does not fail, no need to save it
+                	if(Constants.RESULT_NULL != info.getPaymentResult().getId()) {
+		                // create a payment instrument to link to payment information object
+		            	// create an information record of this payment method to link this instrument to payment
+                		// obscure card number if its credit card
+                		PaymentInformationDTO saveable = newInstrument.getSaveableDTO();
+                		piBl.obscureCreditCardNumber(saveable);
+		            	payment.getPaymentInstrumentsInfo().add(new PaymentInstrumentInfoDTO(payment, info.getPaymentResult(),newInstrument.getPaymentMethod(), saveable));
+                	}
+            	
+	            	
+	                // allow the pluggable task to do something if the payment
+	                // failed (like notification, suspension, etc ... )
+	                if (!processorUnavailable && new Integer(info.getPaymentResult().getId()).equals(Constants.RESULT_FAIL)) {
+	                    task.failure(info.getUserId(), info.getAttempt());
+	                    
+	                    // if the processor was a filter then we need to eliminate the given method as it was not a success while filtering
+		                if(task instanceof PaymentFilterTask) {
+		                	instrument.setBlacklisted(true);
+		                }
+	                }
+	                // trigger an event
+	                AbstractPaymentEvent event = AbstractPaymentEvent.forPaymentResult(entityId, info);
+	
+	                if (event != null) {
+	                    EventManager.process(event);
+	                }
+	                LOG.debug("Status of payment processor : %s", processorUnavailable);
+	                
+	                // if the processor has processed payment successfully then no need to iterate over
+	                if(Constants.RESULT_OK.equals(info.getPaymentResult().getId())) {
+	                	processorUnavailable = false;
+	                	break;
+	                }
                 }
 
                 // get the next task
-                LOG.debug("Getting next task, processorUnavailable : " + processorUnavailable);
+                LOG.debug("Getting next task, processorUnavailable : %s", processorUnavailable);
                 task = (PaymentTask) taskManager.getNextClass();
             }
 
+            // set last payment method for which given result will be displayed
+            payment.setPaymentMethod(info.getInstrument().getPaymentMethod());
             // if after all the tasks, the processor in unavailable,
             // return that
-            if (processorUnavailable) {
+            LOG.debug("Payment result is: " + info.getPaymentResult().getId());
+            if (processorUnavailable || info.getPaymentResult().getId() == Constants.RESULT_NULL) {
                 retValue = Constants.RESULT_UNAVAILABLE;
             } else {
                 retValue = info.getPaymentResult().getId();
             }
-
+            LOG.debug("Payment result is after: " + retValue);
+            payment.setPaymentResult(new PaymentResultDAS().find(retValue));
             // the balance of the payment depends on the result
             if (retValue.equals(Constants.RESULT_OK) || retValue.equals(Constants.RESULT_ENTERED)) {
-                payment.setBalance(payment.getAmount());
+            	//#3788 - Partial Refunds Adjustment to Linked Payment
+            	if (payment.getIsRefund() == 0) {
+					payment.setBalance(payment.getAmount());
+				} else {// Payment is a Refund
+					// fetch the linked payment from database
+					PaymentDTO linkedPayment = new PaymentBL(payment
+							.getPayment().getId()).getEntity();
+					if (null != linkedPayment) {
+						/* Since payment is not linked to any invoice now, we
+						 * must subtract the payment balance with that of the
+						 * refund payment value */
+						linkedPayment.setBalance(linkedPayment.getBalance()
+								.subtract(payment.getAmount()));
+					} else {
+						LOG.debug("This refund is not linked with any payment which is wrong");
+						// maybe throw exception
+					}
+				}
             } else {
                 payment.setBalance(BigDecimal.ZERO);
             }
+        } catch (SessionInternalError e) {
+            throw e;
         } catch (Exception e) {
             LOG.fatal("Problems handling payment task.", e);
             throw new SessionInternalError("Problems handling payment task.");
         }
 
-        // add a notification to the user if the payment was good or bad
-        if (retValue.equals(Constants.RESULT_OK) || retValue.equals(Constants.RESULT_FAIL)) {
-            sendNotification(info, entityId);
-        }
-
-        // obscure credit cards used for one-time payments
-        if (payment.getCreditCard() != null && payment.getCreditCard().getBaseUsers().isEmpty()) {
-            payment.getCreditCard().obscureNumber();
-        }
+        //send notification of all result types: OK, Entered, Failed
+        LOG.debug("Sending notification to customer with retValue ****** "+retValue);
+        sendNotification(info, entityId);
 
         return retValue;
     }
 
     public PaymentDTO getDTO() {
-        return new PaymentDTO(payment.getId(), payment.getAmount(), payment.getBalance(), payment.getCreateDatetime(), payment.getUpdateDatetime(), payment.getPaymentDate(), payment.getAttempt(), payment.getDeleted(),
+        PaymentDTO dto = new PaymentDTO(payment.getId(), payment.getAmount(), payment.getBalance(), payment.getCreateDatetime(), payment.getUpdateDatetime(), payment.getPaymentDate(), payment.getAttempt(), payment.getDeleted(),
                 payment.getPaymentMethod(), payment.getPaymentResult(), payment.getIsRefund(), payment.getIsPreauth(), payment.getCurrency(), payment.getBaseUser());
+        dto.setMetaFields(new LinkedList<MetaFieldValue>(payment.getMetaFields()));
+        //for refunds
+        dto.setPayment(payment.getPayment());
+        return dto;
     }
 
     public PaymentDTOEx getDTOEx(Integer language) {
@@ -384,37 +493,6 @@ public class PaymentBL extends ResultList implements PaymentSQL {
             dto.addPaymentMap(getMapDTO(map.getId()));
         }
 
-        // cheque info if applies
-        PaymentInfoChequeDTO chequeDto = null;
-        if (payment.getPaymentInfoCheque() != null) {
-            chequeDto = new PaymentInfoChequeDTO();
-            chequeDto.setBank(payment.getPaymentInfoCheque().getBank());
-            chequeDto.setDate(payment.getPaymentInfoCheque().getDate());
-            chequeDto.setId(payment.getPaymentInfoCheque().getId());
-            chequeDto.setNumber(payment.getPaymentInfoCheque().getNumber());
-        }
-        dto.setCheque(chequeDto);
-
-        // credit card info if applies
-        CreditCardDTO ccDto = null;
-        if (payment.getCreditCard() != null) {
-            ccDto = new CreditCardDTO();
-            ccDto.setNumber(payment.getCreditCard().getNumber());
-            ccDto.setCcExpiry(payment.getCreditCard().getCcExpiry());
-            ccDto.setName(payment.getCreditCard().getName());
-            ccDto.setCcType(payment.getCreditCard().getCcType());
-            ccDto.setGatewayKey(payment.getCreditCard().getGatewayKey());
-        }
-        dto.setCreditCard(ccDto);
-
-        // ach if applies
-        if (payment.getAch() != null) {
-            AchBL achBl = new AchBL(payment.getAch());
-            dto.setAch(achBl.getDTO());
-        } else {
-            dto.setAch(null);
-        }
-
         // payment method (international)
         PaymentMethodDTO method = payment.getPaymentMethod();
         dto.setMethod(method.getDescription(language));
@@ -423,6 +501,7 @@ public class PaymentBL extends ResultList implements PaymentSQL {
         dto.setIsRefund(payment.getIsRefund());
         if (payment.getPayment() != null && payment.getId() != payment.getPayment().getId()) {
             PaymentBL linkedPayment = new PaymentBL(payment.getPayment().getId());
+            //#1890 - linking it to a payment
             dto.setPayment(linkedPayment.getDTOEx(language));
         }
 
@@ -454,12 +533,16 @@ public class PaymentBL extends ResultList implements PaymentSQL {
             dto.setPaymentNotes(payment.getPaymentNotes());
         }
 
+        //payment instruments info result
+        dto.setPaymentInstrumentsInfo(payment.getPaymentInstrumentsInfo());
+
         return dto;
     }
 
-    public static PaymentWS getWS(PaymentDTOEx dto) {
+    public static synchronized PaymentWS getWS(PaymentDTOEx dto) {
         PaymentWS ws = new PaymentWS();
         ws.setId(dto.getId());
+	    ws.setUserId(dto.getUserId());
         ws.setAmount(dto.getAmount());
         ws.setAttempt(dto.getAttempt());
         ws.setBalance(dto.getBalance());
@@ -472,57 +555,17 @@ public class PaymentBL extends ResultList implements PaymentSQL {
         ws.setPaymentNotes(dto.getPaymentNotes());
         ws.setPaymentPeriod(dto.getPaymentPeriod());
 
+        ws.setMetaFields(MetaFieldBL.convertMetaFieldsToWS(
+        		new UserBL().getEntityId(dto.getUserId()), dto));
+
         if (dto.getCurrency() != null)
             ws.setCurrencyId(dto.getCurrency().getId());
-
-        if (dto.getPaymentMethod() != null)
-            ws.setMethodId(dto.getPaymentMethod().getId());
-
+        
         if (dto.getPaymentResult() != null)
             ws.setResultId(dto.getPaymentResult().getId());
 
-        if (dto.getCreditCard() != null) {
-            com.sapienter.jbilling.server.entity.CreditCardDTO ccDTO = new com.sapienter.jbilling.server.entity.CreditCardDTO();
-            ccDTO.setDeleted(dto.getCreditCard().getDeleted());
-            ccDTO.setExpiry(dto.getCreditCard().getCcExpiry());
-            ccDTO.setId(dto.getCreditCard().getId());
-            ccDTO.setName(dto.getCreditCard().getName());
-            ccDTO.setNumber(dto.getCreditCard().getCcNumberPlain());
-            ccDTO.setSecurityCode(dto.getCreditCard().getSecurityCode());
-            ccDTO.setType(dto.getCreditCard().getCcType());
-            ws.setCreditCard(ccDTO);
-        } else {
-            ws.setCreditCard(null);
-        }
-
         ws.setUserId(dto.getUserId());
-
-        if (dto.getCheque() != null) {
-            com.sapienter.jbilling.server.entity.PaymentInfoChequeDTO chqDTO = new com.sapienter.jbilling.server.entity.PaymentInfoChequeDTO();
-            chqDTO.setBank(dto.getCheque().getBank());
-            chqDTO.setDate(dto.getCheque().getDate());
-            chqDTO.setId(dto.getCheque().getId());
-            chqDTO.setNumber(dto.getCheque().getNumber());
-            ws.setCheque(chqDTO);
-        } else {
-            ws.setCheque(null);
-        }
-
         ws.setMethod(dto.getMethod());
-
-        if (dto.getAch() != null) {
-            com.sapienter.jbilling.server.entity.AchDTO achDTO = new com.sapienter.jbilling.server.entity.AchDTO();
-            achDTO.setAbaRouting(dto.getAch().getAbaRouting());
-            achDTO.setAccountName(dto.getAch().getAccountName());
-            achDTO.setAccountType(dto.getAch().getAccountType());
-            achDTO.setBankAccount(dto.getAch().getBankAccount());
-            achDTO.setBankName(dto.getAch().getBankName());
-            achDTO.setGatewayKey(dto.getAch().getGatewayKey());
-            achDTO.setId(dto.getAch().getId());
-            ws.setAch(achDTO);
-        } else {
-            ws.setAch(null);
-        }
 
         if (dto.getAuthorization() != null) {
             com.sapienter.jbilling.server.entity.PaymentAuthorizationDTO authDTO = new com.sapienter.jbilling.server.entity.PaymentAuthorizationDTO();
@@ -555,6 +598,23 @@ public class PaymentBL extends ResultList implements PaymentSQL {
             ws.setPaymentId(dto.getPayment().getId());
         } else {
             ws.setPaymentId(null);
+        }
+        
+        // set payment specific instruments, payment instruments are linked through the PaymentInstrumentInfo
+        LOG.debug("Payment instruments info are: " + dto.getPaymentInstrumentsInfo());
+        if(dto.getPaymentInstrumentsInfo() != null && dto.getPaymentInstrumentsInfo().size() > 0) {
+	        for(PaymentInstrumentInfoDTO paymentInstrument : dto.getPaymentInstrumentsInfo()) {
+	    		ws.getPaymentInstruments().add(PaymentInformationBL.getWS(paymentInstrument.getPaymentInformation()));
+	        }
+        }
+        
+        // set user payment instruments of user if this call is coming from findPaymentInstruments
+        for(PaymentInformationDTO paymentInstrument : dto.getPaymentInstruments()) {
+    		ws.getUserPaymentInstruments().add(PaymentInformationBL.getWS(paymentInstrument));
+        }
+        
+        if(dto.getPaymentMethod() != null) {
+        	ws.setMethodId(dto.getPaymentMethod().getId());
         }
         return ws;
     }
@@ -591,15 +651,25 @@ public class PaymentBL extends ResultList implements PaymentSQL {
     }
 
     /**
-     * Does the actual work of deleteing the payment
+     * Validates the deletion of a payment
+     * @param
+     * @return  boolean
+     */
+    public boolean ifRefunded() {
+		LOG.debug("Checking if The payment id %d is refunded. ", payment.getId());
+		return new PaymentDAS().isRefundedPartiallyOrFully(payment.getId());
+    }
+
+    /**
+     * Does the actual work of deleting the payment
      *
      * @throws SessionInternalError
      */
     public void delete() throws SessionInternalError {
 
         try {
-            LOG.debug("Deleting payment " + payment.getId());
 
+            LOG.debug("Deleting payment %s", payment.getId());
             Integer entityId = payment.getBaseUser().getEntity().getId();
             EventManager.process(new PaymentDeletedEvent(entityId, payment));
 
@@ -647,7 +717,7 @@ public class PaymentBL extends ResultList implements PaymentSQL {
         return retValue;
     }
 
-    public static PaymentDTOEx findPaymentInstrument(Integer entityId,
+    public static synchronized PaymentDTOEx findPaymentInstrument(Integer entityId,
             Integer userId) throws PluggableTaskException,
             SessionInternalError, TaskException {
 
@@ -657,7 +727,7 @@ public class PaymentBL extends ResultList implements PaymentSQL {
 
         if (task == null) {
             // at least there has to be one task configurated !
-            Logger.getLogger(PaymentBL.class).fatal(
+            new FormatLogger(Logger.getLogger(PaymentBL.class)).fatal(
                     "No payment info pluggable" + "tasks configurated for entity " + entityId);
             throw new SessionInternalError("No payment info pluggable" + "tasks configurated for entity " + entityId);
         }
@@ -668,7 +738,7 @@ public class PaymentBL extends ResultList implements PaymentSQL {
 
     }
 
-    public static boolean validate(PaymentWS dto) {
+    /*public static synchronized boolean validate(PaymentWS dto) {
         boolean retValue = true;
 
         if (dto.getAmount() == null || dto.getMethodId() == null || dto.getIsRefund() == 0 || dto.getResultId() == null || dto.getUserId() == null || (dto.getCheque() == null && dto.getCreditCard() == null)) {
@@ -678,27 +748,19 @@ public class PaymentBL extends ResultList implements PaymentSQL {
             retValue = CreditCardBL.validate(ex.getCreditCard());
         } else if (dto.getCheque() != null) {
             PaymentDTOEx ex = new PaymentDTOEx(dto);
-            retValue = validate(ex.getCheque());
         }
+        MetaFieldBL.validateMetaFields(new UserBL().getEntityId(dto.getUserId()), 
+        		EntityType.PAYMENT, dto.getMetaFields());
 
         return retValue;
-    }
-
-    public static boolean validate(PaymentInfoChequeDTO dto) {
-        boolean retValue = true;
-
-        if (dto.getDate() == null || dto.getNumber() == null) {
-            retValue = false;
-        }
-
-        return retValue;
-    }
+    }*/
 
     public Integer getLatest(Integer userId) throws SessionInternalError {
         Integer retValue = null;
         try {
             prepareStatement(PaymentSQL.getLatest);
-            cachedResults.setInt(1, userId.intValue());
+            cachedResults.setInt(1, userId);
+            cachedResults.setInt(2, userId);
             execute();
             if (cachedResults.next()) {
                 int value = cachedResults.getInt(1);
@@ -715,12 +777,24 @@ public class PaymentBL extends ResultList implements PaymentSQL {
         return retValue;
     }
 
-    public Integer[] getManyWS(Integer userId, Integer number,
+    public Integer[] getManyWS(Integer userId, Integer limit, Integer offset,
             Integer languageId) {
         List<Integer> result = new PaymentDAS().findIdsByUserLatestFirst(
-                userId, number);
+                userId, limit, offset);
         return result.toArray(new Integer[result.size()]);
 
+    }
+
+    public Integer[] getListIdsByDate(Integer userId, Date since, Date until) {
+
+        // add a day to include the until date
+        GregorianCalendar cal = new GregorianCalendar();
+        cal.setTime(until);
+        cal.add(GregorianCalendar.DAY_OF_MONTH, 1);
+        until = cal.getTime();
+
+        List<Integer> result = new PaymentDAS().findIdsByUserAndDate(userId, since, until);
+        return result.toArray(new Integer[result.size()]);
     }
 
     private List<PaymentDTO> getPaymentsWithBalance(Integer userId) {
@@ -744,26 +818,41 @@ public class PaymentBL extends ResultList implements PaymentSQL {
      * Given an invoice, the system will look for any payment with a balance
      * and get the invoice paid with this payment.
      */
-    public void automaticPaymentApplication(InvoiceDTO invoice)
+    public boolean automaticPaymentApplication(InvoiceDTO invoice)
             throws SQLException {
-        List payments = getPaymentsWithBalance(invoice.getBaseUser().getUserId());
+        boolean appliedAtAll= false;
+        
+        List<PaymentDTO> payments = getPaymentsWithBalance(invoice.getBaseUser().getUserId());
 
+        //Bug fix 9970 - The older Payment's balance should be used to pay the 
+        //last invoice before new Payment's balance is used
+        Collections.sort(payments, new Comparator<PaymentDTO> () {
+        	public int compare(PaymentDTO o1, PaymentDTO o2) {
+                return o1.getCreateDatetime().compareTo(o2.getCreateDatetime());
+            }
+        });
+        
         for (int f = 0; f < payments.size() && invoice.getBalance().compareTo(BigDecimal.ZERO) > 0; f++) {
             payment = (PaymentDTO) payments.get(f);
             if (new Integer(payment.getPaymentResult().getId()).equals(Constants.RESULT_FAIL) || new Integer(payment.getPaymentResult().getId()).equals(Constants.RESULT_UNAVAILABLE)) {
                 continue;
             }
-            applyPaymentToInvoice(invoice);
+            if ( applyPaymentToInvoice(invoice) ) {
+                appliedAtAll= true;
+            }
         }
+        
+        return appliedAtAll;
     }
 
     /**
      * Give an payment (already set in this object), it will look for any
      * invoices with a balance and get them paid, starting wiht the oldest.
      */
-    public void automaticPaymentApplication() throws SQLException {
+    public boolean automaticPaymentApplication() throws SQLException {
+        boolean appliedAtAll= false;
         if (BigDecimal.ZERO.compareTo(payment.getBalance()) >= 0) {
-            return; // negative payment, skip
+            return false; // negative payment, skip
         }
 
         Collection<InvoiceDTO> invoiceCollection = new InvoiceDAS().findWithBalanceByUser(payment.getBaseUser());
@@ -778,14 +867,19 @@ public class PaymentBL extends ResultList implements PaymentSQL {
                 continue;
             }
 
-            applyPaymentToInvoice(invoice);
+            //apply and set
+            if ( applyPaymentToInvoice(invoice) ) {
+                appliedAtAll= true;
+            }
+            
             if (BigDecimal.ZERO.compareTo(payment.getBalance()) >= 0) {
                 break; // no payment balance remaining
             }
         }
+        return appliedAtAll;
     }
 
-    private void applyPaymentToInvoice(InvoiceDTO invoice) throws SQLException {
+    private boolean applyPaymentToInvoice(InvoiceDTO invoice) throws SQLException {
         // this is not actually getting de Ex, so it is faster
         PaymentDTOEx dto = new PaymentDTOEx(getDTO());
 
@@ -795,7 +889,8 @@ public class PaymentBL extends ResultList implements PaymentSQL {
         // make the link between the payment and the invoice
         BigDecimal paidAmount = psb.applyPayment(dto, invoice, true);
         createMap(invoice, paidAmount);
-
+        dto.getInvoiceIds().add(invoice.getId());
+        
         // notify the customer
         dto.setUserId(invoice.getBaseUser().getUserId()); // needed for the
         // notification
@@ -803,17 +898,23 @@ public class PaymentBL extends ResultList implements PaymentSQL {
         // entered
         // it has to show as ok
         dto.setPaymentResult(new PaymentResultDAS().find(Constants.RESULT_OK));
-        sendNotification(dto, payment.getBaseUser().getEntity().getId());
+        //sendNotification(dto, payment.getBaseUser().getEntity().getId());
+
+        return true;
     }
 
     /**
      * sends an notification with a payment
      */
     public void sendNotification(PaymentDTOEx info, Integer entityId) {
+        sendNotification(info, entityId, 
+                new Integer(info.getPaymentResult().getId()).equals(Constants.RESULT_OK));
+    }
+
+    public void sendNotification(PaymentDTOEx info, Integer entityId, boolean success) {
         try {
             NotificationBL notif = new NotificationBL();
-            MessageDTO message = notif.getPaymentMessage(entityId, info,
-                    new Integer(info.getPaymentResult().getId()).equals(Constants.RESULT_OK));
+            MessageDTO message = notif.getPaymentMessage(entityId, info, success);
 
             INotificationSessionBean notificationSess =
                     (INotificationSessionBean) Context.getBean(
@@ -824,7 +925,34 @@ public class PaymentBL extends ResultList implements PaymentSQL {
             // notification
             LOG.warn("Can not notify a customer about a payment " +
                     "beacuse the entity lacks the notification. " +
+                    "entity = %s", entityId);
+        }
+    }
+
+    // for sending payment successful notification when invoice is not linked with payment.
+    public void sendNotification(PaymentDTOEx info, Integer entityId, boolean success,Integer invoiceId) {
+        try {
+            NotificationBL notif = new NotificationBL();
+            MessageDTO message = notif.getPaymentMessage(entityId, info, success);
+
+            INotificationSessionBean notificationSess =
+                    (INotificationSessionBean) Context.getBean(
+                            Context.Name.NOTIFICATION_SESSION);
+
+            InvoiceBL invoice = new InvoiceBL(invoiceId);
+            UserBL user = new UserBL(invoice.getEntity().getUserId());
+            message.addParameter("invoice_number", invoice.getEntity()
+                    .getPublicNumber().toString());
+            message.addParameter("invoice", invoice.getEntity());
+            message.addParameter("method", info.getInstrument().getPaymentMethod().getDescription(user.getEntity().getLanguage().getId()));
+            notificationSess.notify(info.getUserId(), message);
+        } catch (NotificationNotFoundException e1) {
+            // won't send anyting because the entity didn't specify the
+            // notification
+            LOG.warn("Can not notify a customer about a payment " +
+                    "beacuse the entity lacks the notification. " +
                     "entity = " + entityId);
+
         }
     }
 
@@ -834,23 +962,26 @@ public class PaymentBL extends ResultList implements PaymentSQL {
      */
     public void removeInvoiceLink(Integer mapId) {
         try {
+            // declare variables
+            InvoiceDTO invoice;
+
             // find the map
             PaymentInvoiceMapDTO map = mapDas.find(mapId);
-            // start returning the money to the payment's balance
-            BigDecimal amount = map.getAmount();
-            payment = map.getPayment();
-            amount = amount.add(payment.getBalance());
-            payment.setBalance(amount);
+                // start returning the money to the payment's balance
+                BigDecimal amount = map.getAmount();
+                payment = map.getPayment();
+                amount = amount.add(payment.getBalance());
+                payment.setBalance(amount);
 
-            // the balace of the invoice also increases
-            InvoiceDTO invoice = map.getInvoiceEntity();
-            amount = map.getAmount().add(invoice.getBalance());
-            invoice.setBalance(amount);
+                // the balace of the invoice also increases
+                invoice = map.getInvoiceEntity();
+                amount = map.getAmount().add(invoice.getBalance());
+                invoice.setBalance(amount);
 
-            // this invoice probably has to be paid now
-            if (Constants.BIGDECIMAL_ONE_CENT.compareTo(invoice.getBalance()) <= 0) {
-                invoice.setToProcess(1);
-            }
+                // this invoice probably has to be paid now
+                if (InvoiceBL.isInvoiceBalanceEnoughToAge(invoice, invoice.getBaseUser().getEntity().getId())) {
+                    invoice.setToProcess(1);
+                }
 
             // log that this was deleted, otherwise there will be no trace
             eLogger.info(invoice.getBaseUser().getEntity().getId(),
@@ -861,8 +992,6 @@ public class PaymentBL extends ResultList implements PaymentSQL {
 
             // get rid of the map all together
             mapDas.delete(map);
-
-
 
         } catch (EntityNotFoundException enfe) {
             LOG.error("Exception removing payment-invoice link: EntityNotFoundException", enfe);
@@ -887,7 +1016,18 @@ public class PaymentBL extends ResultList implements PaymentSQL {
             if (this.payment.getId() == map.getPayment().getId()) {
 	            this.removeInvoiceLink(map.getId());
 	            invoice.getPaymentMap().remove(map);
+                payment.getInvoicesMap().remove(map);
 	            bSucceeded=true;
+
+                //fire event
+                PaymentUnlinkedFromInvoiceEvent event = new PaymentUnlinkedFromInvoiceEvent(
+                        payment.getBaseUser().getEntity().getId(),
+                        new PaymentDTOEx(payment),
+                        invoice,
+                        map.getAmount());
+                EventManager.process(event);
+
+	            map= null;
 	            break;
             }
         }
@@ -902,5 +1042,20 @@ public class PaymentBL extends ResultList implements PaymentSQL {
         dto.setInvoiceId(map.getInvoiceEntity().getId());
         dto.setCurrencyId(map.getPayment().getCurrency().getId());
         return dto;
+    }
+
+    public List<PaymentDTO> findUserPaymentsPaged(Integer entityId, Integer userId, Integer limit, Integer offset) {
+
+        return new PaymentDAS().findPaymentsByUserPaged(userId, limit, offset);
+    }
+
+    private void refreshRequiredRelations(PaymentInformationDTO newInstrument) {
+    	if(newInstrument.getPaymentMethod() != null) {
+    		newInstrument.setPaymentMethod(methodDas.find(newInstrument.getPaymentMethod().getId()));
+    	}
+    	
+    	if(newInstrument.getPaymentMethodType() != null) {
+    		newInstrument.setPaymentMethodType(new PaymentMethodTypeDAS().find(newInstrument.getPaymentMethodType().getId()));
+    	}
     }
 }

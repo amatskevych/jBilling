@@ -31,14 +31,20 @@ public class NewContactEvent implements Event {
 
     private final Integer entityId;
     private final ContactDTO contactDto;
-    
+
+    private final Integer userId;
+    private final Integer groupId;
+
     public ContactDTO getContactDto() {
         return contactDto;
     }
 
-    public NewContactEvent(ContactDTO contactDto, Integer entityId) {
+    public NewContactEvent(Integer userId, ContactDTO contactDto, Integer entityId) {
         this.contactDto = contactDto;
         this.entityId = entityId;
+        this.userId = userId;
+
+        this.groupId = null;
     }
 
     public String getName() {
@@ -47,5 +53,13 @@ public class NewContactEvent implements Event {
 
     public Integer getEntityId() {
         return entityId;
+    }
+
+    public Integer getUserId() {
+        return userId;
+    }
+
+    public Integer getGroupId() {
+        return groupId;
     }
 }

@@ -20,6 +20,9 @@
 
 package com.sapienter.jbilling.server.util;
 
+
+import java.io.Serializable;
+
 import com.sapienter.jbilling.server.util.db.InternationalDescriptionDTO;
 
 /**
@@ -28,11 +31,14 @@ import com.sapienter.jbilling.server.util.db.InternationalDescriptionDTO;
  * @author Brian Cowdery
  * @since 27/01/11
  */
-public class InternationalDescriptionWS {
+public class InternationalDescriptionWS implements Serializable{
+
+    private static final long serialVersionUID = 20130704L;
 
     private String psudoColumn;
     private Integer languageId;
     private String content;
+    private boolean deleted;
 
     public InternationalDescriptionWS() {
     }
@@ -49,14 +55,14 @@ public class InternationalDescriptionWS {
         this.content = content;
     }
 
-    public InternationalDescriptionWS(InternationalDescriptionDTO description) {
-        if (description.getId() != null) {
-            this.psudoColumn = description.getId().getPsudoColumn();
-            this.languageId = description.getId().getLanguageId();
-        }
-        this.content = description.getContent();
-    }
-
+	public InternationalDescriptionWS(InternationalDescriptionDTO description) {
+		if (description.getId() != null) {
+			this.psudoColumn = description.getId().getPsudoColumn();
+			this.languageId = description.getId().getLanguageId();
+		}
+		this.content = description.getContent();
+	}
+    
     /**
      * Alias for {@link #getPsudoColumn()}
      * @return psudo-column label
@@ -95,6 +101,14 @@ public class InternationalDescriptionWS {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public boolean isDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     @Override

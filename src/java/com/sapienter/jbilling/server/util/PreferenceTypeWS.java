@@ -24,22 +24,20 @@ import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.Set;
 
-import com.sapienter.jbilling.server.util.db.AbstractDescription;
-import com.sapienter.jbilling.server.util.db.PreferenceTypeDTO;
+import com.sapienter.jbilling.server.metafields.validation.ValidationRuleWS;
 
 public class PreferenceTypeWS implements Serializable {
 
     private int id;
     private String description;
     private String defaultValue;
+    private ValidationRuleWS validationRule;
 
     public PreferenceTypeWS() {
     }
 
-    public PreferenceTypeWS(PreferenceTypeDTO dto) {
-        this.id = dto.getId();
-        this.description = dto.getDescription();
-        this.defaultValue = dto.getDefaultValue();
+    public PreferenceTypeWS(int id) {
+        this.id = id;
     }
 
     public int getId() {
@@ -66,12 +64,21 @@ public class PreferenceTypeWS implements Serializable {
         this.defaultValue = defaultValue;
     }
 
+    public ValidationRuleWS getValidationRule() {
+        return validationRule;
+    }
+
+    public void setValidationRule(ValidationRuleWS validationRule) {
+        this.validationRule = validationRule;
+    }
+
     @Override
     public String toString() {
         return "PreferenceTypeWS{"
                + "id=" + id
                + ", description='" + description + '\''
                + ", defaultValue='" + defaultValue + '\''
+               + ", validationRule='" + validationRule + '\''
                + '}';
     }
 }

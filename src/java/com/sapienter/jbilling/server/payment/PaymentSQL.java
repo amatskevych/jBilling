@@ -144,13 +144,9 @@ public interface PaymentSQL {
         " order by 1 desc";    
     
     static final String getLatest = 
-        "select max(id) " +
-        "  from payment " +
-        " where deleted = 0 " +
-        "   and user_id = ?";
+		"select max(id) from payment where create_datetime = " +
+                    "(select max(create_datetime) from payment where deleted = 0 and user_id = ?) " +
+		        " and deleted = 0 " +
+		        " and user_id = ?";
     
 }
-
-
-
-

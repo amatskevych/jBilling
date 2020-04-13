@@ -20,8 +20,6 @@
 
 package com.sapienter.jbilling.server.process;
 
-import com.sapienter.jbilling.server.process.db.ProcessRunDTO;
-import com.sapienter.jbilling.server.process.db.ProcessRunTotalDTO;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -48,36 +46,6 @@ public class ProcessRunWS implements Serializable {
     private String statusStr;
 
     public ProcessRunWS() {
-    }
-
-    public ProcessRunWS(ProcessRunDTO dto) {
-        this.id = dto.getId();
-        this.billingProcessId = dto.getBillingProcess() != null ? dto.getBillingProcess().getId() : null;
-        this.runDate = dto.getRunDate();
-        this.started = dto.getStarted();
-        this.finished = dto.getFinished();
-        this.invoicesGenerated = dto.getInvoicesGenerated();
-        this.paymentFinished = dto.getPaymentFinished();
-        this.statusId = dto.getStatus() != null ? dto.getStatus().getId() : null;
-
-        // billing process run totals
-        if (!dto.getProcessRunTotals().isEmpty()) {
-            processRunTotals = new ArrayList<ProcessRunTotalWS>(dto.getProcessRunTotals().size());
-            for (ProcessRunTotalDTO runTotal : dto.getProcessRunTotals())
-                processRunTotals.add(new ProcessRunTotalWS(runTotal));
-        }
-    }
-
-    public ProcessRunWS(BillingProcessRunDTOEx ex) {
-        this((ProcessRunDTO) ex);
-
-        this.statusStr = ex.getStatusStr();
-
-        if (!ex.getTotals().isEmpty()) {
-            processRunTotals = new ArrayList<ProcessRunTotalWS>(ex.getTotals().size());
-            for (BillingProcessRunTotalDTOEx runTotal : ex.getTotals())
-                processRunTotals.add(new ProcessRunTotalWS(runTotal));
-        }
     }
 
     public Integer getId() {

@@ -1,3 +1,24 @@
+%{--
+     jBilling - The Enterprise Open Source Billing System
+   Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
+
+   This file is part of jbilling.
+   
+   jbilling is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+   
+   jbilling is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+   
+   You should have received a copy of the GNU Affero General Public License
+   along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+ 
+  --}%
+
 <html>
 <head>
 <title>Main Page</title>
@@ -5,30 +26,10 @@
 
 </head>
 <body>
-            <div class="form-edit">
+        <div class="form-edit">
                 <div class="heading">
                     <strong>
-                    %{--
-  jBilling - The Enterprise Open Source Billing System
-  Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
-
-  This file is part of jbilling.
-
-  jbilling is free software: you can redistribute it and/or modify
-  it under the terms of the GNU Affero General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  jbilling is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU Affero General Public License for more details.
-
-  You should have received a copy of the GNU Affero General Public License
-  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
-  --}%
-
-<g:if test="${pluginws}">
+                    <g:if test="${isEdit}">
                         <g:message code="plugins.update.title"/>
                     </g:if>
                     <g:else>
@@ -38,6 +39,7 @@
                 </div>
                 <div class="form-hold">
                     <g:form name="plugin-form" action="save">
+                        <g:hiddenField name="isEdit" value="${isEdit}"/>
                         <fieldset>
                             <div class="form-columns">
                                 <div class="one_column" style="width:650px">
@@ -75,8 +77,8 @@
                                                         value="${pluginws?.processingOrder}" />
                                         </div>
                                     </div>
-                                </div>
-                            </div>
+                                </div> <!-- one_column -->
+                            </div> <!-- form-columns -->
  
                             <!-- box cards -->
                             <div class="box-cards box-cards-open">
@@ -85,12 +87,15 @@
                                          <g:message code="plugins.create.parameters"/>
                                     </span>
                                 </div>
-                                <g:render template="formParameters" model="[parametersDesc:parametersDesc]"/>
-                            </div>
+                                <div class="box-card-hold">
+                                    <g:render template="formParameters" model="[parametersDesc:parametersDesc]"/>
+                                </div>
+                            </div> <!--  box-cards box-cards-open -->
                             <!-- box text -->
                             <div class="box-text">
                                 <g:textArea name="notes" rows="7" cols="63" value="${pluginws?.notes}" />
                             </div>
+
                             <div class="buttons">
                                 <ul>
                                     <li><a class="submit save" onclick="$('#plugin-form').submit();" href="#">
@@ -98,24 +103,24 @@
                                     </a></li>
                                     <li><a class="submit cancel" href="${createLink(action:'cancel',params:[plugin_id:this_plugin_id])}"><span>Cancel</span></a></li>
                                 </ul>
-                            </div>
+                            </div> <!-- buttons -->
                         </fieldset>
                     </g:form>
-                </div>
-            </div>
-            
- <script type="text/javascript">
-    $("#typeId").change(function() {
-    	  var typeSelected = "";
-          $("#typeId option:selected").each(function () {
-              typeSelected = $(this).val();
-          });
-    	  $.post('/jbilling/plugin/getTypeParametersDescriptions', 
-    	    	  {typeId: typeSelected},
-    	    	  function(msg){
-    	    	      $("#plugin-parameters").html(msg)
-    	    	  });
-    });
-</script>
+                </div> <!-- form-hold -->
+            </div> <!-- form-edit -->
+
+    <script type="text/javascript">
+        $("#typeId").change(function () {
+            var typeSelected = "";
+            $("#typeId option:selected").each(function () {
+                typeSelected = $(this).val();
+            });
+            $.post("${createLink(controller:'plugin', action:'getTypeParametersDescriptions')}",
+                    {typeId:typeSelected},
+                    function (msg) {
+                        $("#plugin-parameters").html(msg)
+                    });
+        });
+    </script>
 </body>
 </html>

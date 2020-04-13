@@ -27,6 +27,9 @@ import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.rule.RulesBaseTask;
+import org.apache.log4j.Logger;
 import org.drools.KnowledgeBase;
 import org.drools.runtime.StatelessKnowledgeSession;
 
@@ -41,15 +44,18 @@ import com.sapienter.jbilling.server.pluggableTask.TaskException;
 import com.sapienter.jbilling.server.user.ValidatePurchaseWS;
 import com.sapienter.jbilling.server.user.ContactBL;
 import com.sapienter.jbilling.server.user.ContactDTOEx;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldDTO;
 import com.sapienter.jbilling.server.user.db.CustomerDTO;
 import java.util.ArrayList;
 
 /**
  * Pluggable task allows running rules for validatePurchase API method.
  */
-public class RulesValidatePurchaseTask extends PluggableTask 
+@Deprecated
+public class RulesValidatePurchaseTask extends RulesBaseTask
         implements IValidatePurchaseTask {
+
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(RulesValidatePurchaseTask.class));
+    protected FormatLogger getLog() { return LOG; }
 
     public ValidatePurchaseWS validate(CustomerDTO customer, 
             List<ItemDTO> items, List<BigDecimal> amounts, 
@@ -96,10 +102,6 @@ public class RulesValidatePurchaseTask extends PluggableTask
         contact.set(userId);
         ContactDTOEx contactDTO = contact.getDTO();
         rulesMemoryContext.add(contactDTO);
-        for (ContactFieldDTO field : (Collection<ContactFieldDTO>) 
-                 contactDTO.getFieldsTable().values()) {
-            rulesMemoryContext.add(field);    
-        }
 
         // add the subscriptions
         OrderBL order = new OrderBL();

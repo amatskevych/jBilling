@@ -22,15 +22,19 @@ package com.sapienter.jbilling.server.util.db;
 import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
+import java.util.ArrayList;
 import java.util.List;
-
 
 import org.apache.log4j.Logger;
 import org.hibernate.Criteria;
+import org.hibernate.Query;
+import org.hibernate.ScrollMode;
+import org.hibernate.ScrollableResults;
 import org.hibernate.SessionFactory;
 import org.hibernate.criterion.Criterion;
 import org.hibernate.criterion.Example;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.util.Context;
 import org.hibernate.LockMode;
@@ -38,10 +42,9 @@ import org.hibernate.criterion.Projections;
 import org.hibernate.criterion.Restrictions;
 import org.springframework.orm.hibernate3.support.HibernateDaoSupport;
 
+public abstract class AbstractDAS<T> extends HibernateDaoSupport implements IDAS<T> {
 
-public abstract class AbstractDAS<T> extends HibernateDaoSupport {
-
-    private static final Logger LOG = Logger.getLogger(AbstractDAS.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(AbstractDAS.class));
     private Class<T> persistentClass;
 
     // if querys will be run cached or not
@@ -60,12 +63,14 @@ public abstract class AbstractDAS<T> extends HibernateDaoSupport {
      * @param newEntity entity to save/update
      * @return saved entity
      */
+    @Override
     @SuppressWarnings("unchecked")
     public T save(T newEntity) {
         T retValue = (T) getSession().merge(newEntity);
         return retValue;
     }
     
+    @Override
     public void delete(T entity) {
         //em.remove(entity);
         getHibernateTemplate().delete(entity);
@@ -87,6 +92,7 @@ public abstract class AbstractDAS<T> extends HibernateDaoSupport {
      * @param id
      * @return
      */
+    @Override
     @SuppressWarnings("unchecked")
     public T find(Serializable id) {
         if (id == null) return null;
@@ -99,6 +105,7 @@ public abstract class AbstractDAS<T> extends HibernateDaoSupport {
      * @param id
      * @return
      */
+    @Override
     @SuppressWarnings("unchecked")
     public T findNow(Serializable id) {
         if (id == null) return null;
@@ -119,9 +126,20 @@ public abstract class AbstractDAS<T> extends HibernateDaoSupport {
         return getHibernateTemplate().get(getPersistentClass(), id, LockMode.UPGRADE);
     }
 
+    @Override
     @SuppressWarnings("unchecked")
     public List<T> findAll() {
         return findByCriteria();
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<T> findAllByIdInList(List<Integer> ids) {
+        if(ids != null && ids.size() > 0){
+            return findByCriteria(Restrictions.in("id", ids));
+        }else{
+            return new ArrayList<T>();
+        }
+
     }
 
     @SuppressWarnings("unchecked")
@@ -177,7 +195,7 @@ public abstract class AbstractDAS<T> extends HibernateDaoSupport {
                 .add(Restrictions.idEq(id))
                 .setProjection(Projections.rowCount());
 
-        return (criteria.uniqueResult() != null && ((Integer) criteria.uniqueResult()) > 0);
+        return (criteria.uniqueResult() != null && ((Long) criteria.uniqueResult()) > 0);
     }
 
     /**
@@ -202,6 +220,19 @@ public abstract class AbstractDAS<T> extends HibernateDaoSupport {
         crit.setCacheable(queriesCached);
         return (T) crit.uniqueResult();
    }
+
+    @SuppressWarnings("unchecked")
+    public T findFirst(Query query) {
+        query.setFirstResult(0).setMaxResults(1);
+        return (T) query.uniqueResult();
+    }
+
+    @SuppressWarnings("unchecked")
+    public T findFirst(Criteria criteria) {
+        criteria.setFirstResult(0).setMaxResults(1);
+        return (T) criteria.uniqueResult();
+
+    }
 
     protected void useCache() {
         queriesCached = true;

@@ -24,32 +24,39 @@
  */
 package com.sapienter.jbilling.tools;
 
-import java.io.BufferedReader;
-import java.io.FileInputStream;
-import java.io.FileReader;
-import java.io.IOException;
-import java.util.Date;
-import java.util.Hashtable;
-import java.util.Properties;
-
 import com.sapienter.jbilling.common.Constants;
 import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.item.IItemSessionBean;
 import com.sapienter.jbilling.server.item.db.ItemDTO;
 import com.sapienter.jbilling.server.item.db.ItemTypeDTO;
+import com.sapienter.jbilling.server.metafields.DataType;
+import com.sapienter.jbilling.server.metafields.EntityType;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
+import com.sapienter.jbilling.server.metafields.db.MetaField;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue;
 import com.sapienter.jbilling.server.order.IOrderSessionBean;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
 import com.sapienter.jbilling.server.order.db.OrderLineDTO;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.user.ContactDTOEx;
 import com.sapienter.jbilling.server.user.IUserSessionBean;
 import com.sapienter.jbilling.server.user.UserDTOEx;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldDTO;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldTypeDTO;
 import com.sapienter.jbilling.server.user.db.CompanyDTO;
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
 import com.sapienter.jbilling.server.user.db.CustomerDTO;
 import com.sapienter.jbilling.server.user.permisson.db.RoleDTO;
+import org.joda.time.format.DateTimeFormat;
+
+import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.FileReader;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.Date;
+import java.util.Hashtable;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Properties;
 
 
 /**
@@ -58,7 +65,7 @@ import java.math.BigDecimal;
 public class UploadData {
 
     public static void main(String[] args) {
-        
+
         // for each field that will be sent to the server we need an index
         int first_name = -1;
         int last_name = -1;
@@ -87,17 +94,16 @@ public class UploadData {
         int active_until = -1;
         int total = -1;
         // these are for entity-specific contact fields
-        Hashtable entitySpecificFeilds;
         int specific[];
         int specificType[];
-        
+
         String record = null;
         try {
             // see if all the properties are in place
             Properties prop = new Properties();
             FileInputStream gpFile = new FileInputStream("upload.properties");
             prop.load(gpFile);
-            
+
             Integer entityId = Integer.valueOf(prop.getProperty("entity_id"));
             Integer languageId = Integer.valueOf((String) prop.getProperty(
                     "entity_language"));
@@ -106,7 +112,6 @@ public class UploadData {
             Boolean processOrders = Boolean.valueOf(
                     prop.getProperty("load_orders"));
             // initialize the entity specific data
-            entitySpecificFeilds = new Hashtable();
             int totalSpecificFields = Integer.valueOf(prop.getProperty(
                     "specific_fields", "0")).intValue();
             System.out.println("specific fields to load = " + totalSpecificFields);
@@ -115,16 +120,16 @@ public class UploadData {
             for (int f = 0; f < totalSpecificFields; f++) {
                 specific[f] = -1;
             }
-            
-            
-            System.out.println("Processing file " + fileName + " for entity " + 
+
+
+            System.out.println("Processing file " + fileName + " for entity " +
                     entityId);
-    
+
             // open the file
             BufferedReader file = new BufferedReader(new FileReader(fileName));
 
             // TODO: use the standard API
-/*            IUserSessionBean remoteSession = (IUserSessionBean) 
+/*            IUserSessionBean remoteSession = (IUserSessionBean)
                     RemoteContext.getBean(
                     RemoteContext.Name.USER_REMOTE_SESSION);
 */
@@ -176,8 +181,8 @@ public class UploadData {
                 } else if (columns[f].equalsIgnoreCase("postal_code")) {
                     postal_code = f;
                 }
-                
-                if (processOrders.booleanValue()) {
+
+                if (processOrders) {
                     if (columns[f].equalsIgnoreCase("period")) {
                         period = f;
                     } else if (columns[f].equalsIgnoreCase("active_since")) {
@@ -190,37 +195,37 @@ public class UploadData {
                         box = f;
                     }
                 }
-                
+
                 // go over the specific fields
-                for (int spField = 1; spField <= totalSpecificFields; 
+                for (int spField = 1; spField <= totalSpecificFields;
                         spField++) {
-                    String spName = (String) prop.get("specific_title_" + 
+                    String spName = (String) prop.get("specific_title_" +
                             spField);
                     if (columns[f].equalsIgnoreCase(spName)) {
                         specific[spField - 1] = f;
-                        specificType[spField - 1] = Integer.valueOf(
-                                (String) prop.get("specific_type_" + 
-                                        spField)).intValue();
+                        specificType[spField - 1] = Integer.valueOf((String) prop.get("specific_type_" + spField));
                         break;
                     }
                 }
             }
-            
+
+            PaymentInformationBL piBl = new PaymentInformationBL();
             int totalRows = 0;
             record = readLine(file);
             while (record != null) {
                 totalRows++;
                 String fields[] = record.split("\t");
-                
+
                 // get the user object ready
                 UserDTOEx user = new UserDTOEx();
                 ContactDTOEx contact = new ContactDTOEx();
                 CustomerDTO customer = new CustomerDTO();
-                contact.setInclude(new Integer(1));
-                
+                CompanyDTO company = new CompanyDTO(entityId);
+                contact.setInclude(1);
+
                 user.setEntityId(entityId);
                 user.getRoles().add(new RoleDTO(Constants.TYPE_CUSTOMER));
-                
+
                 if (first_name >= 0) {
                     contact.setFirstName(fields[first_name].trim());
                 }
@@ -248,9 +253,6 @@ public class UploadData {
                 if (country >= 0) {
                     contact.setCountryCode(fields[country].trim());
                 }
-                if (notes >= 0) {
-                    customer.setNotes(fields[notes].trim());
-                }
                 if (email >= 0) {
                     contact.setEmail(fields[email].trim());
                 }
@@ -267,20 +269,20 @@ public class UploadData {
                     if (fields[status].charAt(0) == 'A' ||
                             fields[status].equals("FA")) {
                         user.setStatusId(UserDTOEx.STATUS_ACTIVE);
-                    } else {
-                        user.setStatusId(UserDTOEx.STATUS_DELETED);
+                    }  else {
+                        user.setDeleted(1);
                     }
                 } else {
                     // default to active
                     user.setStatusId(UserDTOEx.STATUS_ACTIVE);
                 }
-                
+
                 // define the username
-                String username = new String();
+                String username = "";
                 if (user_name >= 0) {
                     username = fields[user_name].trim();
                 } else { // cook our own
-                    if (contact.getFirstName() != null && 
+                    if (contact.getFirstName() != null &&
                             contact.getFirstName().length() > 0) {
                         username += contact.getFirstName().charAt(0);
                     }
@@ -289,7 +291,7 @@ public class UploadData {
                             username += contact.getLastName().substring(
                                     0, 15 - username.length());
                         } else {
-                            username += contact.getLastName();;
+                            username += contact.getLastName();
                         }
                     }
                     if (username.length() == 0) {
@@ -299,7 +301,7 @@ public class UploadData {
                     username += "_" + totalRows;
                 }
                 user.setUserName(username);
-                
+
                 // now the password
                 if (password >= 0) {
                     user.setPassword(fields[password].trim());
@@ -307,67 +309,64 @@ public class UploadData {
                     // default to the entity name
                     user.setPassword(entityName);
                 }
-                
+
                 // the credit card
-                CreditCardDTO cc = new CreditCardDTO();
-                cc.setCcExpiry(new Date());
-                if (credit_card_number >= 0 && 
+                PaymentInformationDTO instrument = null;
+                if (credit_card_number >= 0 &&
                         fields[credit_card_number].trim().length() > 0) {
-                    cc.setNumber(fields[credit_card_number].trim());
+                    instrument = piBl.getCreditCardObject(fields[credit_card_number].trim(), company);
+                    Date date = new Date();
                     if (expiry_month >= 0) {
-                        cc.getCcExpiry().setMonth(Integer.valueOf(fields[expiry_month].trim()).intValue());
-                        cc.getCcExpiry().setDate(1);
+                        date.setMonth(Integer.valueOf(fields[expiry_month].trim()));
+                        date.setDate(1);
                     }
                     if (expiry_year >= 0) {
-                        cc.getCcExpiry().setYear(Integer.valueOf(fields[expiry_year].trim()).
-                                intValue() - 1900);
+                        date.setYear(Integer.valueOf(fields[expiry_year].trim()) - 1900);
                     }
+                    piBl.updateStringMetaField(instrument, DateTimeFormat.forPattern(com.sapienter.jbilling.server.util.Constants.CC_DATE_FORMAT).print(date.getTime()), MetaFieldType.DATE);
                     if (name_on_card >= 0) {
-                        cc.setName(fields[name_on_card].trim());
-                    } 
+                        piBl.updateStringMetaField(instrument, (fields[name_on_card].trim()), MetaFieldType.TITLE);
+                    }
 
-                } else {
-                    cc = null;
                 }
                 //System.out.println("CC = " + cc);
+
+                List<MetaFieldValue> metaFields = new LinkedList<MetaFieldValue>();
+
+                for (int spField = 0; spField < totalSpecificFields; spField++) {
+                    if (specific[spField] >= 0) {
+                        MetaField metaField = new MetaField();
+                        metaField.setEntityType(EntityType.CUSTOMER);
+                        metaField.setDataType(DataType.STRING);
+                        metaField.setId(specificType[spField]);
+                        MetaFieldValue metaFieldValue = metaField.createValue();
+                        metaFieldValue.setValue(fields[specific[spField]].trim());
+                        metaFields.add(metaFieldValue);
+                    }
+                }
+                customer.setMetaFields(metaFields);
                 
                 user.setCustomer(customer);
                 
-                // the entity specific fields
-                for (int spField = 0; spField < totalSpecificFields; spField++) {
-                    if (specific[spField] >= 0) {
-                        ContactFieldDTO fieldDto = new ContactFieldDTO();
-                        fieldDto.setType(new ContactFieldTypeDTO(new Integer(specificType[spField])));
-                        fieldDto.setContent(fields[specific[spField]].trim());
-                        entitySpecificFeilds.put(
-                                (specificType[spField] + ""),fieldDto);
-                    }
-                }
-                contact.setFieldsTable(entitySpecificFeilds);
-                
                 Integer newUserId = remoteSession.create(user, contact);
-                if (newUserId != null && notes >= 0) {
-                    remoteSession.setCustomerNotes(newUserId, 
-                            customer.getNotes().replaceAll("\n", "<br/>"));
-                }
-                
-                if (cc != null) {
-                    remoteSession.createCreditCard(newUserId, cc);
-                    System.out.println("Credit card " + cc.getNumber() + 
+
+                if (instrument != null) {
+                    remoteSession.createCreditCard(newUserId, instrument);
+                    System.out.println("Credit card " + instrument +
                             " added to user " + newUserId);
                 }
-                
-                
+
+
                 if (newUserId == null) {
                     // then add the contact info
                     System.out.println("Exising user: " + user.getUserName());
-                    remoteSession.addContact(contact, user.getUserName(), 
+                    remoteSession.addContact(contact, user.getUserName(),
                             entityId);
                 } else {
                     System.out.println("New user " + newUserId + " created");
                 }
-                
-                if (processOrders.booleanValue() && newUserId != null) {
+
+                if (processOrders && newUserId != null) {
                     OrderDTO summary = new OrderDTO();
                     String ext = fields[period].trim();
                     System.out.print("[" + ext + "]");
@@ -386,20 +385,18 @@ public class UploadData {
                     // this makes it prepaid (2 is pospaid)
                     //summary.setBillingTypeId(new Integer(1));
 /*                    TODO: use the standard API
- *                  IOrderSessionBean remoteOrder = (IOrderSessionBean) 
+ *                  IOrderSessionBean remoteOrder = (IOrderSessionBean)
                             RemoteContext.getBean(
                             RemoteContext.Name.ORDER_REMOTE_SESSION);
  */                   // add the item (quantity = 1)
                     IOrderSessionBean remoteOrder = null;
-                    Integer itemId = Integer.valueOf((String) prop.getProperty(
-                            "item_id"));
+                    Integer itemId = Integer.valueOf(prop.getProperty("item_id"));
                     OrderDTO thisOrder = remoteOrder.addItem(itemId, Constants.BIGDECIMAL_ONE, summary, languageId,
                                                              newUserId, entityId);
-                    
+
                     // to edit the total I need to get the line ..
-                    OrderLineDTO thisLine = (OrderLineDTO) thisOrder.
-                            getLine(itemId);
-                    Float price = new Float(0);
+                    OrderLineDTO thisLine = thisOrder.getLine(itemId);
+                    Float price = (float) 0;
                     if (fields[total] != null && fields[total].length() > 0) {
                         price = Float.valueOf(fields[total]);
                     }
@@ -407,21 +404,22 @@ public class UploadData {
                     thisLine.setDescription(prop.getProperty("order_description"));
                     //System.out.println("desc = " + thisLine.getDescription());
                     thisOrder = remoteOrder.recalculate(thisOrder, entityId);
-                    Integer newOrderId = remoteOrder.createUpdate(entityId, 
+                    //todo: pass order changes if needed
+                    Integer newOrderId = remoteOrder.createUpdate(entityId,
                             Integer.valueOf((String) prop.getProperty(
-                                "creator_id")), thisOrder, languageId);
+                                "creator_id")),languageId, thisOrder, null, null);
                     System.out.println("Order " + newOrderId + " created for" +
                             " user " + newUserId);
-                    
+
                 }
-                
+
                 record = readLine(file);
             }
-            
+
             file.close();
 
             System.out.println("Total users uploaded: " + totalRows);
-            
+
             /*
              *  now process the items if present
              */
@@ -434,10 +432,10 @@ public class UploadData {
             System.out.println("Now loading types " + fileName);
             file = new BufferedReader(new FileReader(fileName));
             // get the remote interfaces TODO use the standard API
-/*            IItemSessionBean itemSession = (IItemSessionBean) 
+/*            IItemSessionBean itemSession = (IItemSessionBean)
                     RemoteContext.getBean(
                     RemoteContext.Name.ITEM_REMOTE_SESSION);
-*/            
+*/
             IItemSessionBean itemSession = null;
             header = file.readLine();
             // the types file has only one field with the description
@@ -455,12 +453,12 @@ public class UploadData {
                 record = readLine(file);
             }
             System.out.println("Created " + totalRows + " item categories");
-            
+
             // proceed with the items
             fileName = prop.getProperty("fileItems");
             System.out.println("Now loading items" + fileName);
             file = new BufferedReader(new FileReader(fileName));
-            
+
             header = file.readLine();
             Integer currencyId = Integer.valueOf(prop.getProperty(
                     "items.currency"));
@@ -493,25 +491,25 @@ public class UploadData {
                     return;
                 }
                 item.setTypes(type);
-                
+
                 itemSession.create(item, languageId);
                 totalRows++;
                 record = readLine(file);
             }
-            
+
             System.out.println("Created " + totalRows + " items");
 
         } catch (Exception e) {
-            System.err.println("Exception on record " + record + " : " 
-                    + e.getMessage());      
+            System.err.println("Exception on record " + record + " : "
+                    + e.getMessage());
             e.printStackTrace();
-        } 
+        }
     }
-    
-    static String readLine(BufferedReader file) 
+
+    static String readLine(BufferedReader file)
             throws IOException {
         StringBuffer retValue = new StringBuffer();
-        
+
         int aByte = file.read();
         boolean inString = false;
         while (aByte != -1) {
@@ -520,12 +518,12 @@ public class UploadData {
             } else {
                 if (!inString && aByte == '\n') {
                     break;
-                } 
+                }
                 retValue.append((char)aByte);
             }
             aByte = file.read();
         }
-        
+
         //System.out.println("Read [" + retValue + "]");
         return retValue.length() > 0 ? retValue.toString() : null;
     }

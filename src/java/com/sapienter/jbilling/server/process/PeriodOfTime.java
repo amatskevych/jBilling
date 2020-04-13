@@ -21,46 +21,57 @@ package com.sapienter.jbilling.server.process;
 
 
 import java.io.Serializable;
-import java.util.Calendar;
 import java.util.Date;
-import java.util.GregorianCalendar;
-import java.util.TimeZone;
 
-import org.joda.time.DateMidnight;
-import org.joda.time.DateTimeZone;
 import org.joda.time.Days;
+import org.joda.time.LocalDate;
 
 public class PeriodOfTime implements Serializable {
     
-    private final DateMidnight start;
-    private final DateMidnight end;
-    private final int position;
+    private final LocalDate start;
+    private final LocalDate end;
     private final int daysInCycle;
 
-    public PeriodOfTime(Date start, Date end, int dayInCycle, int position) {
-        this.start = start != null ? new DateMidnight(start.getTime()) : null;
-        this.end = end != null ? new DateMidnight(end.getTime()) : null;
-        this.position = position;
+    static public final PeriodOfTime OneTimeOrderPeriodOfTime = new PeriodOfTime() {
+        @Override
+        public Date getStart() {
+            return null;
+        }
+        @Override
+        public Date getEnd() {
+            return null;
+        }
+        @Override
+        public int getDaysInPeriod() {
+            return 0;
+        }
+    };
+
+    public PeriodOfTime(Date start, Date end, int dayInCycle) {
+        this.start = new LocalDate(start.getTime());
+        this.end = new LocalDate(end.getTime());
         this.daysInCycle = dayInCycle;
     }
 
-    public Date getEnd() {
-        return end != null ? end.toDate() : null;
+    private PeriodOfTime() {
+        this.start = null;
+        this.end = null;
+        this.daysInCycle = 0;
     }
 
-    public DateMidnight getDateMidnightEnd() {
+    public Date getEnd() {
+        return end.toDate();
+    }
+
+    public LocalDate getDateMidnightEnd() {
         return end;
     }
 
-    public int getPosition() {
-        return position;
-    }
-
     public Date getStart() {
-        return start != null ? start.toDate() : null;
+        return start.toDate();
     }
 
-    public DateMidnight getDateMidnightStart() {
+    public LocalDate getDateMidnightStart() {
         return start;
     }
 
@@ -79,7 +90,7 @@ public class PeriodOfTime implements Serializable {
      * @return number of days between start and end dates
      */
     public int getDaysInPeriod() {
-        if (start == null || end == null || end.isBefore(start)) {
+        if (end.isBefore(start) || end.isEqual(start)) {
             return 0;
         }
         return Days.daysBetween(start, end).getDays();
@@ -87,7 +98,6 @@ public class PeriodOfTime implements Serializable {
 
     @Override
     public String toString() {
-        return "period starts: " + start + " ends " + end + " position "
-                + position + " days in cycle " + getDaysInCycle();
+        return "period starts: " + start + " ends " + end + " days in cycle " + getDaysInCycle();
     }
 }

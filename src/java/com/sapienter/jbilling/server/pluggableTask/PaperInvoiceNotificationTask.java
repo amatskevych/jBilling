@@ -20,11 +20,23 @@
 
 package com.sapienter.jbilling.server.pluggableTask;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.util.Arrays;
 import java.util.ArrayList;
+
+import org.apache.commons.lang.StringUtils;
 import java.util.List;
 
+import com.sapienter.jbilling.server.notification.NotificationMediumType;
+import com.sapienter.jbilling.server.user.db.CustomerDTO;
+import com.sapienter.jbilling.server.util.Constants;
+import com.sapienter.jbilling.server.util.PreferenceBL;
+import net.sf.jasperreports.engine.JasperExportManager;
+import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.invoice.PaperInvoiceBatchBL;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDAS;
@@ -35,7 +47,9 @@ import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 import com.sapienter.jbilling.server.process.db.PaperInvoiceBatchDTO;
 import com.sapienter.jbilling.server.user.ContactBL;
 import com.sapienter.jbilling.server.user.ContactDTOEx;
+import com.sapienter.jbilling.server.user.EntityBL;
 import com.sapienter.jbilling.server.user.db.UserDTO;
+import org.codehaus.groovy.runtime.InvokerHelper;
 
 /**
  * @author Emil
@@ -43,11 +57,13 @@ import com.sapienter.jbilling.server.user.db.UserDTO;
 public class PaperInvoiceNotificationTask
         extends PluggableTask implements NotificationTask {
 
-    private static final Logger LOG = Logger.getLogger(PaperInvoiceNotificationTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaperInvoiceNotificationTask.class));
     // pluggable task parameters names
     public static final ParameterDescription PARAMETER_DESIGN = 
     	new ParameterDescription("design", true, ParameterDescription.Type.STR);
-    public static final ParameterDescription PARAMETER_LANGUAGE_OPTIONAL = 
+    public static final ParameterDescription PARAMETER_TEMPLATE =
+            new ParameterDescription("template", false, ParameterDescription.Type.INT);
+    public static final ParameterDescription PARAMETER_LANGUAGE_OPTIONAL =
     	new ParameterDescription("language", false, ParameterDescription.Type.STR);
     public static final ParameterDescription PARAMETER_SQL_QUERY_OPTIONAL = 
     	new ParameterDescription("sql_query", false, ParameterDescription.Type.STR);
@@ -56,6 +72,7 @@ public class PaperInvoiceNotificationTask
     //initializer for pluggable params
     { 
     	descriptions.add(PARAMETER_DESIGN);
+    	descriptions.add(PARAMETER_TEMPLATE);
         descriptions.add(PARAMETER_LANGUAGE_OPTIONAL);
         descriptions.add(PARAMETER_SQL_QUERY_OPTIONAL);
     }
@@ -63,6 +80,7 @@ public class PaperInvoiceNotificationTask
 
 
     private String design;
+    private Integer templateId;
     private boolean language;
     private boolean sqlQuery;
     private ContactBL contact;
@@ -76,33 +94,48 @@ public class PaperInvoiceNotificationTask
      */
     private void init(UserDTO user, MessageDTO message)
             throws TaskException {
-        design = (String) parameters.get(PARAMETER_DESIGN.getName());
-
-        language = Boolean.valueOf((String) parameters.get(
-                PARAMETER_LANGUAGE_OPTIONAL.getName()));
-
-        sqlQuery = Boolean.valueOf((String) parameters.get(
-                PARAMETER_SQL_QUERY_OPTIONAL.getName()));
+        design = parameters.get(PARAMETER_DESIGN.getName());
 
         invoice = (InvoiceDTO) message.getParameters().get(
                 "invoiceDto");
         try {
+            String templateIdStr = parameters.get(PARAMETER_TEMPLATE.getName());
+            templateId = ((templateIdStr != null) && !templateIdStr.isEmpty()) ? Integer.valueOf(parameters.get(PARAMETER_TEMPLATE.getName())) : null;
+            language = Boolean.valueOf((String) parameters.get(
+                    PARAMETER_LANGUAGE_OPTIONAL.getName()));
+            sqlQuery = Boolean.valueOf((String) parameters.get(
+                    PARAMETER_SQL_QUERY_OPTIONAL.getName()));
+        	
             contact = new ContactBL();
             contact.setInvoice(invoice.getId());
-            to = contact.getDTO();
+            if (contact.getEntity() != null) {
+                to = contact.getDTO();
+                if (to.getUserId() == null) {
+                    to.setUserId(invoice.getBaseUser().getUserId());
+                }
+            }
+
             entityId = user.getEntity().getId();
             contact.setEntity(entityId);
-            from = contact.getDTO();
+            LOG.debug("Found Entity %s contact %s", entityId, contact.getEntity());
+            if (contact.getEntity() != null) {
+                from = contact.getDTO();
+                LOG.debug("Retrieved entity contact i.e. from %s", from);
+                if (from.getUserId() == null) {
+                    from.setUserId(new EntityBL().getRootUser(entityId));
+                }
+                LOG.debug("Entity Contact User ID %s", from.getUserId());
+            }
         } catch (Exception e) {
             throw new TaskException(e);
         }
     }
 
-    public void deliver(UserDTO user, MessageDTO message)
+    public boolean deliver(UserDTO user, MessageDTO message)
             throws TaskException {
         if (!message.getTypeId().equals(MessageDTO.TYPE_INVOICE_PAPER)) {
             // this task is only to notify about invoices
-            return;
+            return false;
         }
         try {
             init(user, message);
@@ -124,6 +157,8 @@ public class PaperInvoiceNotificationTask
         } catch (Exception e) {
             throw new TaskException(e);
         }
+
+        return true;
     }
 
     public byte[] getPDF(UserDTO user, MessageDTO message)
@@ -131,12 +166,11 @@ public class PaperInvoiceNotificationTask
         try {
             init(user, message);
             LOG.debug("now message1 = " + message.getContent()[0].getContent());
-            return NotificationBL.generatePaperInvoiceAsStream(getDesign(user),
-                    sqlQuery, invoice, from, to, 
-                    message.getContent()[0].getContent(),
-                    message.getContent()[1].getContent(), entityId,
-                    user.getUserName(), user.getPassword());
-        } catch (Exception e) {
+
+                return NotificationBL.generatePaperInvoiceAsStream(this.getDesign(user), sqlQuery, invoice, from, to,
+                        message.getContent()[0].getContent(), message.getContent()[1].getContent(), entityId,
+                        user.getUserName(), user.getPassword());
+            } catch (Exception e) {
             throw new SessionInternalError(e);
         }
     }
@@ -145,12 +179,11 @@ public class PaperInvoiceNotificationTask
             throws SessionInternalError {
         try {
             init(user, message);
-            return NotificationBL.generatePaperInvoiceAsFile(getDesign(user),
-                    sqlQuery, invoice, from, to, 
-                    message.getContent()[0].getContent(),
-                    message.getContent()[1].getContent(), entityId,
-                    user.getUserName(), user.getPassword());
-        } catch (Exception e) {
+            
+                return NotificationBL.generatePaperInvoiceAsFile(this.getDesign(user), sqlQuery, invoice, from, to,
+                        message.getContent()[0].getContent(), message.getContent()[1].getContent(), entityId,
+                        user.getUserName(), user.getPassword());
+            } catch (Exception e) {
             throw new SessionInternalError(e);
         }
     }
@@ -159,11 +192,30 @@ public class PaperInvoiceNotificationTask
         return 2;
     }
 
+    @Override
+    public List<NotificationMediumType> mediumHandled() {
+        return Arrays.asList(NotificationMediumType.PDF);
+    }
+
     private String getDesign(UserDTO user) {
-        if (language) {
-            return design + user.getLanguage().getCode();
-        } else {
-            return design;
+        String customerDesign = null;
+		if ( null != user.getCustomer()) {
+        	
+        	if ( !StringUtils.isEmpty(user.getCustomer().getInvoiceDesign())) {
+        		customerDesign = user.getCustomer().getInvoiceDesign();
+        	} else if (null != user.getCustomer().getAccountType()) {
+        		customerDesign= user.getCustomer().getAccountType().getInvoiceDesign();
+        	} 
         }
+
+        if (StringUtils.isBlank(customerDesign) && user.getCustomer() != null && user.getCustomer().getAccountType() != null) {
+            customerDesign = user.getCustomer().getAccountType().getInvoiceDesign();
+        }
+
+        if (StringUtils.isBlank(customerDesign)) {
+            customerDesign = design;
+        }
+        	
+        return language ? customerDesign + user.getLanguage().getCode() :  customerDesign;
     }
 }

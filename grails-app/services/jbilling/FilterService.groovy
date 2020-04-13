@@ -20,17 +20,20 @@
 
 package jbilling
 
-import java.text.SimpleDateFormat
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
+
 import javax.servlet.http.HttpSession
+
 import org.codehaus.groovy.grails.web.servlet.mvc.GrailsParameterMap
 import org.springframework.web.context.request.RequestContextHolder
-import java.io.Serializable
+
 import com.sapienter.jbilling.client.filters.FilterFactory
+
 import org.codehaus.groovy.grails.web.metaclass.BindDynamicMethod
 
 /**
  * FilterService
-
+ *
  * @author Brian Cowdery
  * @since  30-11-2010
  */
@@ -56,7 +59,7 @@ class FilterService implements Serializable {
         // clear filter values when switching filter types
         def currentType = session[SESSION_CURRENT_FILTER_TYPE]
         if (currentType && type != currentType) {
-            getCurrentFilters()?.each { it.clear() }
+            session.removeAttribute(key)
         }
 
         /*
@@ -72,6 +75,7 @@ class FilterService implements Serializable {
                 if (filterParams instanceof Map) {
                     def filter = filters.find{ it.name == filterName }
                     bindData(filter, filterParams, null);
+                    if(params["${filter.field}.fieldKeyData"]) filter.fieldKeyData = params["${filter.field}.fieldKeyData"]
                 }
             }
         }
@@ -127,6 +131,10 @@ class FilterService implements Serializable {
         return type ? getFilters(type, null) : null
     }
 
+    def FilterType getCurrentFilterType() {
+        return (FilterType) session[SESSION_CURRENT_FILTER_TYPE]
+    }
+
     /**
      * Loads the filters for the given FilterSet id, updating the filter list
      * in the session for current usage.
@@ -137,8 +145,22 @@ class FilterService implements Serializable {
     def Object loadFilters(Integer filterSetId) {
         def filterset = FilterSet.get(filterSetId)
         def type = (FilterType) session[SESSION_CURRENT_FILTER_TYPE]
-        session[getSessionKey(type)] = filterset.filters
-        return filterset.filters
+
+        if (filterset.filters.find{ it.type != FilterType.ALL && it.type != type }) {
+            session.error = 'filters.cannot.load.message'
+            return getCurrentFilters()
+        }
+
+        // always make the loaded filters visible
+        filterset.filters.each { filter->
+            if (filter.value) {
+                filter.visible = true
+            }
+        }
+
+        List filterList = filterset.filters.asList()
+        session[getSessionKey(type)] = filterList
+        return filterList
     }
 
     /**
@@ -207,5 +229,31 @@ class FilterService implements Serializable {
 
             new BindDynamicMethod().invoke(model, 'bind', (Object[]) args)
         }
+    }
+
+
+    public MetaFieldType getMetaFieldTypeForFilter(String filterField){
+        MetaFieldType type
+        switch(filterField){
+            case 'contact.firstName':
+                type = MetaFieldType.FIRST_NAME
+                break;
+            case 'contact.lastName':
+                type = MetaFieldType.LAST_NAME
+                break;
+            case 'contact.organizationName':
+                type = MetaFieldType.ORGANIZATION
+                break;
+            case 'contact.postalCode':
+                type = MetaFieldType.POSTAL_CODE
+                break;
+            case 'contact.phoneNumber':
+                type = MetaFieldType.PHONE_NUMBER
+                break;
+            case 'contact.email':
+                type = MetaFieldType.EMAIL
+                break;
+        }
+        return type
     }
 }

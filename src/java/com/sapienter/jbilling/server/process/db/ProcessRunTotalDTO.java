@@ -19,6 +19,7 @@
  */
 package com.sapienter.jbilling.server.process.db;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.Set;
 
@@ -179,4 +180,5 @@ public class ProcessRunTotalDTO implements java.io.Serializable {
 
         return ret.toString();
     }
+
 }

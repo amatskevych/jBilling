@@ -19,13 +19,18 @@
  */
 package com.sapienter.jbilling.server.util.db;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.order.db.OrderChangeStatusDTO;
 import com.sapienter.jbilling.server.util.Context;
 import org.apache.log4j.Logger;
+import org.hibernate.Criteria;
+import org.hibernate.criterion.Projections;
 import org.hibernate.criterion.Restrictions;
 import org.springmodules.cache.CachingModel;
 import org.springmodules.cache.provider.CacheProviderFacade;
 
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * Abstract DAS class for status classes. The AbstractDAS find and
@@ -36,10 +41,10 @@ import java.io.Serializable;
  */
 public abstract class AbstractGenericStatusDAS<T> extends AbstractDAS<T> {
 
-    private static final Logger LOG = Logger.getLogger(AbstractGenericStatusDAS.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(AbstractGenericStatusDAS.class));
 
     private CacheProviderFacade cache;
-    private CachingModel cacheModel;
+    protected CachingModel cacheModel;
 
     protected AbstractGenericStatusDAS() {
         super();
@@ -74,6 +79,16 @@ public abstract class AbstractGenericStatusDAS<T> extends AbstractDAS<T> {
     @Override
     public T findNow(Serializable statusId) {
         return find(statusId);
+    }
+
+    public int findNextStatusId() {
+        Criteria criteria = getSession().createCriteria(getPersistentClass()).setProjection(Projections.max("id"));
+        List<Integer> resultList = criteria.list();
+        int nextStatusId = 1;
+        if (resultList != null && !resultList.isEmpty()) {
+            nextStatusId = resultList.get(0) + 1;
+        }
+        return nextStatusId;
     }
 
     /**

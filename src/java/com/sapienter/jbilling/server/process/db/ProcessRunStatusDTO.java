@@ -22,6 +22,8 @@ package com.sapienter.jbilling.server.process.db;
 
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.db.AbstractGenericStatus;
+import org.hibernate.annotations.Cache;
+import org.hibernate.annotations.CacheConcurrencyStrategy;
 
 import javax.persistence.DiscriminatorValue;
 import javax.persistence.Entity;
@@ -29,6 +31,7 @@ import javax.persistence.Transient;
 
 @Entity
 @DiscriminatorValue("process_run_status")
+@Cache(usage = CacheConcurrencyStrategy.READ_ONLY)
 public class ProcessRunStatusDTO extends AbstractGenericStatus implements java.io.Serializable {
 
 
@@ -53,7 +56,7 @@ public class ProcessRunStatusDTO extends AbstractGenericStatus implements java.i
         builder.append(getId());
         builder.append(", getDescription()=");
         builder.append(getDescription());
-        builder.append("]");
+        builder.append(']');
         return builder.toString();
     }
 

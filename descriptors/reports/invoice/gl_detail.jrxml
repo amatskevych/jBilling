@@ -5,6 +5,7 @@
 	<property name="ireport.y" value="0"/>
 	<parameter name="date" class="java.util.Date"/>
 	<parameter name="entity_id" class="java.lang.Integer"/>
+	<parameter name="child_entities" class="java.util.List"/>
 	<queryString>
 		<![CDATA[select
             u.id as user_id,
@@ -23,22 +24,22 @@
             inner join order_line l on l.order_id = o.id
             inner join item it on it.id = l.item_id
             inner join base_user u on u.id = i.user_id
-            inner join contact c on c.user_id = u.id
             inner join international_description d on d.table_id = 17
                                             and d.language_id = 1
                                             and d.psudo_column = 'description'
                                             and d.foreign_id = o.period_id
+            left outer join contact c on c.user_id = u.id
         where
-            u.entity_id = $P{entity_id}
+            (u.entity_id = $P{entity_id} or $X{IN,u.entity_id,child_entities})
             and i.deleted = 0
             and i.is_review = 0
-            and i.create_datetime = $P{date}]]>
+            and CAST(i.create_datetime AS DATE) = CAST($P{date} AS DATE)]]>
 	</queryString>
 	<field name="user_id" class="java.lang.Integer"/>
 	<field name="user_name" class="java.lang.String"/>
 	<field name="organization_name" class="java.lang.String"/>
-	<field name="order_type" class="java.lang.String"/>
 	<field name="order_id" class="java.lang.Integer"/>
+	<field name="order_type" class="java.lang.String"/>
 	<field name="item_id" class="java.lang.Integer"/>
 	<field name="gl_code" class="java.lang.String"/>
 	<field name="description" class="java.lang.String"/>

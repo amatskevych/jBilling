@@ -21,9 +21,12 @@ package com.sapienter.jbilling.server.payment.db;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 
 import javax.persistence.CascadeType;
@@ -34,24 +37,34 @@ import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
+import javax.persistence.JoinTable;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.TableGenerator;
 import javax.persistence.Transient;
 import javax.persistence.Version;
+import javax.persistence.OrderBy;
 
+import org.hibernate.annotations.*;
+import org.hibernate.annotations.Cache;
+import org.hibernate.annotations.CacheConcurrencyStrategy;
+import org.hibernate.annotations.Cascade;
+import org.hibernate.annotations.Sort;
+import org.hibernate.annotations.SortType;
+
+import com.sapienter.jbilling.server.metafields.EntityType;
+import com.sapienter.jbilling.server.metafields.MetaFieldHelper;
+import com.sapienter.jbilling.server.metafields.db.CustomizedEntity;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
-import com.sapienter.jbilling.server.user.db.AchDTO;
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
 import com.sapienter.jbilling.server.user.db.UserDTO;
 import com.sapienter.jbilling.server.user.partner.db.PartnerPayout;
 import com.sapienter.jbilling.server.util.csv.Exportable;
 import com.sapienter.jbilling.server.util.db.CurrencyDTO;
-import org.hibernate.annotations.Cache;
-import org.hibernate.annotations.CacheConcurrencyStrategy;
 
 @Entity
+@org.hibernate.annotations.Entity(dynamicUpdate = true)
 @TableGenerator(
         name = "payment_GEN", 
         table = "jbilling_seqs", 
@@ -61,16 +74,14 @@ import org.hibernate.annotations.CacheConcurrencyStrategy;
         allocationSize = 100)
 @Table(name = "payment")
 @Cache(usage = CacheConcurrencyStrategy.NONSTRICT_READ_WRITE)
-public class PaymentDTO implements Serializable, Exportable {
+public class PaymentDTO extends CustomizedEntity implements Serializable, Exportable {
 
     private int id;
     private UserDTO baseUser;
     private CurrencyDTO currencyDTO;
     private PaymentMethodDTO paymentMethod;
     private PaymentDTO payment;
-    private CreditCardDTO creditCard;
     private PaymentResultDTO paymentResult;
-    private AchDTO ach;
     private Integer attempt;
     private BigDecimal amount;
     private Date createDatetime;
@@ -81,17 +92,21 @@ public class PaymentDTO implements Serializable, Exportable {
     private BigDecimal balance;
     private Date updateDatetime;
     private Integer isPreauth;
-    private PaymentInfoChequeDTO paymentInfoCheque;
+    
+    // credit card
+    PaymentInformationDTO creditCard;
     
     private Set<PaymentInvoiceMapDTO> invoicesMap = new HashSet<PaymentInvoiceMapDTO>(0);
     private Set<PaymentAuthorizationDTO> paymentAuthorizations = new HashSet<PaymentAuthorizationDTO>(0);
     private Set<PaymentDTO> payments = new HashSet<PaymentDTO>(0);
     private Set<PartnerPayout> partnerPayouts = new HashSet<PartnerPayout>(0);
+    
+    private List<PaymentInstrumentInfoDTO> paymentInstrumentsInfo = new ArrayList<PaymentInstrumentInfoDTO>(0);
 
     private int versionNum;
     private Integer paymentPeriod;
     private String paymentNotes;
-
+    
     public PaymentDTO() {
     }
 
@@ -131,22 +146,19 @@ public class PaymentDTO implements Serializable, Exportable {
     }
 
     public PaymentDTO(int id, UserDTO baseUser, CurrencyDTO currencyDTO,
-            PaymentMethodDTO paymentMethod, PaymentDTO payment,
-            CreditCardDTO creditCard, PaymentResultDTO paymentResult, AchDTO ach,
+            PaymentMethodDTO paymentMethod, PaymentDTO payment, 
+            PaymentResultDTO paymentResult,
             Integer attempt, BigDecimal amount, Date createDatetime,
             Date paymentDate, int deleted, int isRefund, PartnerPayout payoutId,
             BigDecimal balance, Date updateDatetime, int isPreauth,
             Set<PaymentAuthorizationDTO> paymentAuthorizations,
-            Set<PaymentDTO> payments, Set<PartnerPayout> partnerPayouts,
-            PaymentInfoChequeDTO paymentInfoCheque) {
+            Set<PaymentDTO> payments, Set<PartnerPayout> partnerPayouts) {
         this.id = id;
         this.baseUser = baseUser;
         this.currencyDTO = currencyDTO;
         this.paymentMethod = paymentMethod;
         this.payment = payment;
-        this.creditCard = creditCard;
         this.paymentResult = paymentResult;
-        this.ach = ach;
         this.attempt = attempt;
         this.amount = amount;
         this.createDatetime = createDatetime;
@@ -160,7 +172,6 @@ public class PaymentDTO implements Serializable, Exportable {
         this.paymentAuthorizations = paymentAuthorizations;
         this.payments = payments;
         this.partnerPayouts = partnerPayouts;
-        this.paymentInfoCheque = paymentInfoCheque;
     }
 
     public PaymentDTO(int id2, BigDecimal amount2, BigDecimal balance2,
@@ -192,9 +203,7 @@ public class PaymentDTO implements Serializable, Exportable {
         this.currencyDTO = dto.currencyDTO;
         this.paymentMethod = dto.paymentMethod;
         this.payment = dto.payment;
-        this.creditCard = dto.creditCard;
         this.paymentResult = dto.paymentResult;
-        this.ach = dto.ach;
         this.attempt = dto.attempt;
         this.amount = dto.amount;
         this.createDatetime = dto.createDatetime;
@@ -208,9 +217,9 @@ public class PaymentDTO implements Serializable, Exportable {
         this.paymentAuthorizations = dto.paymentAuthorizations;
         this.payments = dto.payments;
         this.partnerPayouts = dto.partnerPayouts;
-        this.paymentInfoCheque = dto.paymentInfoCheque;
         this.paymentNotes = dto.paymentNotes;
         this.paymentPeriod = dto.paymentPeriod;
+        this.setMetaFields(new LinkedList<MetaFieldValue>(dto.getMetaFields()));
     }
 
     @Id
@@ -245,7 +254,7 @@ public class PaymentDTO implements Serializable, Exportable {
     }
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "method_id", nullable = false)
+    @JoinColumn(name = "method_id")
     public PaymentMethodDTO getPaymentMethod() {
         return this.paymentMethod;
     }
@@ -265,16 +274,6 @@ public class PaymentDTO implements Serializable, Exportable {
     }
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "credit_card_id")
-    public CreditCardDTO getCreditCard() {
-        return this.creditCard;
-    }
-
-    public void setCreditCard(CreditCardDTO creditCard) {
-        this.creditCard = creditCard;
-    }
-
-    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "result_id")
     public PaymentResultDTO getPaymentResult() {
         return this.paymentResult;
@@ -282,16 +281,6 @@ public class PaymentDTO implements Serializable, Exportable {
 
     public void setPaymentResult(PaymentResultDTO paymentResult) {
         this.paymentResult = paymentResult;
-    }
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ach_id")
-    public AchDTO getAch() {
-        return this.ach;
-    }
-
-    public void setAch(AchDTO ach) {
-        this.ach = ach;
     }
 
     @Column(name = "attempt")
@@ -396,6 +385,16 @@ public class PaymentDTO implements Serializable, Exportable {
     }
 
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "credit_card_id")
+    public PaymentInformationDTO getCreditCard() {
+        return this.creditCard;
+    }
+
+    public void setCreditCard(PaymentInformationDTO creditCard) {
+        this.creditCard = creditCard;
+    }
+    
     @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "payment")
     public Set<PaymentAuthorizationDTO> getPaymentAuthorizations() {
         return this.paymentAuthorizations;
@@ -424,25 +423,6 @@ public class PaymentDTO implements Serializable, Exportable {
         this.partnerPayouts = partnerPayouts;
     }
 
-    @Transient
-    public PaymentInfoChequeDTO getPaymentInfoCheque() {
-        return new PaymentInfoChequeDAS().findByPayment(this);
-    }
-
-    public void setPaymentInfoCheque(PaymentInfoChequeDTO paymentInfoCheque) {
-        
-        PaymentInfoChequeDAS das = new PaymentInfoChequeDAS();
-        PaymentInfoChequeDTO finded = das.findByPayment(this);
-        
-        if (finded != null) {
-            das.delete(finded);
-        }
-        
-        paymentInfoCheque.setPayment(this);
-        das.save(paymentInfoCheque);
-        
-    }
-
     public void setInvoicesMap(Set<PaymentInvoiceMapDTO> invoicesMap) {
         this.invoicesMap = invoicesMap;
     }
@@ -462,6 +442,33 @@ public class PaymentDTO implements Serializable, Exportable {
         this.versionNum = versionNum;
     }
 
+    @OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @Cascade(org.hibernate.annotations.CascadeType.DELETE_ORPHAN)
+    @JoinTable(
+            name = "payment_meta_field_map",
+            joinColumns = @JoinColumn(name = "payment_id"),
+            inverseJoinColumns = @JoinColumn(name = "meta_field_value_id")
+    )
+    @Sort(type = SortType.COMPARATOR, comparator = MetaFieldHelper.MetaFieldValuesOrderComparator.class)
+    public List<MetaFieldValue> getMetaFields() {
+        return getMetaFieldsList();
+    }
+
+    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "payment")
+    @OrderBy("id")
+    public List<PaymentInstrumentInfoDTO> getPaymentInstrumentsInfo() {
+		return paymentInstrumentsInfo;
+	}
+
+	public void setPaymentInstrumentsInfo(List<PaymentInstrumentInfoDTO> paymentInstrumentsInfo) {
+		this.paymentInstrumentsInfo = paymentInstrumentsInfo;
+	}
+	
+    @Transient
+    public EntityType[] getCustomizedEntityType() {
+        return new EntityType[] { EntityType.PAYMENT };
+    }
+
     @Transient
     public Integer getMethodId() {
         return getPaymentMethod().getId();
@@ -469,7 +476,7 @@ public class PaymentDTO implements Serializable, Exportable {
 
     @Transient
     public Integer getResultId() {
-        return getPaymentResult().getId();
+        return null != getPaymentResult() ? getPaymentResult().getId() : null;
     }
 
     @Column(name = "payment_notes", nullable = true)
@@ -489,7 +496,7 @@ public class PaymentDTO implements Serializable, Exportable {
     public void setPaymentPeriod(Integer period){
         this.paymentPeriod = period;
     }
-
+    
     @Transient
     public String[] getFieldNames() {
         return new String[] {
@@ -546,8 +553,8 @@ public class PaymentDTO implements Serializable, Exportable {
         }
 
         PaymentAuthorizationDTO latestAuthorization = (!paymentAuthorizations.isEmpty()
-                                                           ? paymentAuthorizations.iterator().next()
-                                                           : null);
+                ? paymentAuthorizations.iterator().next()
+                : null);
 
         return new Object[][] {
             {
@@ -575,20 +582,8 @@ public class PaymentDTO implements Serializable, Exportable {
                 (latestAuthorization != null ? latestAuthorization.getMD5() : null),
                 (latestAuthorization != null ? latestAuthorization.getCardCode() : null),
                 (latestAuthorization != null ? latestAuthorization.getResponseMessage() : null),
-
-                (creditCard != null ? creditCard.getName() : null),
-                (creditCard != null ? creditCard.getCcNumberPlain() : null),
-                (creditCard != null ? creditCard.getCcType() : null),
-                (creditCard != null ? creditCard.getExpiry() : null),
-
-                (ach != null ? ach.getAccountName() : null),
-                (ach != null ? ach.getBankName() : null),
-                (ach != null ? ach.getAccountType() : null),
-
-                (paymentInfoCheque != null ? paymentInfoCheque.getBank() : null),
-                (paymentInfoCheque != null ? paymentInfoCheque.getNumber() : null),
-                (paymentInfoCheque != null ? paymentInfoCheque.getDate() : null),
             }
         };
     }
+
 }

@@ -20,20 +20,22 @@
 
 package com.sapienter.jbilling.server.pluggableTask;
 
-import com.sapienter.jbilling.server.order.db.OrderDTO;
-import com.sapienter.jbilling.server.order.db.OrderPeriodDTO;
-import com.sapienter.jbilling.server.process.PeriodOfTime;
-import com.sapienter.jbilling.server.user.db.CompanyDTO;
-import com.sapienter.jbilling.server.user.db.UserDTO;
-import junit.framework.TestCase;
-import org.joda.time.DateMidnight;
-import org.joda.time.DateTimeZone;
-
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.Locale;
 import java.util.TimeZone;
+
+import junit.framework.TestCase;
+
+import org.joda.time.DateTimeZone;
+
+import com.sapienter.jbilling.server.order.db.OrderDTO;
+import com.sapienter.jbilling.server.order.db.OrderLineDTO;
+import com.sapienter.jbilling.server.order.db.OrderPeriodDTO;
+import com.sapienter.jbilling.server.process.PeriodOfTime;
+import com.sapienter.jbilling.server.user.db.CompanyDTO;
+import com.sapienter.jbilling.server.user.db.UserDTO;
 
 /**
  * BasicCompositionTaskTest
@@ -46,28 +48,27 @@ public class BasicCompositionTaskTest extends TestCase {
     private final TimeZone defaultTimeZone = TimeZone.getDefault();
 
     /**
-     * BasicCompositionTask extended for testing. The locale is settable and this
-     * will never attempt to look up the entity preference for appending the order
-     * id to the invoice line.
+     * BasicCompositionTask extended for testing. The locale is settable and this will never attempt to look up the
+     * entity preference for appending the order id to the invoice line.
      *
-     * This class is needed so that the invoice line description composition can be
-     * tested without the need for a live container.
+     * This class is needed so that the invoice line description composition can be tested without the need for a live
+     * container.
      */
     private class TestBasicCompositionTask extends BasicCompositionTask {
 
         private Locale locale = Locale.getDefault();
 
-        public void setLocale(Locale locale) {
+        public void setLocale (Locale locale) {
             this.locale = locale;
         }
 
         @Override
-        protected Locale getLocale(Integer userId) {
+        protected Locale getLocale (Integer userId) {
             return locale; // for testing, return whatever locale is set
         }
 
         @Override
-        protected boolean appendOrderId(Integer entityId) {
+        protected boolean needAppendOrderId (Integer entityId) {
             return false; // for testing, never append the order ID
         }
     }
@@ -75,22 +76,13 @@ public class BasicCompositionTaskTest extends TestCase {
     // class under test
     private TestBasicCompositionTask task = new TestBasicCompositionTask();
 
-
-    public BasicCompositionTaskTest() {
-    }
-
-    public BasicCompositionTaskTest(String name) {
-        super(name);
-    }
-
-
     @Override
-    protected void setUp() throws Exception {
+    protected void setUp () throws Exception {
         super.setUp();
     }
 
     @Override
-    protected void tearDown() throws Exception {
+    protected void tearDown () throws Exception {
         super.tearDown();
 
         // reset timezone back to default
@@ -98,7 +90,7 @@ public class BasicCompositionTaskTest extends TestCase {
         DateTimeZone.setDefault(DateTimeZone.forTimeZone(defaultTimeZone));
     }
 
-    public void testComposeDescription() {
+    public void testComposeDescription () {
         // period being processed
         Calendar calendar = GregorianCalendar.getInstance();
         calendar.clear();
@@ -109,14 +101,14 @@ public class BasicCompositionTaskTest extends TestCase {
         calendar.set(2011, Calendar.OCTOBER, 1);
         Date end = calendar.getTime();
 
-        PeriodOfTime period = new PeriodOfTime(start, end, 0, 0);
+        PeriodOfTime period = new PeriodOfTime(start, end, 0);
 
         // verify description
-        String description = task.composeDescription(getMockOrder(), period, "Line description");
+        String description = task.composeDescription(getMockOrderLine(getMockOrder()), period);
         assertEquals("Line description Period from 09/01/2011 to 09/30/2011", description);
     }
 
-    public void testComposeDescriptionTZ() {
+    public void testComposeDescriptionTZ () {
         // try composing in a different time zone.
         TimeZone EDT = TimeZone.getTimeZone("EDT");
         TimeZone.setDefault(EDT);
@@ -132,14 +124,14 @@ public class BasicCompositionTaskTest extends TestCase {
         calendar.set(2011, Calendar.OCTOBER, 1);
         Date end = calendar.getTime();
 
-        PeriodOfTime period = new PeriodOfTime(start, end, 0, 0);
+        PeriodOfTime period = new PeriodOfTime(start, end, 0);
 
         // verify description, different timezone shouldn't have affected the dates
-        String description = task.composeDescription(getMockOrder(), period, "Line description");
+        String description = task.composeDescription(getMockOrderLine(getMockOrder()), period);
         assertEquals("Line description Period from 09/01/2011 to 09/30/2011", description);
     }
 
-    private OrderDTO getMockOrder() {
+    private OrderDTO getMockOrder () {
         UserDTO user = new UserDTO(1);
         user.setCompany(new CompanyDTO(1));
 
@@ -148,5 +140,12 @@ public class BasicCompositionTaskTest extends TestCase {
         order.setOrderPeriod(new OrderPeriodDTO(2)); // not a one time period
 
         return order;
+    }
+
+    private OrderLineDTO getMockOrderLine (OrderDTO order) {
+        OrderLineDTO orderLine = new OrderLineDTO();
+        orderLine.setPurchaseOrder(order);
+        orderLine.setDescription("Line description");
+        return orderLine;
     }
 }

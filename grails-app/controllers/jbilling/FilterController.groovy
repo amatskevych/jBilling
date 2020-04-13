@@ -20,7 +20,8 @@
 
 package jbilling
 
-import grails.plugins.springsecurity.Secured
+import grails.plugin.springsecurity.annotation.Secured
+import grails.transaction.Transactional
 
 /**
  * FilterController
@@ -30,13 +31,13 @@ import grails.plugins.springsecurity.Secured
  */
 @Secured(["isAuthenticated()"])
 class FilterController {
-
+	static scope = "prototype"
     def filterService
 
     /**
      * Add a hidden filter to the filter pane.
      */
-    def add = {
+    def add () {
         def filters = filterService.showFilter(params.name)
         render template: "/layouts/includes/filters", model: [ filters: filters ]
     }
@@ -44,7 +45,7 @@ class FilterController {
     /**
      * Remove a filter from the filter pane.
      */
-    def remove = {
+    def remove () {
         def filters = filterService.removeFilter(params.name)
         render template: "/layouts/includes/filters", model: [ filters: filters ]
     }
@@ -52,7 +53,7 @@ class FilterController {
     /**
      * Load a saved filter set and replace the current filters in the filter pane.
      */
-    def load = {
+    def load () {
         def filters = filterService.loadFilters(params.int("id"))
         render template: "/layouts/includes/filters", model: [ filters: filters ]
     }
@@ -62,7 +63,7 @@ class FilterController {
     /**
      * Render the filter pane
      */
-    def filters = {
+    def filters () {
         def filters = filterService.getCurrentFilters()
         render template: "/layouts/includes/filters", model: [ filters: filters ]
     }
@@ -70,21 +71,23 @@ class FilterController {
     /**
      * Render a list of filter sets to be edited (from the save dialog)
      */
-    def filtersets = {
+    def filtersets () {
         def filters = filterService.getCurrentFilters()
         def filtersets = FilterSet.findAllByUserId(session['user_id'])
 
         render template: "filtersets", model: [ filtersets: filtersets, filters: filters ]
     }
 
-    def edit = {
+    @Transactional(readOnly = false)
+    def edit () {
         def filters = filterService.getCurrentFilters()
         def filterset = FilterSet.get(params.int('id'))
 
         render template: "edit", model: [ selected: filterset, filters: filters ]
     }
 
-    def save = {
+    @Transactional(readOnly = false)
+    def save () {
         def filterset = params.id ? FilterSet.get(params.int('id')) : new FilterSet(params)
         filterset.userId = session['user_id']
 
@@ -101,7 +104,8 @@ class FilterController {
         render template: "filtersets", model: [ filtersets: filtersets, selected: filterset  ]
     }
 
-    def delete = {
+    @Transactional(readOnly = false)
+    def delete () {
         FilterSet.get(params.int('id'))?.delete(flush: true)
 
         log.debug("deleted filter set ${params.id}")

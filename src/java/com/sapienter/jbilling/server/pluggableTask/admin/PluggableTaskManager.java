@@ -29,6 +29,7 @@ import java.util.List;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.pluggableTask.PluggableTask;
 import com.sapienter.jbilling.server.util.Context;
 import org.springframework.util.ClassUtils;
@@ -37,7 +38,7 @@ import java.util.ArrayList;
 
 public class PluggableTaskManager<T> {
 
-    private static final Logger LOG = Logger.getLogger(PluggableTaskManager.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PluggableTaskManager.class));
 
     private List<PluggableTaskDTO> classes = null;
 
@@ -50,11 +51,10 @@ public class PluggableTaskManager<T> {
 
         try {
             lastProcessingOrder = 0;
-
+            LOG.debug("Entered PluggableTaskManager");
             classes = new ArrayList<PluggableTaskDTO>();
             classes.addAll(((PluggableTaskDAS) Context.getBean(Context.Name.PLUGGABLE_TASK_DAS)).findByEntityCategory(
                     entityId, taskCategory));
-
             it = classes.iterator();
             LOG.debug("total classes = " + classes.size());
 
@@ -70,7 +70,6 @@ public class PluggableTaskManager<T> {
     public T getNextClass() throws PluggableTaskException {
         if (it != null && it.hasNext()) {
             PluggableTaskDTO aRule = (PluggableTaskDTO) it.next();
-
             // check if the order by is in place
             int processingOrder = aRule.getProcessingOrder().intValue();
             // this is helpful also to identify bad data in the table
@@ -83,7 +82,7 @@ public class PluggableTaskManager<T> {
 
             String className = aRule.getType().getClassName();
             String interfaceName = aRule.getType().getCategory().getInterfaceName();
-
+            
             LOG.debug("Applying task " + className);
 
             return getInstance(className, interfaceName, aRule);

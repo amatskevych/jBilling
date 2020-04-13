@@ -41,6 +41,7 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.payment.IPaymentSessionBean;
 import com.sapienter.jbilling.server.util.Context;
 
@@ -49,7 +50,7 @@ import com.sapienter.jbilling.server.util.Context;
  *
  */
 public class ExternalCallbackServlet extends HttpServlet {
-    private static final Logger LOG = Logger.getLogger(ExternalCallbackServlet.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(ExternalCallbackServlet.class));
     public void doPost(HttpServletRequest request, 
             HttpServletResponse response) 
             throws ServletException, IOException {
@@ -63,7 +64,7 @@ public class ExternalCallbackServlet extends HttpServlet {
             }
             
             if (!verifyTransactionType(request.getParameter("txn_type"))) {
-                LOG.debug("transaction is type " +request.getParameter("txn_type") + " ignoring");
+                LOG.debug("transaction is type %s ignoring", request.getParameter("txn_type"));
                 return;
             }
             
@@ -74,13 +75,12 @@ public class ExternalCallbackServlet extends HttpServlet {
             while (parameters.hasMoreElements()) {
                 String parameter = (String) parameters.nextElement();
                 String value = request.getParameter(parameter);
-                LOG.debug("parameter : " + parameter + 
-                        " value : " + value);
+                LOG.debug("parameter : %s value : %s", parameter, value);
                 validationStr = validationStr + "&" + parameter + "=" + 
                     URLEncoder.encode(value);
             }
             
-            LOG.debug("About to call paypal for validation.  Request" + validationStr);
+            LOG.debug("About to call paypal for validation.  Request %s", validationStr);
             URL u = new URL("https://www.paypal.com/cgi-bin/webscr");
             URLConnection uc = u.openConnection();
             uc.setDoOutput(true);
@@ -95,7 +95,7 @@ public class ExternalCallbackServlet extends HttpServlet {
             in.close();
     
             //check notification validation
-            LOG.debug("Validation result is " + res);
+            LOG.debug("Validation result is %s", res);
             if(res.equals("VERIFIED")) {
             //if(res.equals("INVALID")) { // only for testing
                 LOG.debug("ok");
@@ -109,7 +109,7 @@ public class ExternalCallbackServlet extends HttpServlet {
                 
                 if (paymentStatus == null || !paymentStatus.equalsIgnoreCase(
                         "completed")) {
-                    LOG.debug("payment status is " + paymentStatus + " Rejecting");
+                    LOG.debug("payment status is %s Rejecting", paymentStatus);
                 } else { 
                     try {
                         IPaymentSessionBean paymentSession = 
@@ -121,7 +121,7 @@ public class ExternalCallbackServlet extends HttpServlet {
                         Boolean result = paymentSession.processPaypalPayment(invoiceId, receiverEmail, amount,
                                                                              paymentCurrency, userId, userEmail);
                         
-                        LOG.debug("Finished callback with result " + result);
+                        LOG.debug("Finished callback with result %s", result);
                     } catch (Exception e) {
                         LOG.error("Exception processing a paypal callback ", e);
                     }
@@ -146,7 +146,7 @@ public class ExternalCallbackServlet extends HttpServlet {
             try {
                 retValue = Integer.parseInt(str);
             } catch (NumberFormatException e) {
-                LOG.debug("Invalid int field." + str + " - " + e.getMessage());
+                LOG.debug("Invalid int field. %s - ", str, e.getMessage());
             }
         }
         return retValue;

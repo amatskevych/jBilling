@@ -30,10 +30,11 @@ import org.apache.log4j.Logger;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.jms.core.MessageCreator;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.util.Context;
 
 public abstract class AsynchronousEventProcessor<TType> extends EventProcessor<TType> {
-    private static final Logger LOG = Logger.getLogger(AsynchronousEventProcessor.class); 
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(AsynchronousEventProcessor.class)); 
 
     protected MapMessage message;
     

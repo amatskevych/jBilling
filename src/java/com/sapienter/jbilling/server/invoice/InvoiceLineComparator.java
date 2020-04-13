@@ -20,6 +20,7 @@
 
 package com.sapienter.jbilling.server.invoice;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.invoice.db.InvoiceLineDTO;
 import java.util.Comparator;
 
@@ -51,7 +52,7 @@ public class InvoiceLineComparator implements Comparator<InvoiceLineDTO> {
                     // find out both users
                     retValue = perA.getSourceUserId().compareTo(perB.getSourceUserId());
                     /*
-                    Logger.getLogger(InvoiceLineComparator.class).debug(
+                    new FormatLogger(Logger.getLogger(InvoiceLineComparator.class).debug(
                             "Testing two sub account lines. a.userid " + 
                             perA.getSourceUserId() + " b.userid " + perB.getSourceUserId() +
                             " result " + retValue);
@@ -83,7 +84,7 @@ public class InvoiceLineComparator implements Comparator<InvoiceLineDTO> {
                     retValue = 0;
                 }
             } catch (Exception e) {
-                Logger.getLogger(InvoiceLineComparator.class).error(
+                new FormatLogger(Logger.getLogger(InvoiceLineComparator.class)).error(
                         "Comparing invoice lines " + perA + " " + perB, e);
                 retValue = 0;
             }
@@ -91,7 +92,7 @@ public class InvoiceLineComparator implements Comparator<InvoiceLineDTO> {
             retValue = new Integer(perA.getOrderPosition()).compareTo(perB.getOrderPosition());
         }
 /*        
-        Logger.getLogger(InvoiceLineComparator.class).debug(
+        new FormatLogger(Logger.getLogger(InvoiceLineComparator.class).debug(
                 "Comparing " + perA.getId() + " " + perB.getId() +
                 " result " + retValue);
 */        

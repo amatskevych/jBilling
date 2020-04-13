@@ -30,6 +30,8 @@ import javax.persistence.Table;
 import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
 
+import java.io.Serializable;
+
 @Entity
 @Table(name="international_description")
 @Cache(usage = CacheConcurrencyStrategy.NONSTRICT_READ_WRITE)
@@ -73,6 +75,7 @@ public class InternationalDescription  implements java.io.Serializable {
     public void setContent(String content) {
         this.content = content;
     }
+
 }
 
 

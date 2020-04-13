@@ -34,7 +34,7 @@ import org.apache.log4j.Logger;
  * the jbilling.properties file
  */
 public class SystemProperties {
-    private static final Logger LOG = Logger.getLogger(SystemProperties.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(SystemProperties.class));
 
     private static final String JBILLING_HOME = "JBILLING_HOME";
     private static final String PROPERTIES_FILE = "jbilling.properties";
@@ -58,12 +58,12 @@ public class SystemProperties {
 
         stream.close();
 
-        LOG.debug("System properties loaded from: " + properties.getPath());
+        LOG.debug("System properties loaded from: %s", properties.getPath());
         System.out.println("System properties loaded from: " + properties.getPath());
 
         resourcesDir = getJBillingResourcesDir();
 
-        LOG.debug("Resolved jbilling resources directory to: " + resourcesDir);
+        LOG.debug("Resolved jbilling resources directory to: %s", resourcesDir);
         System.out.println("Resolved jbilling resources directory to: " + resourcesDir);
     }
 

@@ -25,6 +25,7 @@ import java.util.List;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
 import com.sapienter.jbilling.server.payment.blacklist.AddressFilter;
 import com.sapienter.jbilling.server.payment.blacklist.BlacklistFilter;
@@ -78,7 +79,7 @@ public class PaymentFilterTask extends PaymentTaskBase implements PaymentTask {
     	descriptions.add(PARAM_IP_ADDRESS_CCF_ID);
     }
     
-    private static final Logger LOG = Logger.getLogger(PaymentFilterTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaymentFilterTask.class));
 
     public void failure(Integer userId, Integer retry) {
     }

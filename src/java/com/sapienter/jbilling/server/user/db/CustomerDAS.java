@@ -23,6 +23,10 @@ package com.sapienter.jbilling.server.user.db;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDeliveryMethodDAS;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.db.AbstractDAS;
+import org.hibernate.Criteria;
+import org.hibernate.criterion.*;
+
+import java.util.List;
 
 public class CustomerDAS extends AbstractDAS<CustomerDTO> {
     public CustomerDTO create() {
@@ -32,4 +36,25 @@ public class CustomerDAS extends AbstractDAS<CustomerDTO> {
         newCustomer.setExcludeAging(0);
         return save(newCustomer);
     }
+
+    public Integer getCustomerId(Integer userId){
+        Criteria criteria = getSession().createCriteria(CustomerDTO.class);
+        criteria.add(Restrictions.eq("baseUser.id", userId));
+        criteria.setProjection(Projections.id());
+        return (Integer) criteria.uniqueResult();
+    }
+
+    public List<Integer> getCustomerAccountInfoTypeIds(Integer customerId){
+        DetachedCriteria atCriteria = DetachedCriteria.forClass(CustomerDTO.class);
+        atCriteria.add(Restrictions.idEq(customerId));
+        atCriteria.setProjection(Projections.property("accountType.id"));
+        atCriteria.addOrder(Order.asc("id"));
+
+        Criteria criteria = getSession().createCriteria(AccountInformationTypeDTO.class);
+        criteria.setProjection(Projections.id());
+        criteria.add(Subqueries.propertyEq("accountType.id", atCriteria));
+
+        return criteria.list();
+    }
+
 }

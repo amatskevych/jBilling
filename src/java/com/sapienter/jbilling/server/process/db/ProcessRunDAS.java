@@ -29,7 +29,7 @@ import com.sapienter.jbilling.server.util.db.AbstractDAS;
 
 public class ProcessRunDAS extends AbstractDAS<ProcessRunDTO> {
 
-    //private static final Logger LOG = Logger.getLogger(ProcessRunDAS.class);
+    //private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(ProcessRunDAS.class));
 
     public ProcessRunDTO create(BillingProcessDTO process, Date runDate, Integer invoicesGenerated, ProcessRunStatusDTO status) {
         ProcessRunDTO dto = new ProcessRunDTO(0, runDate, Calendar.getInstance().getTime());
@@ -53,6 +53,18 @@ public class ProcessRunDAS extends AbstractDAS<ProcessRunDTO> {
 
         Query query = getSession().createQuery(hql);
         query.setParameter("entity", entityId);
+        query.setMaxResults(1);
+        return (ProcessRunDTO) query.uniqueResult();
+    }
+
+    public ProcessRunDTO getLatest(Integer entityId) {
+        final String hql =
+                "select processRun " +
+                "   from ProcessRunDTO processRun " +
+                " where processRun.billingProcess.entity.id = :entityId " +
+                " order by processRun.started desc";
+        Query query = getSession().createQuery(hql);
+        query.setParameter("entityId", entityId);
         query.setMaxResults(1);
         return (ProcessRunDTO) query.uniqueResult();
     }

@@ -38,6 +38,8 @@ import org.hibernate.annotations.CacheConcurrencyStrategy;
 
 import com.sapienter.jbilling.server.util.db.JbillingTable;
 
+import java.io.Serializable;
+
 @Entity
 @TableGenerator(
         name="contact_map_GEN",
@@ -56,7 +58,6 @@ public class ContactMapDTO  implements java.io.Serializable {
 
      private int id;
      private JbillingTable jbillingTable;
-     private ContactTypeDTO contactType;
      private ContactDTO contact;
      private int foreignId;
      private int versionNum;
@@ -64,17 +65,14 @@ public class ContactMapDTO  implements java.io.Serializable {
     public ContactMapDTO() {
     }
 
-    
-    public ContactMapDTO(int id, JbillingTable jbillingTable, ContactTypeDTO contactType, int foreignId) {
+    public ContactMapDTO(int id, JbillingTable jbillingTable, int foreignId) {
         this.id = id;
         this.jbillingTable = jbillingTable;
-        this.contactType = contactType;
         this.foreignId = foreignId;
     }
-    public ContactMapDTO(int id, JbillingTable jbillingTable, ContactTypeDTO contactType, ContactDTO contact, int foreignId) {
+    public ContactMapDTO(int id, JbillingTable jbillingTable, ContactDTO contact, int foreignId) {
        this.id = id;
        this.jbillingTable = jbillingTable;
-       this.contactType = contactType;
        this.contact = contact;
        this.foreignId = foreignId;
     }
@@ -88,7 +86,7 @@ public class ContactMapDTO  implements java.io.Serializable {
     public void setId(int id) {
         this.id = id;
     }
-@ManyToOne(fetch=FetchType.LAZY)
+    @ManyToOne(fetch=FetchType.LAZY)
     @JoinColumn(name="table_id", nullable=false)
     public JbillingTable getJbillingTable() {
         return this.jbillingTable;
@@ -97,16 +95,8 @@ public class ContactMapDTO  implements java.io.Serializable {
     public void setJbillingTable(JbillingTable jbillingTable) {
         this.jbillingTable = jbillingTable;
     }
-@ManyToOne(fetch=FetchType.LAZY)
-    @JoinColumn(name="type_id", nullable=false)
-    public ContactTypeDTO getContactType() {
-        return this.contactType;
-    }
-    
-    public void setContactType(ContactTypeDTO contactType) {
-        this.contactType = contactType;
-    }
-@ManyToOne(fetch=FetchType.LAZY)
+
+    @ManyToOne(fetch=FetchType.LAZY)
     @JoinColumn(name="contact_id", unique=true)
     public ContactDTO getContact() {
         return this.contact;
@@ -133,6 +123,7 @@ public class ContactMapDTO  implements java.io.Serializable {
     public void setVersionNum(Integer versionNum) {
         this.versionNum = versionNum;
     }
+
 }
 
 

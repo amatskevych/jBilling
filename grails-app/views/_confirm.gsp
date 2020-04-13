@@ -1,21 +1,22 @@
 %{--
-  jBilling - The Enterprise Open Source Billing System
-  Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
+     jBilling - The Enterprise Open Source Billing System
+   Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
 
-  This file is part of jbilling.
-
-  jbilling is free software: you can redistribute it and/or modify
-  it under the terms of the GNU Affero General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  jbilling is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU Affero General Public License for more details.
-
-  You should have received a copy of the GNU Affero General Public License
-  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+   This file is part of jbilling.
+   
+   jbilling is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+   
+   jbilling is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+   
+   You should have received a copy of the GNU Affero General Public License
+   along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+ 
   --}%
 
 <%--
@@ -77,7 +78,13 @@
                 <img src="${resource(dir:'images', file:'icon34.gif')}" alt="confirm">
             </td>
             <td class="col2" style="padding-left: 7px">
-                <g:message code="${message}" args="[id]"/>
+            
+            	<p id="confirm-dialog-${name }-msg">
+	            	<g:if test="${message}">
+		            	<g:message code="${message}" args="[id]"/>	
+	            	</g:if>
+            	</p>
+                
             </td>
         </tr></tbody>
     </table>
@@ -86,6 +93,7 @@
 <script type="text/javascript">
     $(function() {
         setTimeout(function() {
+            $('#confirm-dialog-${name}.ui-dialog-content').remove();
             $('#confirm-dialog-${name}').dialog({
                 autoOpen: false,
                 height: 200,
@@ -93,12 +101,12 @@
                 modal: true,
                 buttons: {
                     '<g:message code="prompt.yes"/>': function() {
-                        ${onYes};
+                        <%out.println(onYes)%>;
                         $("#confirm-command-form-${name}").submit();
                         $(this).dialog('close');
                     },
                     '<g:message code="prompt.no"/>': function() {
-                        ${onNo};
+                        <%out.println(onNo)%>;
                         $(this).dialog('close');
                     }
                 }
@@ -108,6 +116,10 @@
 
 
     function showConfirm(name) {
+        $('#confirm-dialog-' + name).dialog('open');
+    }
+//This function can be used when two different dialog are present in single page.
+    function showConfirmAnother(name) {
         $('#confirm-dialog-' + name).dialog('open');
     }
 </script>

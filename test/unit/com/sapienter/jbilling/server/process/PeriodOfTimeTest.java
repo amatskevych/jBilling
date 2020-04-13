@@ -37,14 +37,6 @@ public class PeriodOfTimeTest extends TestCase {
     private static final TimeZone tz = TimeZone.getTimeZone("America/Edmonton"); // Alberta, Canada observes DST
     private static final Calendar calendar = GregorianCalendar.getInstance(tz);
 
-    public PeriodOfTimeTest() {
-        super();
-    }
-
-    public PeriodOfTimeTest(String name) {
-        super(name);
-    }
-
     @Override
     protected void setUp() throws Exception {
         super.setUp();
@@ -58,15 +50,15 @@ public class PeriodOfTimeTest extends TestCase {
 
     public void testDaysInPeriodDST() throws Exception {
         calendar.clear();
-        calendar.set(2009, 2, 1);  // Start Date before DST switchover (March 8th, 2009)
+        calendar.set(2009, 2, 1,00,00,00);  // Start Date before DST switchover (March 8th, 2009)
         Date start = calendar.getTime();
-        
+
         calendar.clear();
-        calendar.set(2009, 2, 10); // End Date after DST switchover
+        calendar.set(2009, 2, 11,00,00,00); // End Date after DST switchover
         Date end = calendar.getTime();
 
-        PeriodOfTime period = new PeriodOfTime(start, end, 0, 0);
-        assertEquals(9, period.getDaysInPeriod());
+        PeriodOfTime period = new PeriodOfTime(start, end, 0);
+        assertEquals(10, period.getDaysInPeriod());
     }
 
     public void testDaysInPeriod31Days() throws Exception {
@@ -78,7 +70,7 @@ public class PeriodOfTimeTest extends TestCase {
         calendar.set(2009, 0, 31); // End January 31 
         Date end = calendar.getTime();
 
-        PeriodOfTime period = new PeriodOfTime(start, end, 0, 0);
+        PeriodOfTime period = new PeriodOfTime(start, end, 0);
         assertEquals(30, period.getDaysInPeriod());
     }
 
@@ -96,7 +88,7 @@ public class PeriodOfTimeTest extends TestCase {
         calendar.set(2009, 3, 30); // End April 30 
         Date end = calendar.getTime();
 
-        PeriodOfTime period = new PeriodOfTime(start, end, 0, 0);
+        PeriodOfTime period = new PeriodOfTime(start, end, 0);
         assertEquals(29, period.getDaysInPeriod());
     }
 
@@ -110,7 +102,7 @@ public class PeriodOfTimeTest extends TestCase {
         Date end = calendar.getTime();
 
         // January 5, 6, 7, 8, 9, 10, 11, 12, 13, = 9 days inclusive
-        PeriodOfTime period = new PeriodOfTime(start, end, 0, 0);
+        PeriodOfTime period = new PeriodOfTime(start, end, 0);
         assertEquals(9, period.getDaysInPeriod());
     }
 
@@ -124,7 +116,7 @@ public class PeriodOfTimeTest extends TestCase {
         Date end = calendar.getTime();
 
         // 31 days + 13 days = 44 days
-        PeriodOfTime period = new PeriodOfTime(start, end, 0, 0);
+        PeriodOfTime period = new PeriodOfTime(start, end, 0);
         assertEquals(44, period.getDaysInPeriod());
     }
 
@@ -151,7 +143,7 @@ public class PeriodOfTimeTest extends TestCase {
         calendar.add(Calendar.MONTH, 1); // End February 01
         Date end = calendar.getTime();
 
-        PeriodOfTime period = new PeriodOfTime(start, end, 0, 0);
+        PeriodOfTime period = new PeriodOfTime(start, end, 0);
         assertEquals(31, period.getDaysInPeriod());
     }
 
@@ -165,7 +157,7 @@ public class PeriodOfTimeTest extends TestCase {
         Date end = calendar.getTime();
 
         // Start date occurs before end date, default to 0 days (not a negative value!)
-        PeriodOfTime period = new PeriodOfTime(start, end, 0, 0);
+        PeriodOfTime period = new PeriodOfTime(start, end, 0);
         assertEquals(0, period.getDaysInPeriod());
     }
 }

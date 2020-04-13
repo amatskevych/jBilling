@@ -1,24 +1,25 @@
 %{--
-  jBilling - The Enterprise Open Source Billing System
-  Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
+     jBilling - The Enterprise Open Source Billing System
+   Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
 
-  This file is part of jbilling.
-
-  jbilling is free software: you can redistribute it and/or modify
-  it under the terms of the GNU Affero General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  jbilling is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU Affero General Public License for more details.
-
-  You should have received a copy of the GNU Affero General Public License
-  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+   This file is part of jbilling.
+   
+   jbilling is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+   
+   jbilling is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+   
+   You should have received a copy of the GNU Affero General Public License
+   along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+ 
   --}%
 
-<%@ page import="com.sapienter.jbilling.server.customer.CustomerBL; com.sapienter.jbilling.server.user.UserBL; com.sapienter.jbilling.common.Constants; com.sapienter.jbilling.server.user.contact.db.ContactDTO; com.sapienter.jbilling.server.util.Util"%>
+<%@ page import="com.sapienter.jbilling.server.metafields.db.MetaField; com.sapienter.jbilling.server.user.db.UserDTO; com.sapienter.jbilling.server.user.db.AccountInformationTypeDTO; com.sapienter.jbilling.server.user.db.AccountTypeDTO; com.sapienter.jbilling.server.invoice.InvoiceLineComparator; com.sapienter.jbilling.server.metafields.DataType; com.sapienter.jbilling.server.process.db.PeriodUnitDTO;	com.sapienter.jbilling.server.customer.CustomerBL; com.sapienter.jbilling.server.user.UserBL; com.sapienter.jbilling.common.Constants; com.sapienter.jbilling.server.util.Util; com.sapienter.jbilling.server.user.contact.db.ContactDTO"%>
 
 <html>
 <head>
@@ -28,17 +29,13 @@
 <div class="form-edit">
 
     <g:set var="customer" value="${user.customer}"/>
-    <g:set var="contact" value="${ContactDTO.findByUserId(user.id)}"/>
 
     <div class="heading">
         <strong>
-            <g:if test="${contact && (contact.firstName || contact.lastName)}">
-                ${contact.firstName} ${contact.lastName}
+            ${user.userName}
+            <g:if test="${user.deleted}">
+                <span style="color: #ff0000;">(<g:message code="object.deleted.title"/>)</span>
             </g:if>
-            <g:else>
-                ${user.userName}
-            </g:else>
-            <em><g:if test="${contact}">${contact.organizationName}</g:if></em>
         </strong>
     </div>
 
@@ -55,28 +52,6 @@
                     <g:applyLayout name="form/text">
                         <content tag="label">Last Login</content>
                         <span><g:formatDate date="${user.lastLogin}" formatName="date.pretty.format"/></span>
-                    </g:applyLayout>
-
-                    <g:applyLayout name="form/text">
-                        <content tag="label"><g:message code="customer.detail.contact.telephone"/></content>
-                        <span>
-                            <g:phoneNumber countryCode="${contact?.phoneCountryCode}" 
-                                areaCode="${contact?.phoneAreaCode}" number="${contact?.phoneNumber}"/>
-                        </span>
-                    </g:applyLayout>
-
-                    <g:applyLayout name="form/text">
-                        <content tag="label"><g:message code="customer.detail.contact.fax"/></content>
-                        <span>
-                            <g:if test="${contact?.faxCountryCode}">${contact?.faxCountryCode}.</g:if>
-                            <g:if test="${contact?.faxAreaCode}">${contact?.faxAreaCode}.</g:if>
-                            ${contact?.faxNumber}
-                        </span>
-                    </g:applyLayout>
-
-                    <g:applyLayout name="form/text">
-                        <content tag="label"><g:message code="customer.detail.user.email"/></content>
-                        <span><a href="mailto:${contact?.email}">${contact?.email}</a></span>
                     </g:applyLayout>
 
                     <g:applyLayout name="form/text">
@@ -103,6 +78,11 @@
                         <content tag="label"><g:message code="prompt.exclude.ageing"/></content>
                         <span><g:formatBoolean boolean="${customer?.excludeAging > 0}"/></span>
                     </g:applyLayout>
+
+                    <g:applyLayout name="form/text">
+                        <content tag="label"><g:message code="prompt.invoice.design"/></content>
+                        <span>${customer?.invoiceDesign}</span>
+                    </g:applyLayout>
                 </div>
 
                 <div class="column">
@@ -114,7 +94,15 @@
                     <g:applyLayout name="form/text">
                         <content tag="label"><g:message code="customer.detail.user.type"/></content>
                         <g:set var="mainRole" value="${user.roles.asList()?.min{ it.id }}"/>
-                        <span title="${mainRole.getDescription(session['language_id'])}">${mainRole.getTitle(session['language_id'])}</span>
+                        <span title="${mainRole?.getDescription(session['language_id'])}">${mainRole?.getTitle(session['language_id'])}</span>
+                    </g:applyLayout>
+
+                    <g:applyLayout name="form/text">
+                        <content tag="label"><g:message code="customer.detail.user.account.type"/></content>
+                        <g:set var="accountType" value="${user?.customer?.accountType}"/>
+                        <g:if test="${accountType?.id}">
+                            <span>${accountType?.getDescription(session['language_id'])}</span>
+                        </g:if><g:else>-</g:else>
                     </g:applyLayout>
 
                     <g:applyLayout name="form/text">
@@ -122,21 +110,40 @@
                         <span>${user.partner?.id}</span>
                     </g:applyLayout>
 
-                    <!-- custom contact fields -->
-                    <g:each var="ccf" in="${company.contactFieldTypes?.sort{ it.id }}">
-                        <g:set var="field" value="${contact?.fields?.find{ it.type.id == ccf.id }}"/>
 
-                        <g:applyLayout name="form/text">
-                            <content tag="label"><g:message code="${ccf.getDescription(session['language_id'])}"/></content>
-                            <span>${field?.content}</span>
-                        </g:applyLayout>
-                    </g:each>
+                    <g:applyLayout name="form/text">
+                        <content tag="label"><g:message code="prompt.credit.limit"/></content>
+                        <span><g:formatNumber number="${customer?.creditLimit}" formatName="money.format"/></span>
+                    </g:applyLayout>
+
+                    <g:applyLayout name="form/text">
+                        <content tag="label"><g:message code="prompt.auto.recharge"/></content>
+                        <span><g:formatNumber number="${customer?.autoRecharge}" formatName="money.format"/></span>
+                    </g:applyLayout>
+
+                    <g:applyLayout name="form/text">
+                        <content tag="label"><g:message code="prompt.dynamic.balance"/></content>
+                        <span><g:formatNumber number="${customer?.dynamicBalance}" formatName="money.format"/></span>
+                    </g:applyLayout>
+
+                    <g:applyLayout name="form/text">
+                        <content tag="label"><g:message code="prompt.invoice.delivery.method"/></content>
+                        <span><g:message code="customer.invoice.delivery.method.${customer?.invoiceDeliveryMethod?.id ?: 0}"/></span>
+                    </g:applyLayout>
+
+                    <g:applyLayout name="form/text">
+                        <content tag="label"><g:message code="prompt.due.date.override"/></content>
+                        <g:if test="${customer?.dueDateValue}">
+                            <g:set var="periodUnit" value="${PeriodUnitDTO.get(customer.dueDateUnitId)}"/>
+                            <span>${customer?.dueDateValue} ${periodUnit.getDescription(session['language_id'])}</span>
+                        </g:if>
+                    </g:applyLayout>
 
                     <g:applyLayout name="form/text">
                         <content tag="label"><g:message code="customer.detail.user.next.invoice.date"/></content>
+                        <g:set var="nextInvoiceDate" value="${new UserBL(user.id).getEntity().getCustomer().getNextInvoiceDate()}"/>
 
-                        <g:if test="${cycle}">
-                            <g:set var="nextInvoiceDate" value="${cycle?.getNextBillableDay() ?: cycle?.getActiveSince() ?: cycle?.getCreateDate()}"/>
+                        <g:if test="${nextInvoiceDate}">
                             <span><g:formatDate date="${nextInvoiceDate}" formatName="date.pretty.format"/></span>
                         </g:if>
                         <g:else>
@@ -151,17 +158,32 @@
 
                     <g:applyLayout name="form/text">
                         <content tag="label"><g:message code="customer.detail.payment.amount.owed"/></content>
-                        <span><g:formatNumber number="${new UserBL().getBalance(user.id)}" type="currency" currencySymbol="${user.currency.symbol}"/></span>
+                        <span><g:formatNumber number="${UserBL.getBalance(user.id)}" type="currency" currencySymbol="${user.currency.symbol}"/></span>
                     </g:applyLayout>
+
+                    <g:if test="${metaFields}">
+                        <!-- meta fields -->
+                        <g:each var="metaFieldValue" in="${metaFields?.sort{ it.field.displayOrder }}">
+                            <%
+                                def display = true
+                                for(AccountInformationTypeDTO ait : accountInformationTypes){
+                                   for(MetaField field : ait.metaFields){
+                                       if(field.id == metaFieldValue.field.id){
+                                           display = false
+                                       }
+                                   }
+                                }
+                            %>
+                            <g:if test="${display}">
+                                <g:render template="/metaFields/displayMetaField"
+                                          model="[metaField : metaFieldValue]"/>
+                            </g:if>
+                        </g:each>
+                    </g:if>
                 </div>
             </div>
 
-            <!-- notes -->
-            <div id="notes" class="form-columns">
-                <label><g:message code="prompt.notes"/></label>
-                <p class="description">${customer?.notes}</p>
-            </div>
-
+			<g:if test="${!user.deleted}">
             <sec:access url="/blacklist/user">
                 <div style="margin: 20px 0;">
                     <div class="btn-row">
@@ -169,6 +191,7 @@
                     </div>
                 </div>
             </sec:access>
+            </g:if>
 
             <!-- separator -->
             <div class="form-columns">
@@ -216,56 +239,18 @@
                     <!-- list of direct sub-accounts -->
                     <g:each var="account" in="${customer?.children}">
                         <g:applyLayout name="form/text">
-                            <content tag="label"><g:message code="customer.subaccount.title" args="[ account.baseUser.id ]"/></content>
+	                        <g:if test="${subscriptionAccounts.contains(account.baseUser.id)}">
+	                        	<content tag="label"><g:message code="customer.subaccount.internal.title" args="[ account.baseUser.id ]"/></content>
+	                        </g:if>
+	                        <g:else>
+	                        	<content tag="label"><g:message code="customer.subaccount.title" args="[ account.baseUser.id ]"/></content>
+	                        </g:else>
+	                            
                             <span>
                                 <g:link action="inspect" id="${account.baseUser.id}">${account.baseUser.userName}</g:link>
                             </span>
                         </g:applyLayout>
                     </g:each>
-                </div>
-            </div>
-
-            <!-- separator -->
-            <div class="form-columns">
-                <hr/>
-            </div>
-
-            <!-- dynamic balance and invoice delivery -->
-            <div class="form-columns">
-                <div class="column">
-                    <g:applyLayout name="form/text">
-                        <content tag="label"><g:message code="prompt.balance.type"/></content>
-                        <span><g:message code="customer.balance.type.${customer?.balanceType ?: 0}"/></span>
-                    </g:applyLayout>
-
-                    <g:applyLayout name="form/text">
-                        <content tag="label"><g:message code="prompt.credit.limit"/></content>
-                        <span><g:formatNumber number="${customer?.creditLimit}" formatName="money.format"/></span>
-                    </g:applyLayout>
-
-                    <g:applyLayout name="form/text">
-                        <content tag="label"><g:message code="prompt.auto.recharge"/></content>
-                        <span><g:formatNumber number="${customer?.autoRecharge}" formatName="money.format"/></span>
-                    </g:applyLayout>
-
-                    <g:applyLayout name="form/text">
-                        <content tag="label"><g:message code="prompt.dynamic.balance"/></content>
-                        <span><g:formatNumber number="${customer?.dynamicBalance}" formatName="money.format"/></span>
-                    </g:applyLayout>
-                </div>
-                <div class="column">
-                    <g:applyLayout name="form/text">
-                        <content tag="label"><g:message code="prompt.invoice.delivery.method"/></content>
-                        <span><g:message code="customer.invoice.delivery.method.${customer?.invoiceDeliveryMethod?.id ?: 0}"/></span>
-                    </g:applyLayout>
-
-                    <g:applyLayout name="form/text">
-                        <content tag="label"><g:message code="prompt.due.date.override"/></content>
-                        <g:if test="${customer?.dueDateValue}">
-                            <g:set var="periodUnit" value="${company.orderPeriods.find{ it.periodUnit.id == customer?.dueDateUnitId }}"/>
-                            <span>${customer?.dueDateValue} ${periodUnit.getDescription(session['language_id'])}</span>
-                        </g:if>
-                    </g:applyLayout>
                 </div>
             </div>
 
@@ -287,19 +272,64 @@
                     </sec:access>
                 </div>
                 <div class="btn-row">
-                    <sec:ifAllGranted roles="CUSTOMER_11">
+                <g:if test="${!user.deleted}">
                         <g:link controller="customer" action="edit" id="${user.id}" class="submit edit"><span><g:message code="customer.edit.customer.button"/></span></g:link>
-                    </sec:ifAllGranted>
 
-                    <sec:ifAllGranted roles="PAYMENT_30">
                         <g:link controller="payment" action="edit" params="[userId: user.id]" class="submit payment"><span><g:message code="button.make.payment"/></span></g:link>
-                    </sec:ifAllGranted>
 
-                    <sec:ifAllGranted roles="ORDER_20">
                         <g:link controller="orderBuilder" action="edit" params="[userId: user.id]" class="submit order"><span><g:message code="button.create.order"/></span></g:link>
-                    </sec:ifAllGranted>
+				</g:if>
                 </div>
             </div>
+
+            <g:if test="${accountInformationTypes && accountInformationTypes.size()>0}">
+                <g:each in="${accountInformationTypes}" var="ait">
+                    <div id="ait-${ait.id}" class="box-cards box-cards-open" >
+                        <div class="box-cards-title">
+                            <a class="btn-open"><span>
+                                ${ait.name}
+                            </span></a>
+                        </div>
+                        <div class="box-card-hold">
+                            <div class="form-columns">
+                                <%
+                                    def aitMetaFields =  ait?.metaFields?.sort { it.displayOrder }
+                                    def leftColumnFields = []
+                                    def rightColumnFields = []
+                                    aitMetaFields.eachWithIndex { field, index ->
+                                        def fieldValue = metaFields.find {
+                                            mfv -> mfv.field.id == field.id }
+
+                                        if(fieldValue){
+                                            if(index > aitMetaFields.size()/2){
+                                                rightColumnFields << fieldValue
+                                            } else {
+                                                leftColumnFields << fieldValue
+                                            }
+                                        }
+                                    }
+                                %>
+                                <div class="column">
+                                    <g:if test="${leftColumnFields.size() > 0}">
+                                        <g:each in="${leftColumnFields}" var="varMetaField" >
+                                        <g:render template="/metaFields/displayMetaField"
+                                                  model="[metaField : varMetaField]"/>
+                                        </g:each>
+                                    </g:if>
+                                </div>
+                                <div class="column">
+                                    <g:if test="${rightColumnFields.size() > 0}">
+                                        <g:each in="${rightColumnFields}" var="varMetaField" >
+                                        <g:render template="/metaFields/displayMetaField"
+                                                      model="[metaField : varMetaField]"/>
+                                        </g:each>
+                                    </g:if>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </g:each>
+            </g:if>
 
             <!-- blacklist matches -->
             <g:if test="${blacklistMatches}">
@@ -326,31 +356,6 @@
                     </div>
                 </div>
             </g:if>
-
-            <!-- contact information -->
-            <div id="address" class="box-cards">
-                <div class="box-cards-title">
-                    <a class="btn-open"><span><g:message code="customer.inspect.address.title"/></span></a>
-                </div>
-                <div class="box-card-hold">
-                    <div class="form-columns">
-                        <g:render template="address" model="[contact: contact]"/>
-                    </div>
-                </div>
-            </div>
-
-            <g:each var="contact" in="${contacts.findAll{ it.id != contact.id}}">
-                <div id="contacts-${contact.type}" class="box-cards">
-                    <div class="box-cards-title">
-                        <a class="btn-open"><span>${contact.contactTypeDescr} &nbsp;</span></a>
-                    </div>
-                    <div class="box-card-hold">
-                        <div class="form-columns">
-                            <g:render template="address" model="[contact: contact]"/>
-                        </div>
-                    </div>
-                </div>
-            </g:each>
 
             <!-- last payment -->
             <g:if test="${payment}">
@@ -451,7 +456,11 @@
                             </tr>
                             </thead>
                             <tbody>
-                                <g:each var="invoiceLine" in="${invoice.invoiceLines}">
+                                <%
+                                    def invoiceLines = new ArrayList(invoice.invoiceLines)
+                                    Collections.sort(invoiceLines, new InvoiceLineComparator())
+                                %>
+                                <g:each var="invoiceLine" in="${invoiceLines}">
                                     <tr>
                                         <td class="innerContent">
                                             ${invoiceLine.description}
@@ -540,112 +549,75 @@
                         </table>
 
                     </div>
+                    <div class="box-card-hold">
+                        <table cellpadding="0" cellspacing="0" class="innerTable">
+                            <thead class="innerHeader">
+                            <tr>
+                                <th><g:message code="subscription.label.id"/></th>
+                                <th><g:message code="subscription.account.name"/></th>
+                                <th><g:message code="label.gui.description"/></th>
+                              	<th><g:message code="subscription.asset.id"/></th>
+                                <th><g:message code="label.gui.period"/></th>
+                                <th><g:message code="label.gui.quantity"/></th>
+                                <th><g:message code="label.gui.price"/></th>
+                                <th><g:message code="label.gui.amount"/></th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <g:each var="order" in="${internalSubscriptions}">
+                                <g:set var="currency" value="${currencies.find { it.id == order.currencyId }}"/>
+
+                                <g:each var="orderLine" in="${order.orderLines}">
+                                    <tr>
+                                        <td class="innerContent">
+                                            <g:link controller="order" action="list" id="${order.id}">${order.id}</g:link>
+                                        </td>
+                                        <td class="innerContent">
+                                            ${UserDTO.get(order.userId).userName}
+                                        </td>
+                                        <td class="innerContent">
+                                            ${orderLine.description}
+                                        </td>
+                                        <td class="innerContent">
+                                        	<g:each var="asset" in="${orderLine.assetIds}">
+                                        		${asset}
+                                        	</g:each>
+                                        </td>
+                                        <td class="innerContent">
+                                            ${order.periodStr}
+                                        </td>
+                                        <td class="innerContent">
+                                            <g:formatNumber number="${orderLine.getQuantityAsDecimal()}" formatName="decimal.format"/>
+                                        </td>
+                                        <td class="innerContent">
+                                            <g:formatNumber number="${orderLine.getPriceAsDecimal()}" type="currency" currencySymbol="${currency.symbol}"/>
+                                        </td>
+                                        <td class="innerContent">
+                                            <g:formatNumber number="${orderLine.getAmountAsDecimal()}" type="currency" currencySymbol="${currency.symbol}"/>
+                                        </td>
+                                    </tr>
+                                </g:each>
+                            </g:each>
+                            </tbody>
+                        </table>
+
+                    </div>
                 </div>
             </g:if>
 
             <!-- credit card -->
-            <g:if test="${user?.creditCards}">
-                <g:set var="creditCard" value="${user.creditCards.asList().get(0)}"/>
 
-                <div id="creditCard" class="box-cards">
-                    <div class="box-cards-title">
-                        <a class="btn-open"><span><g:message code="prompt.credit.card"/></span></a>
-                    </div>
-                    <div class="box-card-hold">
-                        <div class="form-columns">
-                            <div class="column">
-                                <g:applyLayout name="form/text">
-                                    <content tag="label"><g:message code="prompt.credit.card"/></content>
-
-                                    %{-- obscure credit card by default, or if the preference is explicitly set --}%
-                                    <g:if test="${preferenceIsNullOrEquals(preferenceId: Constants.PREFERENCE_HIDE_CC_NUMBERS, value: 1, true)}">
-                                        <g:set var="creditCardNumber" value="${creditCard.number.replaceAll('^\\d{12}','************')}"/>
-                                        ${creditCardNumber}
-                                    </g:if>
-                                    <g:else>
-                                        ${creditCard.number}
-                                    </g:else>
-                                </g:applyLayout>
-
-                                <g:applyLayout name="form/text">
-                                    <content tag="label"><g:message code="prompt.name.on.card"/></content>
-                                    <span>${creditCard.name}</span>
-                                </g:applyLayout>
-
-                                <g:applyLayout name="form/text">
-                                    <content tag="label"><g:message code="prompt.expiry.date"/></content>
-                                    <span>
-                                        <g:formatDate date="${creditCard.expiry}" format="MM"/>
-                                        /
-                                        <g:formatDate date="${creditCard.expiry}" format="yyyy"/>
-                                    </span>
-                                </g:applyLayout>
-                            </div>
-
-                            <div class="column">
-                                <g:applyLayout name="form/text">
-                                    <content tag="label"><g:message code="prompt.preferred.auto.payment"/></content>
-                                    <g:formatBoolean boolean="${customer.autoPaymentType == Constants.AUTO_PAYMENT_TYPE_CC}"/>
-                                </g:applyLayout>
-                            </div>
-                        </div>
+        <div id="notes" class="box-cards">
+            <div class="box-cards-title">
+                <a class="btn-open" href="#"><span><g:message code="prompt.notes"/></span></a>
+            </div>
+            <div class="box-card-hold">
+                <div id="users-contain"  style="position:relative">
+                    <div id="test">
+                        <g:render template="customerNotes" model="[isNew:isNew, customerNotes:customerNotes, customerNotesTotal:customerNotesTotal, user:user]" />
                     </div>
                 </div>
-            </g:if>
-
-            <!-- ach -->
-            <g:if test="${user?.achs}">
-                <g:set var="ach" value="${user.achs.asList().get(0)}"/>
-
-                <div id="ach" class="box-cards">
-                    <div class="box-cards-title">
-                        <a class="btn-open" href="#"><span><g:message code="prompt.ach"/></span></a>
-                    </div>
-                    <div class="box-card-hold">
-                        <div class="form-columns">
-                            <div class="column">
-                                <g:applyLayout name="form/text">
-                                    <content tag="label"><g:message code="prompt.aba.routing.num"/></content>
-                                    <span>${ach.abaRouting}</span>
-                                </g:applyLayout>
-
-                                <g:applyLayout name="form/text">
-                                    <content tag="label"><g:message code="prompt.bank.acc.num"/></content>
-                                    <span>${ach.bankAccount}</span>
-                                </g:applyLayout>
-
-                                <g:applyLayout name="form/text">
-                                    <content tag="label"><g:message code="prompt.bank.name"/></content>
-                                    <span>${ach.bankName}</span>
-                                </g:applyLayout>
-
-                                <g:applyLayout name="form/text">
-                                    <content tag="label"><g:message code="prompt.name.customer.account"/></content>
-                                    <span>${ach.accountName}</span>
-                                </g:applyLayout>
-
-                                <g:applyLayout name="form/text">
-                                    <content tag="label"><g:message code="prompt.account.type" /></content>
-
-                                    <g:if test="${ach.accountType == 1}">
-                                        <span><g:message code="label.account.checking"/></span>
-                                    </g:if>
-                                    <g:elseif test="${ach.accountType == 2}">
-                                        <span><g:message code="label.account.savings"/></span>
-                                    </g:elseif>
-                                </g:applyLayout>
-                            </div>
-
-                            <div class="column">
-                                <g:applyLayout name="form/text">
-                                    <content tag="label"><g:message code="prompt.preferred.auto.payment"/></content>
-                                    <g:formatBoolean boolean="${customer.autoPaymentType == Constants.AUTO_PAYMENT_TYPE_ACH}"/>
-                                </g:applyLayout>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </g:if>
+            </div> </div>
 
             <!-- spacer -->
             <div>

@@ -1,19 +1,19 @@
 /*
  * jBilling - The Enterprise Open Source Billing System
  * Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
- *
+ * 
  * This file is part of jbilling.
- *
+ * 
  * jbilling is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *
+ * 
  * jbilling is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Affero General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU Affero General Public License
  * along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -503,4 +503,41 @@ function findPosX(obj) {
 	while (obj.offsetParent) {posLeft += obj.offsetLeft; obj = obj.offsetParent;}
 	return posLeft;
 }
+
 //window.onload = initCastomForms;
+function isValidDate(controlName, format){
+	
+	var dateValue= $(controlName).val();
+	
+	//alert('format length is '+format.length+' and dateValue length is '+dateValue.length);
+	var isValid = !(format.length < dateValue.length);
+	//alert(isValid)
+    try {
+        format= format.replace('MM', 'mm');   //to support java date formats
+        format= format.replace('yyyy', 'yy'); //to support java date formats
+        jQuery.datepicker.parseDate(format, dateValue, null);
+    } catch(error){
+        isValid = false;
+    }
+
+    if (isValid) {
+    	// remove any error messages or border if any
+        $(controlName).css('border', 'none');
+        $("#error-messages").css("display","none");
+        $("input#valid").attr("value","true");
+    } else {
+    	$("#error-messages").css("display","block");
+    	$(controlName).css('border', '1px solid red');
+        $("input#valid").attr("value","false");
+    }
+    return isValid;
+}
+
+$(function(){
+	$('.toolTipHideShow').on("blur",function(){
+		$( '.toolTipElement').tooltip( "enable" );
+	});
+	$('.toolTipHideShow').on("click",function(){
+		$( '.toolTipElement').tooltip( "disable" );
+	});
+});

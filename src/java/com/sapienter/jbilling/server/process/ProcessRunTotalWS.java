@@ -20,10 +20,12 @@
 
 package com.sapienter.jbilling.server.process;
 
-import com.sapienter.jbilling.server.process.db.ProcessRunTotalDTO;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+
+import com.sapienter.jbilling.common.Util;
+
 
 /**
  * ProcessRunTotalWS
@@ -41,15 +43,6 @@ public class ProcessRunTotalWS implements Serializable {
     private String totalNotPaid;
 
     public ProcessRunTotalWS() {
-    }
-
-    public ProcessRunTotalWS(ProcessRunTotalDTO dto) {
-        this.id = dto.getId();
-        this.processRunId = dto.getProcessRun() != null ? dto.getProcessRun().getId() : null;
-        this.currencyId = dto.getCurrency() != null ? dto.getCurrency().getId() : null;
-        setTotalInvoiced(dto.getTotalInvoiced());
-        setTotalPaid(dto.getTotalPaid());
-        setTotalNotPaid(dto.getTotalNotPaid());
     }
 
     public Integer getId() {
@@ -81,7 +74,7 @@ public class ProcessRunTotalWS implements Serializable {
     }
 
     public BigDecimal getTotalInvoicedAsDecimal() {
-        return totalInvoiced != null ? new BigDecimal(totalInvoiced) : null;
+        return Util.string2decimal(totalInvoiced);
     }
 
     public void setTotalInvoiced(String totalInvoiced) {
@@ -97,7 +90,7 @@ public class ProcessRunTotalWS implements Serializable {
     }
 
     public BigDecimal getTotalPaidAsDecimal() {
-        return totalPaid != null ? new BigDecimal(totalPaid) : null;
+        return Util.string2decimal(totalPaid);
     }
 
     public void setTotalPaid(String totalPaid) {
@@ -113,7 +106,7 @@ public class ProcessRunTotalWS implements Serializable {
     }
 
     public BigDecimal getTotalNotPaidAsDecimal() {
-        return totalNotPaid != null ? new BigDecimal(totalNotPaid) : null;
+        return Util.string2decimal(totalNotPaid);
     }
 
     public void setTotalNotPaid(String totalNotPaid) {

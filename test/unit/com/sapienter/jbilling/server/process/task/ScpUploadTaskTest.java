@@ -38,13 +38,6 @@ public class ScpUploadTaskTest extends TestCase {
 
     private ScpUploadTask task = new ScpUploadTask(); // task under test
 
-    public ScpUploadTaskTest() {
-    }
-
-    public ScpUploadTaskTest(String name) {
-        super(name);
-    }
-
     public void testCollectFilesNonRecursive() throws Exception {
         File path = new File(BASE_DIR + File.separator + "logos");
 
@@ -69,11 +62,13 @@ public class ScpUploadTaskTest extends TestCase {
         List<File> files = task.collectFiles(path, ".*designs.*\\.jasper", true);
         Collections.sort(files);
 
-        assertEquals(4, files.size());
-        assertEquals("simple_invoice.jasper", files.get(0).getName());
-        assertEquals("simple_invoice_b2b.jasper", files.get(1).getName());
-        assertEquals("simple_invoice_telco.jasper", files.get(2).getName());
-        assertEquals("simple_invoice_telco_events.jasper", files.get(3).getName());
+        assertEquals(6, files.size());
+        assertEquals("invoice_design.jasper", files.get(0).getName());
+        assertEquals("invoice_design_page2.jasper", files.get(1).getName());
+        assertEquals("invoice_design_sub.jasper", files.get(2).getName());
+        assertEquals("payment_notification_attachment.jasper", files.get(3).getName());
+        assertEquals("simple_invoice.jasper", files.get(4).getName());
+        assertEquals("simple_invoice_b2b.jasper", files.get(5).getName());
     }
 
     public void testCollectFilesCompoundRegex() throws Exception {
@@ -84,12 +79,14 @@ public class ScpUploadTaskTest extends TestCase {
         List<File> files = task.collectFiles(path, "(.*designs.*\\.jasper|.*\\.jpg)", true);
         Collections.sort(files);
 
-        assertEquals(5, files.size());
-        assertEquals("simple_invoice.jasper", files.get(0).getName());
-        assertEquals("simple_invoice_b2b.jasper", files.get(1).getName());
-        assertEquals("simple_invoice_telco.jasper", files.get(2).getName());
-        assertEquals("simple_invoice_telco_events.jasper", files.get(3).getName());
-        assertEquals("entity-1.jpg", files.get(4).getName());
+        assertEquals(7, files.size());
+        assertEquals("invoice_design.jasper", files.get(0).getName());
+        assertEquals("invoice_design_page2.jasper", files.get(1).getName());
+        assertEquals("invoice_design_sub.jasper", files.get(2).getName());
+        assertEquals("payment_notification_attachment.jasper", files.get(3).getName());
+        assertEquals("simple_invoice.jasper", files.get(4).getName());
+        assertEquals("simple_invoice_b2b.jasper", files.get(5).getName());
+        assertEquals("entity-1.jpg", files.get(6).getName());
     }
 
 /*

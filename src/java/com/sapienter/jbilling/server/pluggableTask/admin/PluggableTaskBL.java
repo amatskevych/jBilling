@@ -22,17 +22,20 @@ package com.sapienter.jbilling.server.pluggableTask.admin;
 
 import java.util.ArrayList;
 import java.util.List;
-
+import com.sapienter.jbilling.common.Util;
+import com.sapienter.jbilling.server.rule.RulesBaseTask;
 import org.apache.log4j.Logger;
-
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.pluggableTask.PluggableTask;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.Context;
 import com.sapienter.jbilling.server.util.audit.EventLogger;
 
+import org.joda.time.format.DateTimeFormat;
+
 public class PluggableTaskBL<T> {
-    private static final Logger LOG = Logger.getLogger(PluggableTaskBL.class);     
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PluggableTaskBL.class));     
     private EventLogger eLogger = null;
 
     private PluggableTaskDAS das = null;
@@ -77,9 +80,49 @@ public class PluggableTaskBL<T> {
         eLogger.audit(executorId, null, Constants.TABLE_PLUGGABLE_TASK, 
                 pluggableTask.getId(), EventLogger.MODULE_TASK_MAINTENANCE,
                 EventLogger.ROW_CREATED, null, null, null);
-        
+        das.invalidateCache();
         return pluggableTask.getId();
     }
+    
+    public static final PluggableTaskWS getWS(PluggableTaskDTO dto){
+    	
+		PluggableTaskWS ws = new PluggableTaskWS();
+		ws.setNotes(dto.getNotes());
+		ws.setId(dto.getId());
+		ws.setProcessingOrder(dto.getProcessingOrder());
+		ws.setTypeId(dto.getType().getId());
+		for (PluggableTaskParameterDTO param : dto.getParameters()) {
+			ws.getParameters().put(param.getName(), param.getValue());
+		}
+		ws.setVersionNumber(dto.getVersionNum());
+		ws.setOwningEntityId(getOwningEntityId(ws));
+		return ws;
+    }
+    private static final Integer getOwningEntityId(PluggableTaskWS ws) {
+    	
+    if (ws.getId() == null) {
+        return null;
+    }
+    	return new PluggableTaskBL(ws.getId()).getDTO().getEntityId();
+    }
+    
+    public static final PluggableTaskTypeWS getPluggableTaskTypeWS(PluggableTaskTypeDTO dto){
+    	PluggableTaskTypeWS ws = new PluggableTaskTypeWS();
+		ws.setId(dto.getId());
+		ws.setClassName(dto.getClassName());
+		ws.setMinParameters(dto.getMinParameters());
+		ws.setCategoryId(dto.getCategory().getId());
+		return ws;
+	}
+    
+    public static final PluggableTaskTypeCategoryWS getPluggableTaskTypeCategoryWS(PluggableTaskTypeCategoryDTO dto){
+		
+    	PluggableTaskTypeCategoryWS ws = new PluggableTaskTypeCategoryWS();
+    	ws.setId(dto.getId());
+		ws.setInterfaceName(dto.getInterfaceName());
+		return ws;
+	}
+
     
     public void createParameter(Integer taskId, 
             PluggableTaskParameterDTO dto) {
@@ -88,39 +131,73 @@ public class PluggableTaskBL<T> {
         task.getParameters().add(dasParameter.save(dto));
 
         // clear the rules cache (just in case this plug-in was ruled based)
-        PluggableTask.invalidateRuleCache(taskId);
+        RulesBaseTask.invalidateRuleCache(taskId);
     }
-    
+
     public void update(Integer executorId, PluggableTaskDTO dto) {
         if (dto == null || dto.getId() == null) {
             throw new SessionInternalError("task to update can't be null");
         }
         validate(dto);
+
+        List<PluggableTaskParameterDTO> parameterDTOList = dasParameter.findAllByTask(dto);
         for (PluggableTaskParameterDTO param: dto.getParameters()) {
+            parameterDTOList.remove(dasParameter.find(param.getId()));
             param.expandValue();
         }
+
+        for (PluggableTaskParameterDTO param: parameterDTOList){
+            dasParameter.delete(param);
+        }
+
         LOG.debug("updating " + dto);
         pluggableTask = das.save(dto);
         
-        eLogger.audit(executorId, null, Constants.TABLE_PLUGGABLE_TASK, 
+        eLogger.audit(executorId, null
+
+                , Constants.TABLE_PLUGGABLE_TASK,
                 dto.getId(), EventLogger.MODULE_TASK_MAINTENANCE,
                 EventLogger.ROW_UPDATED, null, null, null);
         // clear the rules cache (just in case this plug-in was ruled based)
-        PluggableTask.invalidateRuleCache(dto.getId());
+        RulesBaseTask.invalidateRuleCache(dto.getId());
         das.invalidateCache(); // 3rd level cache
 
         pluggableTask.populateParamValues();
     }
     
     public void delete(Integer executor) {
+    	checkInUseBeforeDelete(pluggableTask);
         eLogger.audit(executor, null, Constants.TABLE_PLUGGABLE_TASK, 
                 pluggableTask.getId(), EventLogger.MODULE_TASK_MAINTENANCE,
                 EventLogger.ROW_DELETED, null, null, null);
         das.delete(pluggableTask);
         // clear the rules cache (just in case this plug-in was ruled based)
-        PluggableTask.invalidateRuleCache(pluggableTask.getId());
+        RulesBaseTask.invalidateRuleCache(pluggableTask.getId());
     }
 
+    /**
+     * This function has been added to perform 'before delete' check such that if a particular 
+     * plugin is in use, system can give a proper error message and not allow deletion.
+     * Currently, this is added for not allowing deletion of Mediation tasks, if in use.
+     * @param pluggableTaskDto
+     */
+    private void checkInUseBeforeDelete(PluggableTaskDTO pluggableTaskDto) throws SessionInternalError {
+    	
+    	if (pluggableTaskDto != null && pluggableTaskDto.getType() != null) {
+    		
+    		boolean inUse = false;
+        	String message = "";
+	    	String interfaceName = pluggableTaskDto.getType().getCategory().getInterfaceName();
+	    	LOG.debug("interfaceName: " + interfaceName);
+
+	    	LOG.debug("inUse Flag: " + inUse);
+			if (inUse) {
+				throw new SessionInternalError("Plugin is in use and cannot be deleted.", 
+						new String[]{message + pluggableTaskDto.getType().getClassName()});
+			}
+    	}
+    }
+    
     public void deleteParameter(Integer executor, Integer id) {
         eLogger.audit(executor, null, Constants.TABLE_PLUGGABLE_TASK_PARAMETER, 
                 id, EventLogger.MODULE_TASK_MAINTENANCE,
@@ -128,7 +205,7 @@ public class PluggableTaskBL<T> {
         PluggableTaskParameterDTO toDelete = dasParameter.find(id);
         toDelete.getTask().getParameters().remove(toDelete);
         // clear the rules cache (just in case this plug-in was ruled based)
-        PluggableTask.invalidateRuleCache(toDelete.getTask().getId());
+        RulesBaseTask.invalidateRuleCache(toDelete.getTask().getId());
         dasParameter.delete(toDelete);
     }
 
@@ -145,7 +222,7 @@ public class PluggableTaskBL<T> {
         dto.expandValue();
         dasParameter.save(dto);
         // clear the rules cache (just in case this plug-in was ruled based)
-        PluggableTask.invalidateRuleCache(dto.getTask().getId());
+        RulesBaseTask.invalidateRuleCache(dto.getTask().getId());
     }
     
     public T instantiateTask()
@@ -239,11 +316,48 @@ public class PluggableTaskBL<T> {
     	    nonUniqueResult=true;
     	}
         if (nonUniqueResult) {
-            SessionInternalError exception = new SessionInternalError("Validation of new plug-in");
+            SessionInternalError exception = new SessionInternalError("Invalid processing order of new plug-in");
             exception.setErrorMessages(new String[] {
                     "PluggableTaskWS,processingOrder,plugins.error.same_order," + task.getProcessingOrder()});
             throw exception;
         }
+        // Now validation of date fields, end and start date
+        // Had to determine if the type of plugin falls under IScheduledTask category
+        if(task.getType().getCategory().getInterfaceName().equals(Constants.I_SCHEDULED_TASK)) {
+            LOG.debug("This is a scheduled type parameter");
+            validateDateParameters(task);
+        }
     }
- 
+
+    private void validateDateParameters(PluggableTaskDTO task) {
+        List<PluggableTaskParameterDTO> dateParameters = new ArrayList<PluggableTaskParameterDTO>();
+        try {
+            for (PluggableTaskParameterDTO parameter:task.getParameters()) {
+                LOG.debug("Parameter passed is "+parameter.toString());
+                // some hard-coding here :(
+                if ((parameter.getName().equals(Constants.PARAM_START_TIME) || parameter.getName().equals(Constants.PARAM_END_TIME)) &&
+                        !(Util.canParseDate(parameter.getStrValue(), DateTimeFormat.forPattern(Constants.DATE_TIME_FORMAT))) ) {
+                    LOG.debug("This is a date field which cannot be parsed "+parameter.getValue());
+                    dateParameters.add(parameter);
+                }
+            }
+        } catch (Exception e) {
+            LOG.error("Getting instance of plug-in for validation", e);
+            throw new SessionInternalError("Validating plug-in");
+        }
+
+        if (dateParameters.size() > 0) {
+            SessionInternalError exception = new SessionInternalError("Validation of new plug-in");
+            String messages[] = new String[dateParameters.size()];
+            int f=0;
+            for (PluggableTaskParameterDTO param: dateParameters) {
+                // some hard-coding here :(
+                messages[f] = new String("PluggableTaskWS,parameter,plugins.error.date_incorrect_format," + param.getName()+","+ Constants.DATE_TIME_FORMAT);
+                f++;
+            }
+            exception.setErrorMessages(messages);
+            throw exception;
+        }
+
+    }
 }

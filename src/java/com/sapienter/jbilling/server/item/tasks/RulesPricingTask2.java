@@ -19,8 +19,15 @@
  */
 package com.sapienter.jbilling.server.item.tasks;
 
+import java.math.BigDecimal;
+import java.util.Date;
+import java.util.List;
+
+import org.apache.log4j.Logger;
+
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.item.PricingField;
-import com.sapienter.jbilling.server.order.OrderBL;
+import com.sapienter.jbilling.server.item.db.ItemDTO;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
 import com.sapienter.jbilling.server.order.db.OrderLineDTO;
 import com.sapienter.jbilling.server.pluggableTask.TaskException;
@@ -28,29 +35,25 @@ import com.sapienter.jbilling.server.rule.RulesBaseTask;
 import com.sapienter.jbilling.server.user.ContactBL;
 import com.sapienter.jbilling.server.user.ContactDTOEx;
 import com.sapienter.jbilling.server.user.UserDTOEx;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldDTO;
 import com.sapienter.jbilling.server.util.DTOFactory;
-import java.math.BigDecimal;
-import java.util.Collection;
-import java.util.List;
-import org.apache.log4j.Logger;
 
 /**
  *
  * @author emilc
  */
+@Deprecated
 public class RulesPricingTask2 extends RulesBaseTask implements IPricing {
 
-    protected Logger getLog() {
-        return Logger.getLogger(RulesPricingTask2.class);
+    protected FormatLogger getLog() {
+        return new FormatLogger(Logger.getLogger(RulesPricingTask2.class));
     }
     
-    public BigDecimal getPrice(Integer itemId, BigDecimal quantity, Integer userId, Integer currencyId,
-            List<PricingField> fields, BigDecimal defaultPrice, OrderDTO pricingOrder)
-            throws TaskException {
+    public BigDecimal getPrice(ItemDTO item, BigDecimal quantity, Integer userId, Integer currencyId,
+            List<PricingField> fields, BigDecimal defaultPrice, OrderDTO pricingOrder, OrderLineDTO orderLine,
+            boolean singlePurchase, Date eventDate) throws TaskException {
 
         // the result goes in the memory context
-        PricingResult result = new PricingResult(itemId, quantity, userId, currencyId);
+        PricingResult result = new PricingResult(item.getId(), quantity, userId, currencyId);
         rulesMemoryContext.add(result);
 
         if (fields != null && !fields.isEmpty()) {
@@ -70,9 +73,6 @@ public class RulesPricingTask2 extends RulesBaseTask implements IPricing {
                 contact.set(userId);
                 ContactDTOEx contactDTO = contact.getDTO();
                 rulesMemoryContext.add(contactDTO);
-                for (ContactFieldDTO field: (Collection<ContactFieldDTO>) contactDTO.getFieldsTable().values()) {
-                    rulesMemoryContext.add(field);
-                }
             }
         } catch (Exception e) {
             throw new TaskException(e);

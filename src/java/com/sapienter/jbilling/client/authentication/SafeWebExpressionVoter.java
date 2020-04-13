@@ -20,9 +20,10 @@
 
 package com.sapienter.jbilling.client.authentication;
 
-import org.codehaus.groovy.grails.plugins.springsecurity.WebExpressionVoter;
+import grails.plugin.springsecurity.web.access.expression.WebExpressionVoter;
 import org.springframework.security.access.ConfigAttribute;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.web.FilterInvocation;
 
 import java.util.Collection;
 
@@ -40,7 +41,7 @@ import java.util.Collection;
 public class SafeWebExpressionVoter extends WebExpressionVoter {
 
     @Override
-    public int vote(Authentication authentication, Object object, Collection<ConfigAttribute> attributes) {
+    public int vote(Authentication authentication, FilterInvocation object, Collection<ConfigAttribute> attributes) {
         try {
             return super.vote(authentication, object, attributes);
         } catch (IllegalArgumentException e) {

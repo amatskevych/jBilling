@@ -24,11 +24,7 @@ import com.sapienter.jbilling.server.order.db.OrderDTO;
 import com.sapienter.jbilling.server.order.db.OrderLineDTO;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -131,7 +127,6 @@ public class OrderHelper {
         if (merged.getOrderBillingType() == null) merged.setOrderBillingType(order2.getOrderBillingType());
         if (merged.getActiveSince() == null) merged.setActiveSince(order2.getActiveSince());
         if (merged.getActiveUntil() == null) merged.setActiveUntil(order2.getActiveUntil());
-        if (merged.getCycleStarts() == null) merged.setCycleStarts(order2.getCycleStarts());
         if (merged.getCreateDate() == null) merged.setCreateDate(order2.getCreateDate());
         if (merged.getNextBillableDay() == null) merged.setNextBillableDay(order2.getNextBillableDay());
         if (merged.getLastNotified() == null) merged.setLastNotified(order2.getLastNotified());
@@ -143,7 +138,7 @@ public class OrderHelper {
         if (merged.getOwnInvoice() == null) merged.setOwnInvoice(order2.getOwnInvoice());
         if (merged.getNotes() == null) merged.setNotes(order2.getNotes());
         if (merged.getNotesInInvoice() == null) merged.setNotesInInvoice(order2.getNotesInInvoice());
-        if (merged.getIsCurrent() == null) merged.setIsCurrent(order2.getIsCurrent());
+        if (merged.getProrateFlag() == null) merged.setProrateFlag(order2.getProrateFlag());
 
         merged.getOrderProcesses().clear();
         merged.setId(0);
@@ -160,7 +155,8 @@ public class OrderHelper {
     /**
      * Merges the given order lines together. The merged order line will have a
      * quantity and amount that is the sum of the original two lines. The merged line
-     * will not be associated with an order.
+     * will not be associated with an order. The merged line will have all the assets, but
+     * the assets will not be linked to the new line, they are still linked to the old line.
      *
      * The first line's attributes (description, item id etc.) will be used for the
      * newly merged line, except where null. If an attribute is null the the value
@@ -186,11 +182,17 @@ public class OrderHelper {
         if (merged.getDescription() == null) merged.setDescription(line2.getDescription());
         if (merged.getUseItem() == null) merged.getUseItem();
 
+        merged.getAssets().clear();
+        merged.addAssets(line2.getAssets());
+        line2.getAssets().clear();
+        merged.addAssets(line1.getAssets());
+        line1.getAssets().clear();
+
         merged.setPurchaseOrder(null);
         merged.setId(0);
         merged.setDeleted(0);
 
-        return line1;
+        return merged;
     }
 
     /**
@@ -349,6 +351,52 @@ public class OrderHelper {
     }
 
     /**
+     * Returns the line matching the given item ID.
+     *
+     * @param lines lines
+     * @param itemId item ID to find
+     * @return found line, null if no line found
+     */
+    public static OrderLineWS find(OrderLineWS[] lines, Integer itemId) {
+        for (OrderLineWS line : lines) {
+            if (line.getDeleted() == 0 && line.getItemId().equals(itemId)) {
+                return line;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Find the order line by id
+     *
+     * @param lines - lines to search through
+     * @param id - line id to find
+     * @return order line if found, null otherwise
+     */
+    public static OrderLineDTO findOrderLineWithId(Collection<OrderLineDTO> lines, int id) {
+        for(OrderLineDTO dto : lines) {
+            if(dto.getId() == id) return dto;
+        }
+        return null;
+    }
+
+    /**
+     * Copy the collection of order lines to new one. Each line will be copied too.
+     * @param persistedOrderLines  Order lines to copy
+     * @return new collection of order lines copies
+     */
+    public static List<OrderLineDTO> copyOrderLinesToDto(List<OrderLineDTO> persistedOrderLines) {
+        List<OrderLineDTO> result = new LinkedList<OrderLineDTO>();
+        for (OrderLineDTO line : persistedOrderLines) {
+            OrderLineDTO dto = new OrderLineDTO(line);
+            
+            result.add(dto);
+        }
+        return result;
+    }
+
+    /**
      * Converts an OrderDTO to use a thread-safe <code>CopyOnWriteArrayList</code> for order lines instead
      * of an <code>ArrayList</code>. This allows safe concurrent modification of the order lines during
      * iteration.
@@ -370,6 +418,142 @@ public class OrderHelper {
      */
     public static void desynchronizeOrderLines(OrderDTO order) {
         order.setLines(new ArrayList<OrderLineDTO>(order.getLines()));
+    }
+
+
+    public static OrderDTO findRootOrderIfPossible(OrderDTO order) {
+        OrderDTO rootOrder = order;
+        // find root order, prevent cycle if it exists in hierarchy
+        while (rootOrder.getParentOrder() != null && !rootOrder.getParentOrder().equals(order)) {
+            rootOrder = rootOrder.getParentOrder();
+        }
+        return rootOrder;
+    }
+
+    public static OrderWS findRootOrderIfPossible(OrderWS order) {
+        OrderWS rootOrder = order;
+        // find root order, prevent cycle if it exists in hierarchy
+        while (rootOrder.getParentOrder() != null && !rootOrder.getParentOrder().equals(order)) {
+            rootOrder = rootOrder.getParentOrder();
+        }
+        return rootOrder;
+    }
+
+    public static LinkedHashSet<OrderDTO> findOrdersInHierarchyFromRootToChild(OrderDTO rootOrder) {
+        LinkedHashSet<OrderDTO> orders = new LinkedHashSet<OrderDTO>();
+        Set<OrderDTO> visitedOrder = new HashSet<OrderDTO>();
+        orders.add(rootOrder);
+        findOrdersInHierarchy(rootOrder, orders, visitedOrder);
+        return orders;
+    }
+
+    private static void findOrdersInHierarchy(OrderDTO order, LinkedHashSet<OrderDTO> orders, Set<OrderDTO> visitedOrders) {
+        if (visitedOrders.contains(order)) return;
+        // this collection does not preserve order from root to child level by level, but prevents cycles
+        visitedOrders.add(order);
+        if (order.getChildOrders() != null) {
+            // add to collection to preserve hierarchy ordering level by level
+            orders.addAll(order.getChildOrders());
+            for (OrderDTO childOrder : order.getChildOrders()) {
+                findOrdersInHierarchy(childOrder, orders, visitedOrders);
+            }
+        }
+    }
+
+    public static LinkedHashSet<OrderWS> findAllOrdersInHierarchy(OrderWS order) {
+        OrderWS rootOrder = findRootOrderIfPossible(order);
+        LinkedHashSet<OrderWS> result = new LinkedHashSet<OrderWS>();
+        result.add(rootOrder);
+        result.addAll(findAllChildren(rootOrder));
+        return result;
+    }
+
+    public static LinkedHashSet<OrderWS> findAllChildren(OrderWS rootOrder) {
+        LinkedHashSet<OrderWS> orders = new LinkedHashSet<OrderWS>();
+        findChildren(rootOrder, orders);
+        return orders;
+    }
+
+    private static void findChildren(OrderWS order, LinkedHashSet<OrderWS> orders) {
+        if (order == null) return;
+        if (order.getChildOrders() != null) {
+            List<OrderWS> newChildren = new LinkedList<OrderWS>(Arrays.asList(order.getChildOrders()));
+            newChildren.removeAll(orders);
+            orders.addAll(newChildren);
+            for (OrderWS childOrder : newChildren) {
+                findChildren(childOrder, orders);
+            }
+        }
+    }
+
+    /**
+     * Search for target order in given hierarchy
+     * @param order any order from hierarchy to search target order
+     * @param targetOrderId target order
+     * @return order if found, null otherwise
+     */
+    public static OrderWS findOrderInHierarchy(OrderWS order, Integer targetOrderId) {
+        OrderWS rootOrder = findRootOrderIfPossible(order);
+        if (rootOrder.getId() != null && rootOrder.getId().equals(targetOrderId)) {
+            return rootOrder;
+        }
+        OrderWS result = null;
+        if (rootOrder.getChildOrders() != null) {
+            for (OrderWS childOrder : rootOrder.getChildOrders()) {
+                result = findOrderInHierarchy(childOrder, targetOrderId, rootOrder);
+                if (result != null) return result;
+            }
+        }
+        return result;
+    }
+
+    private static OrderWS findOrderInHierarchy(OrderWS order, int targetOrderId, OrderWS stopOnOrder) {
+        // prevent cycle
+        if (order.equals(stopOnOrder)) return null;
+        if (order.getId() != null && order.getId().equals(targetOrderId)) return order;
+        OrderWS result = null;
+        if (order.getChildOrders() != null) {
+            for (OrderWS childOrder : order.getChildOrders()) {
+                result = findOrderInHierarchy(childOrder, targetOrderId, order);
+                if (result != null) return result;
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Search for target order in given hierarchy
+     * @param order any order from hierarchy to search target order
+     * @param targetOrderId target order
+     * @return order if found, null otherwise
+     */
+    public static OrderDTO findOrderInHierarchy(OrderDTO order, Integer targetOrderId) {
+        OrderDTO rootOrder = findRootOrderIfPossible(order);
+        if (rootOrder.getId() != null && rootOrder.getId().equals(targetOrderId)) {
+            return rootOrder;
+        }
+        OrderDTO result = null;
+        if (rootOrder.getChildOrders() != null) {
+            for (OrderDTO childOrder : rootOrder.getChildOrders()) {
+                result = findOrderInHierarchy(childOrder, targetOrderId, rootOrder);
+                if (result != null) return result;
+            }
+        }
+        return result;
+    }
+
+    private static OrderDTO findOrderInHierarchy(OrderDTO order, int targetOrderId, OrderDTO stopOnOrder) {
+        // prevent cycle
+        if (order.equals(stopOnOrder)) return null;
+        if (order.getId() != null && order.getId().equals(targetOrderId)) return order;
+        OrderDTO result = null;
+        if (order.getChildOrders() != null) {
+            for (OrderDTO childOrder : order.getChildOrders()) {
+                result = findOrderInHierarchy(childOrder, targetOrderId, stopOnOrder);
+                if (result != null) return result;
+            }
+        }
+        return result;
     }
 
     /**

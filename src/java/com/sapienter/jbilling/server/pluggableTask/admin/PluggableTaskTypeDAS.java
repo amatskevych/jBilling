@@ -23,13 +23,16 @@ package com.sapienter.jbilling.server.pluggableTask.admin;
 import java.util.List;
 
 import org.apache.log4j.Logger;
+import org.hibernate.Criteria;
 import org.hibernate.Query;
+import org.hibernate.criterion.Restrictions;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.util.db.AbstractDAS;
 
 public class PluggableTaskTypeDAS extends AbstractDAS<PluggableTaskTypeDTO> {
 	
-	private static final Logger LOG =  Logger.getLogger(PluggableTaskTypeDAS.class);
+	private static final FormatLogger LOG =  new FormatLogger(Logger.getLogger(PluggableTaskTypeDAS.class));
 	
     private static final String findByCategorySQL =
 	        "SELECT b " +
@@ -48,4 +51,9 @@ public class PluggableTaskTypeDAS extends AbstractDAS<PluggableTaskTypeDTO> {
         return ret;
 	}
 
+	public PluggableTaskTypeDTO findByClassName(String className){
+		Criteria criteria = getSession().createCriteria(PluggableTaskTypeDTO.class);
+		criteria.add(Restrictions.eq("className", className));
+		return (PluggableTaskTypeDTO)criteria.uniqueResult();
+	}
 }

@@ -24,6 +24,7 @@ import java.util.Map;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDTO;
@@ -41,7 +42,7 @@ import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
  */
 public abstract class AbstractPaymentRouterTask extends PluggableTask 
         implements PaymentTask {
-    private static final Logger LOG = Logger.getLogger(AbstractPaymentRouterTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(AbstractPaymentRouterTask.class));
 
     /**
      * Determines what processor is to process the payment. Takes the
@@ -71,7 +72,7 @@ public abstract class AbstractPaymentRouterTask extends PluggableTask
             // give them a chance
             LOG.error("ATTENTION! Could not find a process to delegate for " +
                     "user : " + paymentInfo.getUserId());
-            return false;
+            return true;
         }
 
         delegate.process(paymentInfo);
@@ -84,6 +85,12 @@ public abstract class AbstractPaymentRouterTask extends PluggableTask
     public boolean preAuth(PaymentDTOEx paymentInfo) 
             throws PluggableTaskException {
         PaymentTask delegate = selectDelegate(paymentInfo);
+        if (delegate == null) {
+            // give them a chance
+            LOG.error("ATTENTION! Could not find a process to delegate for " +
+                    "user : " + paymentInfo.getUserId());
+            return true;
+        }
         delegate.preAuth(paymentInfo);
 
         // they already used their chance
@@ -97,7 +104,7 @@ public abstract class AbstractPaymentRouterTask extends PluggableTask
             LOG.error("ATTENTION! Delegate is recently changed for user : " + 
                     paymentInfo.getUserId() + " with not captured transaction: " +
                     auth.getTransactionId());
-            return false;
+            return true;
         }
         delegate.confirmPreAuth(auth, paymentInfo);
         // they already used their chance

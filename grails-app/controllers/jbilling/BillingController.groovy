@@ -20,20 +20,34 @@
 
 package jbilling
 
-import grails.plugins.springsecurity.Secured;
+import com.sapienter.jbilling.client.util.DownloadHelper
+import com.sapienter.jbilling.server.util.PreferenceBL
+import com.sapienter.jbilling.server.util.csv.CsvExporter
+import com.sapienter.jbilling.server.util.csv.Exporter
+
+import grails.converters.JSON
+import grails.plugin.springsecurity.annotation.Secured
+
 import java.util.Iterator;
 import java.math.BigDecimal;
-import com.sapienter.jbilling.server.process.BillingProcessRunTotalDTOEx;
+
 import com.sapienter.jbilling.server.process.db.BillingProcessDTO;
 import com.sapienter.jbilling.server.process.db.BillingProcessDAS;
-import com.sapienter.jbilling.server.process.db.ProcessRunDTO;
 import com.sapienter.jbilling.server.user.db.CompanyDTO;
-import com.sapienter.jbilling.server.util.db.CurrencyDAS;
 import com.sapienter.jbilling.server.payment.db.PaymentMethodDTO;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDAS
 import com.sapienter.jbilling.client.util.SortableCriteria
-import com.sapienter.jbilling.server.util.db.CurrencyDTO;
+import com.sapienter.jbilling.server.util.Constants
+import com.sapienter.jbilling.server.util.IWebServicesSessionBean;
+import com.sapienter.jbilling.server.util.Util
+import com.sapienter.jbilling.server.process.db.BillingProcessConfigurationDTO
+import com.sapienter.jbilling.server.payment.db.PaymentDAS
+import com.sapienter.jbilling.server.process.BatchProcessInfoBL
+import com.sapienter.jbilling.batch.billing.BatchContextHandler
+import com.sapienter.jbilling.server.process.BillingProcessFailedUserBL
+
+import org.codehaus.groovy.grails.web.servlet.mvc.GrailsParameterMap
 
 /**
 * BillingController
@@ -41,59 +55,99 @@ import com.sapienter.jbilling.server.util.db.CurrencyDTO;
 * @author Vikas Bodani
 * @since 07/01/11
 */
-@Secured(["MENU_94"])
+@Secured(["isAuthenticated()"])
 class BillingController {
-
+	static scope = "prototype"
 	static pagination = [ max: 10, offset: 0, sort: 'id', order: 'desc' ]
 
-	def webServicesSession
+    // Matches the columns in the JQView grid with the corresponding field
+    static final viewColumnsToFields =
+            ['billingId': 'id',
+             'date': 'billingDate',
+             'orderCount': 'orderProcesses',
+             'invoiceCount': 'invoices']
+
+	IWebServicesSessionBean webServicesSession
 	def recentItemService
 	def breadcrumbService
 	def filterService
 
-	def index = {
-		redirect action: list, params: params
+	def index () {
+		list()
 	}
 	
 	/*
 	 * Renders/display list of Billing Processes Ordered by Process Id descending
 	 * so that the lastest process shows first.
 	 */
-	def list = {
-		Map dataHashMap = new HashMap()
-
+	def list () {
 		def filters = filterService.getFilters(FilterType.BILLINGPROCESS, params)
-		def filteredList= filterProcesses(filters)
+        breadcrumbService.addBreadcrumb(controllerName, actionName, null, null)
 
-        for (BillingProcessDTO dto : filteredList) {
-            Iterator countIterator = new BillingProcessDAS().getCountAndSum(dto.getId())
-            if (countIterator != null) {
-                while (countIterator.hasNext()) {
-                    Object[] row = (Object[]) countIterator.next();
-                    row[2] = new CurrencyDAS().find(row[2] as Integer)
-                    dataHashMap.put (dto.getId(), row)
-                }
+        def usingJQGrid = PreferenceBL.getPreferenceValueAsBoolean(session['company_id'], com.sapienter.jbilling.client.util.Constants.PREFERENCE_USE_JQGRID);
+        //If JQGrid is showing, the data will be retrieved when the template renders
+        if (usingJQGrid){
+            if (params.applyFilter || params.partial) {
+                render template: 'billingTemplate', model: [ filters:filters ]
+            }else {
+                render view: "index", model: [ filters:filters ]
             }
+            return
         }
 
-        breadcrumbService.addBreadcrumb(controllerName, actionName, null, null)
-		if (params.applyFilter || params.partial) {
-			render template: 'list', model: [lstBillingProcesses: filteredList, dataHashMap:dataHashMap, filters:filters]
-		} else {
-			render view: "index", model: [lstBillingProcesses: filteredList, dataHashMap:dataHashMap, filters:filters]
-		}
+        def processes = getProcesses(filters, params)
+
+        if (params.applyFilter || params.partial) {
+            render template: 'billingTemplate', model: [ processes: processes, filters:filters ]
+        } else {
+            render view: "index", model: [ processes: processes, filters:filters ]
+        }
 	}
+
+    def findProcesses (){
+        def filters = filterService.getFilters(FilterType.BILLINGPROCESS, params)
+
+        params.sort = viewColumnsToFields[params.sidx]
+        params.order  = params.sord
+        params.max = params.rows
+        params.offset = params?.page ? (params.int('page')-1) * params.int('rows') : 0
+        params.alias = SortableCriteria.NO_ALIAS
+
+        def processes = getProcesses(filters, params)
+
+        try {
+            render getBillingProcessesJsonData(processes, params) as JSON
+
+        } catch (SessionInternalError e) {
+            viewUtils.resolveException(flash, session.locale, e)
+            render e.getMessage()
+        }
+
+    }
+
+    /**
+     * Converts Billing processes to JSon
+     */
+    private def Object getBillingProcessesJsonData(processes, GrailsParameterMap params) {
+        def jsonCells = processes
+        def currentPage = params.page ? Integer.valueOf(params.page) : 1
+        def rowsNumber = params.rows ? Integer.valueOf(params.rows): 1
+        def numberOfPages = Math.ceil(jsonCells.totalCount / rowsNumber)
+
+        def jsonData = [rows: jsonCells, page: currentPage, records: jsonCells.totalCount, total: numberOfPages]
+
+        jsonData
+    }
 
 	/*
 	 * Filter the process results based on the parameter filter values
 	 */
-	def filterProcesses(filters) {
+	private def getProcesses(filters, GrailsParameterMap params) {
 		params.max = (params?.max?.toInteger()) ?: pagination.max
 		params.offset = (params?.offset?.toInteger()) ?: pagination.offset
         params.sort = params?.sort ?: pagination.sort
         params.order = params?.order ?: pagination.order
-
-		
+		def company_id = session['company_id']
 		return BillingProcessDTO.createCriteria().list(
 			max:    params.max,
 			offset: params.offset
@@ -104,9 +158,11 @@ class BillingController {
 							addToCriteria(filter.getRestrictions());
 						}
 					}
-					//eq('isReview', 0)
 					eq('entity', new CompanyDTO(session['company_id']))
-				}
+                    if (params.billingId){
+                        eq('id', params.getInt('billingId'))
+                    }
+                }
 
                 // apply sorting
                 SortableCriteria.sort(params, delegate)
@@ -116,69 +172,77 @@ class BillingController {
 	/*
 	 * To display the run details of a given Process Id
 	 */
-	def show = {
-		Integer processId = params.int('id')
-		BillingProcessDTO process = new BillingProcessDAS().find(processId);
+	def show () {
+        Integer processId = params.int('id')
 
-        def das = new BillingProcessDAS()
-		def genInvoices = new InvoiceDAS().findByProcess(process)
-		def invoicesGenerated = genInvoices?.size() ?: 0
+        if ( !BillingProcessDTO.exists( processId ) ) {
+            flash.error = 'billing.process.review.doesnotexist'
+            flash.args = [processId]
+            redirect action:'list'
+        }
 
-        log.debug("Fetching count and sum by currency")
+        // get billing process record
+        def process = BillingProcessDTO.get(processId)
+        def configuration = BillingProcessConfigurationDTO.findByEntity(new CompanyDTO(session['company_id']))
 
-		def countAndSumByCurrency= new ArrayList()
-        Iterator countIterator = das.getCountAndSum(processId)
+        // main billing process run (not a retry!)
+        def processRuns = process?.processRuns?.asList()?.sort{ it.started }
+        def processRun =  processRuns?.size() > 0 ? processRuns.first() : null 
 
-		while (countIterator.hasNext()) {
-			Object[] row = (Object[]) countIterator.next();
-			row[2] = CurrencyDTO.get(row[2] as Integer)
-			countAndSumByCurrency.add(row)
+        // all payments made to generated invoices between process start & end
+		def generatedPayments = []
+		if (processRun) {
+        	generatedPayments = new PaymentDAS().findBillingProcessGeneratedPayments(processId, processRun.started, processRun.finished)
+		}
+        // all payments made to generated invoice after the process end
+        def invoicePayments = []
+		if (processRun) {
+			invoicePayments = new PaymentDAS().findBillingProcessPayments(processId, processRun.finished)
 		}
 
-        log.debug("Fetching payment list by currency")
-
-		def mapOfPaymentListByCurrency= new HashMap()
-		Iterator currencyIterator = das.getSuccessfulProcessCurrencyMethodAndSum(processId)
-
-		while (currencyIterator.hasNext()) {
-			Object[] row = (Object[]) currencyIterator.next();
-
-			def payments = mapOfPaymentListByCurrency.get(row[0] as Integer) ?: new ArrayList()
-            payments.add([new PaymentMethodDTO(row[1]), new BigDecimal(row[2])] as Object[])
-            mapOfPaymentListByCurrency.put(row[0], payments)
-		}
-
-        log.debug("Fetching failed amounts by currency")
-
-		def failedAmountsByCurrency= new ArrayList()
-		Iterator failedIterator = das.getFailedProcessCurrencyAndSum(processId)
-
-		while (failedIterator.hasNext()) {
-			Object[] row = (Object[]) failedIterator.next();
-			failedAmountsByCurrency.add(row[1])
-		}
+        // all invoices for the billing process. Avoiding using the associations
+        def invoices = process ? new InvoiceDAS().findByProcess(process) : [] 
 
 		recentItemService.addRecentItem(processId, RecentItemType.BILLINGPROCESS)
 		breadcrumbService.addBreadcrumb(controllerName, actionName, null, processId)
-		[process:process, invoicesGenerated:invoicesGenerated, countAndSumByCurrency: countAndSumByCurrency, mapOfPaymentListByCurrency: mapOfPaymentListByCurrency, failedAmountsByCurrency: failedAmountsByCurrency, reviewConfiguration: webServicesSession.getBillingProcessConfiguration()] 
-	}
-
-	def showInvoices = {
-		def _processId= params.int('id')
-		log.debug "redirecting to invoice controller for process id=${_processId}"
-		//def filter =  new Filter(type: FilterType.INVOICE, constraintType: FilterConstraint.EQ, field: 'billingProcess.id', template: 'id', visible: false, integerValue: _processId)
-		//filterService.setFilter(FilterType.INVOICE, filter)
-		redirect controller: 'invoice', action: 'byProcess', id:_processId
+		
+		def jobs = new BatchProcessInfoBL().findByBillingProcessId(processId)
+		def canRestart = false
+		if(jobs!=null) {
+			def job = jobs.iterator().next()
+			canRestart = job.getTotalFailedUsers()>0 ? true : false
+		}
+		
+        [ process: process, processRun: processRun, generatedPayments: generatedPayments, invoicePayments: invoicePayments, configuration: configuration, invoices: invoices,
+          formattedPeriod: getFormattedPeriod(process?.periodUnit.id, process?.periodValue, session['language_id']), jobs:jobs, canRestart:canRestart]
 	}
 	
-	def showOrders = {
-		def _processId= params.int('id')
-		log.debug "redirect to order controller for processId $_processId"
-		redirect controller: 'order', action: 'byProcess', id:_processId
+	def failed (){
+		def users = new BillingProcessFailedUserBL().getUsersByExecutionId(params.int('id'))
+		
+		[users : users]
 	}
 
-    @Secured(["BILLING_80"])
-	def approve = {
+	
+	private String getFormattedPeriod(Integer periodUnitId, Integer periodValue, Integer languageId) {
+		String periodUnitStr = Util.getPeriodUnitStr(periodUnitId, languageId)
+		return periodValue + Constants.SINGLE_SPACE + periodUnitStr;
+	}
+
+	def showInvoices () {
+		redirect controller: 'invoice', action: 'byProcess', id: params.id, params: [ isReview : params.isReview ]
+	}
+	
+	def showOrders () {
+        redirect controller: 'order', action: 'byProcess', params: [processId: params.id]
+	}
+	
+	def restart () {
+		new BatchContextHandler().restartFailedJobByBillingProcessId(params.int('id'),session['company_id'])
+		redirect controller: 'billing', action: 'show', id: params.id
+	}
+
+	def approve () {
 		try {
 			webServicesSession.setReviewApproval(Boolean.TRUE)
 		} catch (Exception e) {
@@ -188,8 +252,7 @@ class BillingController {
 		redirect action: 'list'
 	}
 
-    @Secured(["BILLING_80"])
-	def disapprove = {
+	def disapprove () {
 		try {
 			webServicesSession.setReviewApproval(Boolean.FALSE)
 		} catch (Exception e) {

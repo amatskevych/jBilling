@@ -38,6 +38,7 @@ import javax.persistence.Version;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
 import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
@@ -59,7 +60,7 @@ import org.hibernate.annotations.CacheConcurrencyStrategy;
 @Cache(usage = CacheConcurrencyStrategy.NONSTRICT_READ_WRITE)
 public class PaymentInvoiceMapDTO implements Serializable {
 
-    private static final Logger log = Logger.getLogger(PaymentInvoiceMapDTO.class);
+    private static final FormatLogger log = new FormatLogger(Logger.getLogger(PaymentInvoiceMapDTO.class));
 
     private int id;
     private PaymentDTO payment;
@@ -135,4 +136,5 @@ public class PaymentInvoiceMapDTO implements Serializable {
     public void setVersionNum(int versionNum) {
         this.versionNum = versionNum;
     }
+
 }

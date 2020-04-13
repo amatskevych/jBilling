@@ -20,16 +20,23 @@
 
 package com.sapienter.jbilling.server.process.task;
 
-import java.text.ParseException;
+
+import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import org.quartz.SimpleTrigger;
-
+import org.quartz.impl.JobDetailImpl;
+import org.quartz.impl.triggers.SimpleTriggerImpl;
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.Util;
+import com.sapienter.jbilling.server.order.TimePeriod;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
+import com.sapienter.jbilling.server.util.Constants;
+import org.quartz.impl.JobDetailImpl;
+import org.quartz.impl.triggers.SimpleTriggerImpl;
 
 /**
  * A simple Scheduled process plug-in, executing the extending process class on a simple schedule.
@@ -48,7 +55,7 @@ import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 
 public abstract class AbstractBackwardSimpleScheduledTask extends
         AbstractSimpleScheduledTask {
-    private static final Logger LOG = Logger.getLogger(AbstractBackwardSimpleScheduledTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(AbstractBackwardSimpleScheduledTask.class));
     private static final String PROPERTY_PROCESS_TIME = "process.time";
     private static final String PROPERTY_PROCESS_FREQ = "process.frequency";
 
@@ -88,23 +95,25 @@ public abstract class AbstractBackwardSimpleScheduledTask extends
         return builder.toString();
     }
 
-    protected SimpleTrigger setTriggerFromProperties(SimpleTrigger trigger) throws PluggableTaskException {
+    protected SimpleTrigger setTriggerFromProperties(SimpleTriggerImpl trigger) throws PluggableTaskException {
     try {
+    		
             // set process.time as trigger start time if set
             String start = Util.getSysProp(PROPERTY_PROCESS_TIME);
             if (StringUtils.isNotBlank(start))
-                trigger.setStartTime(DATE_FORMAT.parse(start));
+                trigger.setStartTime(DATE_FORMAT.parseDateTime(start).toDate());
 
             // set process.frequency as trigger repeat interval if set
             String repeat = Util.getSysProp(PROPERTY_PROCESS_FREQ);
             if (StringUtils.isNotBlank(repeat))
                 trigger.setRepeatInterval(Long.parseLong(repeat) * 60 * 1000);
 
-        } catch (ParseException e) {
-            throw new PluggableTaskException("Exception parsing process.time for schedule", e);
         } catch (NumberFormatException e) {
             throw new PluggableTaskException("Exception parsing process.frequency for schedule", e);
+        } catch (IllegalArgumentException e) {
+            throw new PluggableTaskException("Exception parsing process.time for schedule", e);
         }
+
         return trigger;
     }
 
@@ -119,5 +128,35 @@ public abstract class AbstractBackwardSimpleScheduledTask extends
             && StringUtils.isBlank(parameters.get(PARAM_END_TIME.getName()))
             && StringUtils.isBlank(parameters.get(PARAM_REPEAT.getName()))
             && StringUtils.isBlank(parameters.get(PARAM_INTERVAL.getName()));
+    }
+    
+    
+    public TimePeriod getTimePeriod() {
+
+    	TimePeriod period = new TimePeriod();
+    	Long schedulerIntervalInDays = Long.valueOf(0);
+
+    	try {
+    		if (useProperties()) {
+    			String schedulerIntervalInMinutes = Util.getSysProp(PROPERTY_PROCESS_FREQ);
+    			if (StringUtils.isNotBlank(schedulerIntervalInMinutes)) {
+    				schedulerIntervalInDays = TimeUnit.MINUTES.toDays(Integer.valueOf(schedulerIntervalInMinutes));
+    			}
+
+    		} else {
+    			Integer schedulerIntervalInHours = getParameter(PARAM_INTERVAL.getName(), DEFAULT_INTERVAL);
+    			if (schedulerIntervalInHours != null) {
+    				schedulerIntervalInDays = TimeUnit.HOURS.toDays(schedulerIntervalInHours);
+    			}
+    		}
+    	}   catch (PluggableTaskException e) {
+    		LOG.error("Exception occurred parsing plug-in parameters", e);
+    	}
+
+    	period.setUnitId(Constants.PERIOD_UNIT_DAY);
+    	period.setValue(schedulerIntervalInDays.compareTo(Long.valueOf(0)) > 0 ? schedulerIntervalInDays
+    			.intValue() : 1);
+
+    	return period;
     }
 }

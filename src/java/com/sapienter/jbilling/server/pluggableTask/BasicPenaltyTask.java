@@ -19,6 +19,7 @@
  */
 package com.sapienter.jbilling.server.pluggableTask;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.invoice.InvoiceBL;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDAS;
@@ -38,9 +39,10 @@ import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.user.db.UserDTO;
 import com.sapienter.jbilling.server.util.Constants;
 import org.apache.log4j.Logger;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 
 import java.math.BigDecimal;
-import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
@@ -70,7 +72,7 @@ import java.util.ResourceBundle;
  */
 public class BasicPenaltyTask extends PluggableTask implements IInternalEventsTask {
 
-    private static final Logger LOG = Logger.getLogger(BasicPenaltyTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(BasicPenaltyTask.class));
 
     public static final ParameterDescription PARAMETER_ITEM =
     	new ParameterDescription("item", true, ParameterDescription.Type.STR);
@@ -216,15 +218,17 @@ public class BasicPenaltyTask extends PluggableTask implements IInternalEventsTa
 
         OrderLineDTO line = new OrderLineDTO();
         line.setAmount(fee);
+        line.setPrice(fee);
         line.setDescription(description);
         line.setItemId(getPenaltyItemId());
         line.setTypeId(Constants.ORDER_LINE_TYPE_PENALTY);
+        line.setQuantity(1);
         summary.getLines().add(line);
 
         // create the db record
         OrderBL order = new OrderBL();
         order.set(summary);
-        order.create(invoice.getBaseUser().getEntity().getId(), 1, summary);
+        order.create(invoice.getBaseUser().getEntity().getId(), null, summary);
     }
 
     /**
@@ -237,7 +241,7 @@ public class BasicPenaltyTask extends PluggableTask implements IInternalEventsTa
      */
     public BigDecimal calculatePenaltyFee(InvoiceDTO invoice, ItemBL item) {
         // use the user's current balance as the base for our fee calculations
-        BigDecimal base = new UserBL().getBalance(invoice.getUserId());
+        BigDecimal base = UserBL.getBalance(invoice.getUserId());
 
         // if the item price is a percentage of the balance
         if (item.getEntity().getPercentage() != null) {
@@ -275,17 +279,17 @@ public class BasicPenaltyTask extends PluggableTask implements IInternalEventsTa
 
         ResourceBundle bundle = ResourceBundle.getBundle("entityNotifications", locale);
 
-        SimpleDateFormat df = new SimpleDateFormat(bundle.getString("format.date"));
+        DateTimeFormatter df = DateTimeFormat.forPattern(bundle.getString("format.date"));
 
         StringBuffer buff = new StringBuffer();
         buff.append(" - ")
                 .append(bundle.getString("invoice.line.delegated"))
-                .append(" ")
+                .append(' ')
                 .append(invoice.getPublicNumber())
-                .append(" ")
+                .append(' ')
                 .append(bundle.getString("invoice.line.delegated.due"))
-                .append(" ")
-                .append(df.format(invoice.getDueDate()));
+                .append(' ')
+                .append(df.print(invoice.getDueDate().getTime()));
 
         return buff.toString();
     }

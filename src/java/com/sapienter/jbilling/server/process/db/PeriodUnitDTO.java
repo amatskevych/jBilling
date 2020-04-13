@@ -20,6 +20,7 @@
 package com.sapienter.jbilling.server.process.db;
 
 
+import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -33,7 +34,7 @@ import javax.persistence.Table;
 import javax.persistence.Transient;
 
 import com.sapienter.jbilling.server.order.db.OrderPeriodDTO;
-import com.sapienter.jbilling.server.user.partner.db.Partner;
+import com.sapienter.jbilling.server.user.partner.db.PartnerDTO;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.db.AbstractDescription;
 
@@ -45,8 +46,14 @@ import org.hibernate.annotations.CacheConcurrencyStrategy;
 @Cache(usage = CacheConcurrencyStrategy.READ_ONLY)
 public class PeriodUnitDTO extends AbstractDescription implements java.io.Serializable {
 
+    public static final int MONTH = 1;
+    public static final int WEEK = 2;
+    public static final int DAY = 3;
+    public static final int YEAR = 4;
+    public static final int SEMI_MONTHLY = 5;
+
     private int id;
-    private Set<Partner> partners = new HashSet<Partner>(0);
+    private Set<PartnerDTO> partners = new HashSet<PartnerDTO>(0);
     private Set<OrderPeriodDTO> orderPeriodDTOs = new HashSet<OrderPeriodDTO>(0);
     private Set<BillingProcessDTO> billingProcesses = new HashSet<BillingProcessDTO>(0);
     private Set<BillingProcessConfigurationDTO> billingProcessConfigurations = new HashSet<BillingProcessConfigurationDTO>(0);
@@ -58,9 +65,8 @@ public class PeriodUnitDTO extends AbstractDescription implements java.io.Serial
         this.id = id;
     }
 
-    public PeriodUnitDTO(int id, Set<Partner> partners, Set<OrderPeriodDTO> orderPeriodDTOs, Set<BillingProcessDTO> billingProcesses, Set<BillingProcessConfigurationDTO> billingProcessConfigurations) {
+    public PeriodUnitDTO(int id, Set<OrderPeriodDTO> orderPeriodDTOs, Set<BillingProcessDTO> billingProcesses, Set<BillingProcessConfigurationDTO> billingProcessConfigurations) {
         this.id = id;
-        this.partners = partners;
         this.orderPeriodDTOs = orderPeriodDTOs;
         this.billingProcesses = billingProcesses;
         this.billingProcessConfigurations = billingProcessConfigurations;
@@ -82,15 +88,6 @@ public class PeriodUnitDTO extends AbstractDescription implements java.io.Serial
     }
 
     @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "periodUnit")
-    public Set<Partner> getPartners() {
-        return this.partners;
-    }
-
-    public void setPartners(Set<Partner> partners) {
-        this.partners = partners;
-    }
-
-    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "periodUnit")
     public Set<OrderPeriodDTO> getOrderPeriods() {
         return this.orderPeriodDTOs;
     }
@@ -107,7 +104,7 @@ public class PeriodUnitDTO extends AbstractDescription implements java.io.Serial
     public void setBillingProcesses(Set<BillingProcessDTO> billingProcesses) {
         this.billingProcesses = billingProcesses;
     }
-
+    
     @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "periodUnit")
     public Set<BillingProcessConfigurationDTO> getBillingProcessConfigurations() {
         return this.billingProcessConfigurations;
@@ -120,6 +117,7 @@ public class PeriodUnitDTO extends AbstractDescription implements java.io.Serial
     public String toString() {
         return "PeriodUnitDTO: " + id;
     }
+
 }
 
 

@@ -21,6 +21,8 @@ package com.sapienter.jbilling.server.invoice.db;
 
 import com.sapienter.jbilling.server.util.db.AbstractGenericStatus;
 import com.sapienter.jbilling.server.util.Constants;
+import org.hibernate.annotations.Cache;
+import org.hibernate.annotations.CacheConcurrencyStrategy;
 
 import javax.persistence.Entity;
 import javax.persistence.DiscriminatorValue;
@@ -31,6 +33,7 @@ import java.util.HashSet;
 
 @Entity
 @DiscriminatorValue("invoice_status")
+@Cache(usage = CacheConcurrencyStrategy.READ_ONLY)
 public class InvoiceStatusDTO extends AbstractGenericStatus implements Serializable {
 
     private Set<InvoiceDTO> invoiceDTOs = new HashSet<InvoiceDTO>(0);

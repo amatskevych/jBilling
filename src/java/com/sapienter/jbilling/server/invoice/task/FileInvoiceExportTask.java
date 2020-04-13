@@ -26,12 +26,14 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.math.MathContext;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
+import com.sapienter.jbilling.server.invoice.InvoiceLineComparator;
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.invoice.NewInvoiceEvent;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
@@ -43,6 +45,8 @@ import com.sapienter.jbilling.server.system.event.Event;
 import com.sapienter.jbilling.server.system.event.task.IInternalEventsTask;
 import com.sapienter.jbilling.server.user.ContactBL;
 import com.sapienter.jbilling.server.user.UserBL;
+import org.joda.time.format.DateTimeFormat;
+
 /**
  *
  * @author emilc
@@ -51,7 +55,7 @@ public class FileInvoiceExportTask extends PluggableTask implements IInternalEve
     
     private static final Class<Event> events[] = new Class[] { NewInvoiceEvent.class };
 
-    private static final Logger LOG = Logger.getLogger(FileInvoiceExportTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(FileInvoiceExportTask.class));
 
     // Required parameters
     private static final ParameterDescription PARAMETER_FILE = new ParameterDescription("file", true, ParameterDescription.Type.STR);
@@ -66,7 +70,7 @@ public class FileInvoiceExportTask extends PluggableTask implements IInternalEve
             return;
         }
 
-        LOG.debug("Exporting invoice " + myEvent.getInvoice().getId());
+        LOG.debug("Exporting invoice %s", myEvent.getInvoice().getId());
 
         // get filename
         String filename = (String) parameters.get(PARAMETER_FILE.getName());
@@ -78,7 +82,9 @@ public class FileInvoiceExportTask extends PluggableTask implements IInternalEve
 
         try {
             BufferedWriter out = new BufferedWriter(new FileWriter(filename, true));
-            for (InvoiceLineDTO line : myEvent.getInvoice().getInvoiceLines()) {
+            List<InvoiceLineDTO> ordInvoiceLines = new ArrayList<InvoiceLineDTO>(myEvent.getInvoice().getInvoiceLines());
+            Collections.sort(ordInvoiceLines, new InvoiceLineComparator());
+            for (InvoiceLineDTO line : ordInvoiceLines) {
                 out.write(composeLine(myEvent.getInvoice(), line, myEvent.getUserId()));
                 out.newLine();
             }
@@ -101,53 +107,53 @@ public class FileInvoiceExportTask extends PluggableTask implements IInternalEve
 
         // cono                                                         
         line.append("\"" + emptyIfNull(contact.getEntity().getPostalCode()) + "\"");
-        line.append(",");
+        line.append(',');
         // custno
         line.append("\"" + userId + "\"");
-        line.append(",");
+        line.append(',');
         // naddrcode
         line.append("\"" + "000" + "\"");
-        line.append(",");
+        line.append(',');
         // lookupnm
         line.append("\"" + emptyIfNull(contact.getEntity().getOrganizationName()) + "\"");
-        line.append(",");
+        line.append(',');
         // totallineamt
         line.append("\"" + invoiceLine.getAmount() + "\"");
-        line.append(",");
+        line.append(',');
         // period
-        line.append("\"" + new SimpleDateFormat("yyyyMM").format(invoice.getCreateDatetime()) + "\"");
-        line.append(",");
+        line.append("\"" + DateTimeFormat.forPattern("yyyyMM").print(invoice.getCreateDatetime().getTime()) + "\"");
+        line.append(',');
         // name
         line.append("\"" + emptyIfNull(contact.getEntity().getOrganizationName()) + "\"");
-        line.append(",");
+        line.append(',');
         // deliveryaddr
         line.append("\"" + emptyIfNull(contact.getEntity().getAddress1()) + "\"");
-        line.append(",");
+        line.append(',');
         // city
         line.append("\"" + emptyIfNull(contact.getEntity().getCity()) + "\"");
-        line.append(",");
+        line.append(',');
         // state
         line.append("\"" + emptyIfNull(contact.getEntity().getStateProvince()) + "\"");
-        line.append(",");
+        line.append(',');
         // zip5
         line.append("\"" + emptyIfNull(contact.getEntity().getPostalCode()) + "\"");
-        line.append(",");
+        line.append(',');
         // totdue - round to two decimals
-        line.append("\"" + new UserBL().getBalance(userId).round(new MathContext(2)) + "\"");
-        line.append(",");
+        line.append("\"" + UserBL.getBalance(userId).round(new MathContext(2)) + "\"");
+        line.append(',');
         // qty
         line.append("\"" + invoiceLine.getQuantity() + "\"");
-        line.append(",");
+        line.append(',');
         // description
         line.append("\"" + invoiceLine.getDescription() + "\"");
-        line.append(",");
+        line.append(',');
         // invoiceno
         line.append("\"" + invoice.getNumber() + "\"");
-        line.append(",");
+        line.append(',');
         // custstatus
         line.append("\"" + "TRUE" + "\"");
 
-        LOG.debug("Line to export:" + line);
+        LOG.debug("Line to export: %s", line);
         return line.toString();
     }
 

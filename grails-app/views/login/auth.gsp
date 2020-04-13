@@ -1,21 +1,22 @@
 %{--
-  jBilling - The Enterprise Open Source Billing System
-  Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
+     jBilling - The Enterprise Open Source Billing System
+   Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
 
-  This file is part of jbilling.
-
-  jbilling is free software: you can redistribute it and/or modify
-  it under the terms of the GNU Affero General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  jbilling is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU Affero General Public License for more details.
-
-  You should have received a copy of the GNU Affero General Public License
-  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+   This file is part of jbilling.
+   
+   jbilling is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+   
+   jbilling is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+   
+   You should have received a copy of the GNU Affero General Public License
+   along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+ 
   --}%
 
 <%@ page import="com.sapienter.jbilling.server.user.db.CompanyDTO" %>
@@ -25,11 +26,20 @@
 
     <title><g:message code="login.page.title"/></title>
 
-    <script type='text/javascript'>
+    <r:script disposition="head">
         $(document).ready(function() {
             $('#login input[name="j_username"]').focus();
+
+            $(document).keypress(function(e) {
+                    if(e.which == 13) {
+
+                        $(this).blur();
+                        $('#login form').submit();
+                    }
+                });
+
         });
-    </script>
+    </r:script>
 </head>
 <body>
 
@@ -41,6 +51,9 @@
         </div>
         <div class="form-hold">
             <form action='${postUrl}' method='POST' id='login-form' autocomplete='off'>
+                
+                <g:hiddenField name="interactive_login" value="true"/>                
+
                 <fieldset>
 
                     <div class="form-columns">
@@ -57,19 +70,29 @@
                         </g:applyLayout>
 
                         <g:applyLayout name="form/select">
+                            <g:set var="companies" value="${CompanyDTO.createCriteria().list(){eq('deleted', 0)}.sort {it.description}}"/>
                             <content tag="label"><g:message code="login.prompt.client.id"/></content>
                             <content tag="label.for">client_id</content>
-                            <g:select name="j_client_id"
-                                      from="${CompanyDTO.list()}"
-                                      optionKey="id"
-                                      optionValue="description"
-                                      value="${params.companyId}"/>
+                            <g:if test="${companies}" >
+                                <g:select name="j_client_id"
+                                          from="${companies}"
+                                          optionKey="id"
+                                          optionValue="${{it?.description}}"
+                                          value="${params.companyId && !params.companyId.isEmpty() ? params.companyId as Integer : null}"/>
+                            </g:if>
+                            <g:else>
+                                <g:select name="j_client_id"
+                                          from="${companies}"
+                                          optionKey="id"
+                                          noSelection="['': message(code: 'default.no.selection')]"
+                                          optionValue="description"
+                                          value="${params.companyId && !params.companyId.isEmpty() ? params.companyId as Integer : null}"/>
+                            </g:else>
                         </g:applyLayout>
 
-                        <g:applyLayout name="form/checkbox">
-                            <content tag="label"><g:message code="login.prompt.remember.me"/></content>
-                            <content tag="label.for">${rememberMeParameter}</content>
-                            <g:checkBox class="cb checkbox" name="${rememberMeParameter}" checked="${hasCookie}"/>
+                        <g:applyLayout name="form/text">
+                            <content tag="label">&nbsp;</content>
+                            <g:link controller="resetPassword"><g:message code="login.prompt.forgotPassword" /></g:link>
                         </g:applyLayout>
 
                         <br/>

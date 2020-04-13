@@ -20,15 +20,18 @@
 
 package com.sapienter.jbilling.server.billing.task;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.process.IBillingProcessSessionBean;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.process.task.AbstractBackwardSimpleScheduledTask;
 import com.sapienter.jbilling.server.util.Context;
+
 import org.apache.log4j.Logger;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import org.quartz.SimpleTrigger;
+import org.quartz.impl.triggers.SimpleTriggerImpl;
 
 import java.util.Date;
 
@@ -46,12 +49,12 @@ import java.util.Date;
  * @since
  */
 public class BillingProcessTask extends AbstractBackwardSimpleScheduledTask {
-    private static final Logger LOG = Logger.getLogger(BillingProcessTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(BillingProcessTask.class));
 
     private static final String PROPERTY_RUN_BILLING = "process.run_billing";
 
     public String getTaskName() {
-        return "billing process: " + getScheduleString();
+        return "billing process: , entity id " + getEntityId() + ", taskId " + getTaskId();
     }
 
     public void execute(JobExecutionContext context) throws JobExecutionException {
@@ -60,8 +63,8 @@ public class BillingProcessTask extends AbstractBackwardSimpleScheduledTask {
         IBillingProcessSessionBean billing = (IBillingProcessSessionBean) Context.getBean(Context.Name.BILLING_PROCESS_SESSION);
 
         if (Util.getSysPropBooleanTrue(PROPERTY_RUN_BILLING)) {
-        LOG.info("Starting billing at " + new Date());
-            billing.trigger(new Date());
+        LOG.info("Starting billing at " + new Date() + " for " + getEntityId());
+            billing.trigger(new Date(), getEntityId());
             LOG.info("Ended billing at " + new Date());
         }
     }
@@ -82,7 +85,7 @@ public class BillingProcessTask extends AbstractBackwardSimpleScheduledTask {
         // parameters have been explicitly set to define the billing schedule
         if (useProperties()) {
             LOG.debug("Scheduling billing process from jbilling.properties ...");
-            trigger= setTriggerFromProperties(trigger);
+            trigger= setTriggerFromProperties((SimpleTriggerImpl)trigger);
         } else {
             LOG.debug("Scheduling billing process using plug-in parameters ...");
         }

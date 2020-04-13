@@ -24,6 +24,7 @@ package com.sapienter.jbilling.server.process;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.process.db.BillingProcessConfigurationDAS;
 import com.sapienter.jbilling.server.process.db.BillingProcessConfigurationDTO;
@@ -43,7 +44,7 @@ public class ConfigurationBL {
     private BillingProcessConfigurationDAS configurationDas = null;
     private BillingProcessConfigurationDTO configuration = null;
     private EventLogger eLogger = null;
-    private static final Logger LOG = Logger.getLogger(ConfigurationBL.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(ConfigurationBL.class));
 
     public ConfigurationBL(Integer entityId)  {
         init();
@@ -106,18 +107,16 @@ public class ConfigurationBL {
 
         configuration.setDaysForReport(dto.getDaysForReport());
         configuration.setDaysForRetry(dto.getDaysForRetry());
-        configuration.setRetries(dto.getRetries());
         configuration.setPeriodUnit(dto.getPeriodUnit());
-        configuration.setPeriodValue(dto.getPeriodValue());
         configuration.setDueDateUnitId(dto.getDueDateUnitId());
         configuration.setDueDateValue(dto.getDueDateValue());
         configuration.setDfFm(dto.getDfFm());
         configuration.setOnlyRecurring(dto.getOnlyRecurring());
         configuration.setInvoiceDateProcess(dto.getInvoiceDateProcess());
-        configuration.setAutoPayment(dto.getAutoPayment());
-        configuration
-                .setAutoPaymentApplication(dto.getAutoPaymentApplication());
+        configuration.setAutoPaymentApplication(dto.getAutoPaymentApplication());
         configuration.setMaximumPeriods(dto.getMaximumPeriods());
+        configuration.setLastDayOfMonth(dto.getLastDayOfMonth());
+        configuration.setProratingType(dto.getProratingType());
 
         return configuration.getId();
     }
@@ -131,20 +130,17 @@ public class ConfigurationBL {
         dto.setGenerateReport(configuration.getGenerateReport());
         dto.setId(configuration.getId());
         dto.setNextRunDate(configuration.getNextRunDate());
-        dto.setRetries(configuration.getRetries());
         dto.setPeriodUnit(configuration.getPeriodUnit());
-        dto.setPeriodValue(configuration.getPeriodValue());
         dto.setReviewStatus(configuration.getReviewStatus());
         dto.setDueDateUnitId(configuration.getDueDateUnitId());
         dto.setDueDateValue(configuration.getDueDateValue());
         dto.setDfFm(configuration.getDfFm());
         dto.setOnlyRecurring(configuration.getOnlyRecurring());
         dto.setInvoiceDateProcess(configuration.getInvoiceDateProcess());
-        dto.setAutoPayment(configuration.getAutoPayment());
         dto.setMaximumPeriods(configuration.getMaximumPeriods());
-        dto
-                .setAutoPaymentApplication(configuration
-                        .getAutoPaymentApplication());
+        dto.setAutoPaymentApplication(configuration.getAutoPaymentApplication());
+        dto.setLastDayOfMonth(configuration.getLastDayOfMonth());
+        dto.setProratingType(configuration.getProratingType());
 
         return dto;
     }
@@ -168,7 +164,31 @@ public class ConfigurationBL {
      * @return converted web-service object
      */
     public static BillingProcessConfigurationWS getWS(BillingProcessConfigurationDTO dto) {
-        return dto != null ? new BillingProcessConfigurationWS(dto) : null;
+		if (null == dto)
+			return null;
+
+		BillingProcessConfigurationWS ws = new BillingProcessConfigurationWS();
+		ws.setId(dto.getId());
+		ws.setPeriodUnitId(dto.getPeriodUnit() != null ? dto.getPeriodUnit()
+				.getId() : null);
+		ws.setEntityId(dto.getEntity() != null ? dto.getEntity().getId() : null);
+		ws.setNextRunDate(dto.getNextRunDate());
+		ws.setGenerateReport(dto.getGenerateReport());
+		ws.setRetries(dto.getRetries());
+		ws.setDaysForRetry(dto.getDaysForRetry());
+		ws.setDaysForReport(dto.getDaysForReport());
+		ws.setReviewStatus(dto.getReviewStatus());
+		ws.setDueDateUnitId(dto.getDueDateUnitId());
+		ws.setDueDateValue(dto.getDueDateValue());
+		ws.setDfFm(dto.getDfFm());
+		ws.setOnlyRecurring(dto.getOnlyRecurring());
+		ws.setInvoiceDateProcess(dto.getInvoiceDateProcess());
+		ws.setMaximumPeriods(dto.getMaximumPeriods());
+		ws.setAutoPaymentApplication(dto.getAutoPaymentApplication());
+		ws.setLastDayOfMonth(dto.getLastDayOfMonth());
+		ws.setProratingType(null != dto.getProratingType() ? dto
+				.getProratingType().getOptionText() : Constants.BLANK_STRING);
+		return ws;
     }
 
     /**
@@ -185,16 +205,16 @@ public class ConfigurationBL {
 
             if (ws.getEntityId() == null)
                     throw new SessionInternalError("BillingProcessConfigurationDTO must have an entity id.");
-
+            
             if (ws.getPeriodUnitId() == null)
-                    throw new SessionInternalError("BillingProcessConfigurationDTO must have a period unit id.");
-                        
+            	throw new SessionInternalError("BillingProcessConfigurationDTO must have a period unit id.");
+            
             // billing process entity
             CompanyDTO entity = new EntityBL(ws.getEntityId()).getEntity();
-
+            
             // billing process period unit
             PeriodUnitDTO periodUnit = new PeriodUnitDAS().find(ws.getPeriodUnitId());
-
+            
             return new BillingProcessConfigurationDTO(ws, entity, periodUnit);
         }
         return null;

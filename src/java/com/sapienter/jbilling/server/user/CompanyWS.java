@@ -20,21 +20,20 @@
 package com.sapienter.jbilling.server.user;
 
 
-import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
-import com.sapienter.jbilling.server.user.db.CompanyDAS;
-import com.sapienter.jbilling.server.user.db.CompanyDTO;
-import com.sapienter.jbilling.server.util.db.CurrencyDAS;
-import com.sapienter.jbilling.server.util.db.CurrencyDTO;
-import com.sapienter.jbilling.server.util.db.LanguageDAS;
+import javax.validation.Valid;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 
 public class CompanyWS implements java.io.Serializable {
 
+    private static final long serialVersionUID = 20140605L;
 
     private int id;
     private Integer currencyId;
     private Integer languageId;
+    @Size(min = 5, max = 100, message = "validation.error.size,5,100")
     private String description;
-
+    @Valid
     private ContactWS contact;
     
     public CompanyWS() {
@@ -42,34 +41,6 @@ public class CompanyWS implements java.io.Serializable {
 
     public CompanyWS(int i) {
         id = i;
-    }
-
-    public CompanyWS(CompanyDTO companyDto) {
-        this.id = companyDto.getId();
-        this.currencyId= companyDto.getCurrencyId();
-        this.languageId = companyDto.getLanguageId();
-        this.description = companyDto.getDescription();
-
-        ContactDTO contact = new EntityBL(new Integer(this.id)).getContact();
-
-        if (contact != null) {
-            this.contact = new ContactWS(contact.getId(),
-                                         contact.getAddress1(),
-                                         contact.getAddress2(),
-                                         contact.getCity(),
-                                         contact.getStateProvince(),
-                                         contact.getPostalCode(),
-                                         contact.getCountryCode(),
-                                         contact.getDeleted());
-        }
-    }
-    
-    public CompanyDTO getDTO(){
-        CompanyDTO dto = new CompanyDAS().find(new Integer(this.id));
-        dto.setCurrency(new CurrencyDAS().find(this.currencyId));
-        dto.setLanguage(new LanguageDAS().find(this.languageId));
-        dto.setDescription(this.description);
-        return dto;
     }
 
     public int getId() {

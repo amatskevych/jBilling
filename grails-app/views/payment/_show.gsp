@@ -1,24 +1,25 @@
 %{--
-  jBilling - The Enterprise Open Source Billing System
-  Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
+     jBilling - The Enterprise Open Source Billing System
+   Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
 
-  This file is part of jbilling.
-
-  jbilling is free software: you can redistribute it and/or modify
-  it under the terms of the GNU Affero General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  jbilling is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU Affero General Public License for more details.
-
-  You should have received a copy of the GNU Affero General Public License
-  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+   This file is part of jbilling.
+   
+   jbilling is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+   
+   jbilling is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+   
+   You should have received a copy of the GNU Affero General Public License
+   along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+ 
   --}%
 
-<%@ page import="com.sapienter.jbilling.common.Constants; com.sapienter.jbilling.server.user.contact.db.ContactDTO" %>
+<%@ page import="org.apache.commons.lang.StringEscapeUtils; com.sapienter.jbilling.common.Constants; com.sapienter.jbilling.server.user.contact.db.ContactDTO" %>
 
 <%--
   Shows details of a selected payment.
@@ -40,10 +41,14 @@
                 <g:message code="payment.payment.title"/>
             </g:else>
             <em>${selected.id}</em>
+            <g:if test="${selected.deleted}">
+                <span style="color: #ff0000;">(<g:message code="object.deleted.title"/>)</span>
+            </g:if>
         </strong>
     </div>
 
     <div class="box">
+      <div class="sub-box">
         <!-- user details -->
         <table class="dataTable" cellspacing="0" cellpadding="0">
             <tbody>
@@ -77,6 +82,12 @@
                     <td><g:message code="payment.label.user.name"/></td>
                     <td class="value">${selected.baseUser.userName}</td>
                 </tr>
+                <g:isRoot>
+                    <tr>
+                    	<td><g:message code="invoice.label.company.name"/></td>
+                       	<td class="value">${selected?.baseUser.company.description}</td>
+                	</tr>
+                </g:isRoot>
             </tbody>
         </table>
 
@@ -85,7 +96,7 @@
             <tbody>
                 <tr>
                     <td><g:message code="payment.date"/></td>
-                    <td class="value"><g:formatDate date="${selected.paymentDate ?: selected.createDatetime}" formatName="date.pretty.format"/></td>
+                    <td class="value"><g:formatDate date="${selected.createDatetime}" formatName="date.timeSecsAMPM.format"/></td>
                 </tr>
                 <tr>
                     <td><g:message code="payment.amount"/></td>
@@ -93,27 +104,42 @@
                 </tr>
                 <tr>
                     <td><g:message code="payment.result"/></td>
-                    <td class="value">${selected.paymentResult.getDescription(session['language_id'])}</td>
+                    <td class="value">${selected?.paymentResult.getDescription(session['language_id'])}</td>
                 </tr>
             </tbody>
         </table>
 
         <hr/>
 
-        <!-- payment balance -->
+        <!-- payment balance & meta fields -->
         <table class="dataTable" cellspacing="0" cellpadding="0">
             <tbody>
                 <tr>
                     <td><g:message code="payment.id"/></td>
                     <td class="value">${selected.id}</td>
                 </tr>
+                <g:if test="${selected?.isRefund != 0 }">
+                	<tr>
+                    <td><g:message code="refunded.payment.id"/></td>
+                    <td class="value">
+	                    <sec:access url="/payment/show">
+	                        <g:remoteLink controller="payment" action="show" id="${selected?.paymentId}" before="register(this);" onSuccess="render(data, next);">
+	                            ${selected?.paymentId}
+	                        </g:remoteLink>
+	                    </sec:access>
+	                    <sec:noAccess url="/payment/show">
+	                        ${selected?.paymentId}
+	                    </sec:noAccess>
+                    </td>
+                </tr>
+                </g:if>
                 <tr>
                     <td><g:message code="payment.balance"/></td>
                     <td class="value">
                         <g:formatNumber number="${selected.balance}" type="currency" currencySymbol="${selected.currencyDTO.symbol}"/>
 
                         <sec:access url="/payment/link">
-                            <g:if test="${selected.balance.compareTo(BigDecimal.ZERO) > 0}">
+                            <g:if test="${selected.balance.compareTo(BigDecimal.ZERO) > 0 && selected.isRefund == 0 }">
                                 &nbsp; - &nbsp;
                                 <g:link controller="payment" action="link" id="${selected.id}">
                                     <g:message code="payment.link.invoice.pay" />
@@ -130,11 +156,20 @@
                     <td><g:message code="payment.is.preauth"/></td>
                     <td class="value"><em><g:formatBoolean boolean="${selected.isPreauth > 0}"/></em></td>
                 </tr>
+
+                <g:if test="${selected?.metaFields}">
+                    <!-- empty spacer row -->
+                    <tr>
+                        <td colspan="2"><br/></td>
+                    </tr>
+                    <g:render template="/metaFields/metaFields" model="[metaFields: selected?.metaFields]"/>
+                </g:if>
             </tbody>
         </table>
 
         <!-- list of linked invoices -->
         <g:if test="${selected.invoicesMap}">
+            <g:hiddenField name="unlink_invoice_id" value="-1"/>
             <table cellpadding="0" cellspacing="0" class="innerTable">
                 <thead class="innerHeader">
                     <tr>
@@ -150,7 +185,7 @@
                         <td class="innerContent">
                             <sec:access url="/invoice/show">
                                 <g:remoteLink controller="invoice" action="show" id="${invoicePayment.invoiceEntity.id}" before="register(this);" onSuccess="render(data, next);">
-                                    <g:message code="payment.link.invoice" args="[invoicePayment.invoiceEntity.number]"/>
+                                    <g:message code="payment.link.invoice" args="[StringEscapeUtils.escapeHtml(invoicePayment?.invoiceEntity?.number)]"/>
                                 </g:remoteLink>
                             </sec:access>
                             <sec:noAccess url="/invoice/show">
@@ -165,9 +200,9 @@
                         </td>
                         <td class="innerContent">
                             <sec:access url="/payment/unlink">
-                                <g:remoteLink action="unlink" id="${selected.id}" params="[invoiceId: invoicePayment.invoiceEntity.id]" before="register(this);" onSuccess="render(data, second);">
-                                    <g:message code="payment.link.unlink"/>
-                                </g:remoteLink>
+                                <a onclick="setUnlinkInvoiceId(${selected.id}, ${invoicePayment.invoiceEntity.id});">
+                                    <span><g:message code="payment.link.unlink"/></span>
+                                </a>
                             </sec:access>
                         </td>
                     </tr>
@@ -175,6 +210,7 @@
                 </tbody>
             </table>
         </g:if>
+     </div>
     </div>
 
     <!-- payment notes -->
@@ -183,19 +219,20 @@
             <strong><g:message code="payment.notes"/></strong>
         </div>
         <div class="box">
-            <p>${selected.paymentNotes}</p>
+            <div class="sub-box"><p>${selected.paymentNotes}</p></div>
         </div>
     </g:if>
 
     <!-- payment authorization -->
     <g:if test="${selected.paymentAuthorizations}">
-        <g:set var="authorization" value="${selected.paymentAuthorizations.sort { it.createdDate }?.first()}"/>
+        <g:set var="authorization" value="${selected.paymentAuthorizations.sort { it.createDate }?.first()}"/>
 
         <div class="heading">
             <strong><g:message code="payment.authorization.title" /></strong>
         </div>
         <div class="box">
-            <table class="dataTable" cellspacing="0" cellpadding="0">
+            <div class="sub-box">
+			  <table class="dataTable" cellspacing="0" cellpadding="0">
                 <tbody>
                     <tr>
                         <td><g:message code="payment.authorization.date" /></td>
@@ -257,132 +294,50 @@
                     </tr>
                 </tbody>
             </table>
+            </div>
         </div>
     </g:if>
 
 
     <!-- credit card details -->
-    <g:if test="${selected.creditCard}">
-        <g:set var="creditCard" value="${selected.creditCard}"/>
+    <g:if test="${selected?.paymentInstrumentsInfo.size()>0}">
 
         <div class="heading">
-            <strong><g:message code="payment.credit.card"/></strong>
+            <strong><g:message code="payment.instrument.list"/></strong>
         </div>
         <div class="box">
-            <table class="dataTable" cellspacing="0" cellpadding="0">
-                <tbody>
-                    <tr>
-                        <td><g:message code="payment.credit.card.name"/></td>
-                        <td class="value">${creditCard.name}</td>
-                    </tr>
-                    <tr>
-                        <td><g:message code="payment.credit.card.type"/></td>
-                        <td class="value">${selected.paymentMethod.getDescription(session['language_id'])}</td>
-                    </tr>
-                    <tr>
-                        <td><g:message code="payment.credit.card.number"/></td>
-                        <td class="value">
-                            %{-- obscure credit card by default, or if the preference is explicitly set --}%
-                            <g:if test="${preferenceIsNullOrEquals(preferenceId: Constants.PREFERENCE_HIDE_CC_NUMBERS, value: 1, true)}">
-                                <g:set var="creditCardNumber" value="${creditCard.number.replaceAll('^\\d{12}','************')}"/>
-                                ${creditCardNumber}
-                            </g:if>
-                            <g:else>
-                                ${creditCard.number}
-                            </g:else>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><g:message code="payment.credit.card.expiry"/></td>
-                        <td class="value"><g:formatDate date="${creditCard.ccExpiry}" formatName="credit.card.date.format"/></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </g:if>
-
-    <!-- ACH banking details -->
-    <g:if test="${selected.ach}">
-        <g:set var="ach" value="${selected.ach}"/>
-
-        <div class="heading">
-            <strong><g:message code="payment.ach"/></strong>
-        </div>
-        <div class="box">
-            <table class="dataTable" cellspacing="0" cellpadding="0">
-                <tbody>
-                    <tr>
-                        <td><g:message code="payment.ach.account.name"/></td>
-                        <td class="value">${ach.accountName}</td>
-                    </tr>
-                    <tr>
-                        <td><g:message code="payment.ach.bank.name"/></td>
-                        <td class="value">${ach.bankName}</td>
-                    </tr>
-                    <tr>
-                        <td><g:message code="payment.ach.routing.number"/></td>
-                        <td class="value">${ach.abaRouting}</td>
-                    </tr>
-                    <tr>
-                        <td><g:message code="payment.ach.account.number"/></td>
-                        <td class="value">${ach.bankAccount}</td>
-                    </tr>
-                    <tr>
-                        <td><g:message code="payment.ach.account.type"/></td>
-                        <td class="value">
-                            <g:if test="${ach.accountType == 1}">
-                                <g:message code="label.account.checking"/>
-                            </g:if>
-                            <g:else>
-                                <g:message code="label.account.savings"/>
-                            </g:else>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </g:if>
-
-    <!-- cheque details -->
-    <g:if test="${selected.paymentInfoCheque}">
-        <g:set var="cheque" value="${selected.paymentInfoCheque}"/>
-
-        <div class="heading">
-            <strong><g:message code="payment.cheque"/></strong>
-        </div>
-        <div class="box">
-            <table class="dataTable" cellspacing="0" cellpadding="0">
-                <tbody>
-                    <tr>
-                        <td><g:message code="payment.cheque.bank"/></td>
-                        <td class="value">${cheque.bank}</td>
-                    </tr>
-                    <tr>
-                        <td><g:message code="payment.cheque.number"/></td>
-                        <td class="value">${cheque.chequeNumber}</td>
-                    </tr>
-                    <tr>
-                        <td><g:message code="payment.cheque.date"/></td>
-                        <td class="value"><g:formatDate date="${cheque.date}" formatName="date.pretty.format"/></td>
-                    </tr>
-                </tbody>
-            </table>
+        	 <g:each var="instrumentInfo" in="${selected.paymentInstrumentsInfo}">
+        	 	<g:set var="instrument" value="${instrumentInfo?.paymentInformation}"/>
+		            <div class="sub-box">
+		                <table class="dataTable" cellspacing="0" cellpadding="0">
+		                    <tbody>
+		                        <tr>
+		                            <td><g:message code="payment.instrument.name"/></td>
+		                            <td class="value">${instrument.paymentMethodType.methodName}</td>
+		                        </tr>
+		                        <tr>
+		                            <td>
+		                            	 <g:render template="/metaFields/metaFields" model="[metaFields: instrument.metaFields]"/>
+		                            </td>
+		                        </tr>
+		                    </tbody>
+		                </table>
+		            </div>
+		     </g:each>
         </div>
     </g:if>
 
     <div class="btn-box">
+    <g:if test="${!selected.deleted}">
         <!-- edit or delete unlinked payments -->
         <div class="row">
             <g:if test="${!selected.invoicesMap}">
-                <sec:ifAllGranted roles="PAYMENT_31">
-                    <g:if test="${selected.paymentResult.id == Constants.RESULT_ENTERED}">
+                    <g:if test="${selected?.paymentResult.id == Constants.RESULT_ENTERED}">
                         <g:link action="edit" id="${selected.id}" class="submit edit"><span><g:message code="button.edit"/></span></g:link>
                     </g:if>
-                </sec:ifAllGranted>
-
-                <sec:ifAllGranted roles="PAYMENT_32">
-                    <a onclick="showConfirm('delete-${selected.id}');" class="submit delete"><span><g:message code="button.delete"/></span></a>
-                </sec:ifAllGranted>
+				<g:if test="${selected.isRefund == 0}">
+	                   <a onclick="showConfirm('delete-${selected.id}');" class="submit delete"><span><g:message code="button.delete"/></span></a>
+             	</g:if>
             </g:if>
             <g:else>
                 <em><g:message code="payment.cant.edit.linked"/></em>
@@ -394,16 +349,33 @@
                 <span><g:message code="button.payment.notify"/></span>
             </g:link>
         </div>
+	</g:if>
     </div>
-
-    <g:render template="/confirm"
-              model="[message: 'payment.delete.confirm',
-                      controller: 'payment',
-                      action: 'delete',
-                      id: selected.id,
-                      ajax: true,
-                      update: 'column1',
-                      onYes: 'closePanel(\'#column2\')'
-                     ]"/>
-
 </div>
+<script type="text/javascript">
+    function setUnlinkInvoiceId(paymentId, invoiceId) {
+        $('#unlink_invoice_id').val(invoiceId);
+        showConfirm("unlink-" + paymentId);
+        return true;
+    }
+    function setInvoiceId() {
+        $('#confirm-command-form-unlink-${selected.id} [name=invoiceId]').val($('#unlink_invoice_id').val());
+    }
+</script>
+
+<g:render template="/confirm"
+          model="[message: 'payment.prompt.confirm.remove.payment.link',
+                  controller: 'payment',
+                  action: 'unlink',
+                  id: selected.id,
+                  formParams: [ 'invoiceId': '-1' ],
+                  onYes: 'setInvoiceId()',
+          ]"/>
+
+<g:render template="/confirm"
+          model="[message: 'payment.delete.confirm',
+                  controller: 'payment',
+                  action: 'delete',
+                  id: selected.id,
+          ]"/>
+

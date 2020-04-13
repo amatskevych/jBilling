@@ -1,21 +1,22 @@
 %{--
-  jBilling - The Enterprise Open Source Billing System
-  Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
+     jBilling - The Enterprise Open Source Billing System
+   Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
 
-  This file is part of jbilling.
-
-  jbilling is free software: you can redistribute it and/or modify
-  it under the terms of the GNU Affero General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  jbilling is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU Affero General Public License for more details.
-
-  You should have received a copy of the GNU Affero General Public License
-  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+   This file is part of jbilling.
+   
+   jbilling is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+   
+   jbilling is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+   
+   You should have received a copy of the GNU Affero General Public License
+   along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+ 
   --}%
 
 <%@ page import="com.sapienter.jbilling.common.Constants" contentType="text/html;charset=UTF-8" %>
@@ -23,11 +24,11 @@
 <head>
     <meta name="layout" content="main"/>
 
-    <script type="text/javascript">
+    <r:script disposition="head">
         function clearInvoiceSelection() {
-            $(':input[type=radio][name=invoiceId]').attr('checked','');
+            $(':input[type=radio][name=invoiceId]').prop('checked','');
         }
-    </script>
+    </r:script>
 </head>
 <body>
 <div class="form-edit">
@@ -183,136 +184,22 @@
                     <br/>&nbsp;
                 </div>
 
-                <!-- credit card -->
-                <g:if test="${payment?.creditCard}">
-                    <g:set var="creditCard" value="${payment?.creditCard}"/>
-
-                    <div id="creditCard" class="box-cards ${creditCard ? 'box-cards-open' : ''}">
-                        <div class="box-cards-title">
-                            <a class="btn-open"><span><g:message code="prompt.credit.card"/></span></a>
-                        </div>
-                        <div class="box-card-hold">
-                            <div class="form-columns">
-                                <div class="column">
-                                    <g:applyLayout name="form/text">
-                                        <content tag="label"><g:message code="prompt.credit.card"/></content>
-                                        <content tag="label.for">creditCard.number</content>
-
-                                        %{-- obscure credit card by default, or if the preference is explicitly set --}%
-                                        <g:if test="${preferenceIsNullOrEquals(preferenceId: Constants.PREFERENCE_HIDE_CC_NUMBERS, value: 1, true)}">
-                                            <g:set var="creditCardNumber" value="${creditCard.number.replaceAll('^\\d{12}','************')}"/>
-                                            <span>${creditCardNumber}</span>
-                                        </g:if>
-                                        <g:else>
-                                            <span>${creditCard?.number}</span>
-                                        </g:else>
-                                    </g:applyLayout>
-
-                                    <g:applyLayout name="form/text">
-                                        <content tag="label"><g:message code="prompt.name.on.card"/></content>
-                                        <content tag="label.for">creditCard.name</content>
-                                        <span>${creditCard?.name}</span>
-                                    </g:applyLayout>
-
-                                    <g:applyLayout name="form/text">
-                                        <content tag="label"><g:message code="prompt.expiry.date"/></content>
-                                        <content tag="label.for">expiryMonth</content>
-                                        <span>
-                                            <g:formatDate date="${creditCard?.expiry}" format="MM"/>
-                                            /
-                                            <g:formatDate date="${creditCard?.expiry}" format="yyyy"/>
-                                        </span>
-                                    </g:applyLayout>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </g:if>
-
-                <!-- ach -->
-                <g:if test="${payment?.ach}">
-                    <g:set var="ach" value="${payment?.ach}"/>
-
-                    <div id="ach" class="box-cards ${ach ? 'box-cards-open' : ''}">
-                        <div class="box-cards-title">
-                            <a class="btn-open" href="#"><span><g:message code="prompt.ach"/></span></a>
-                        </div>
-                        <div class="box-card-hold">
-                            <div class="form-columns">
-                                <div class="column">
-                                    <g:applyLayout name="form/text">
-                                        <content tag="label"><g:message code="prompt.aba.routing.num"/></content>
-                                        <content tag="label.for">ach.abaRouting</content>
-                                        <span>${ach?.abaRouting}</span>
-                                    </g:applyLayout>
-
-                                    <g:applyLayout name="form/text">
-                                        <content tag="label"><g:message code="prompt.bank.acc.num"/></content>
-                                        <content tag="label.for">ach.bankAccount</content>
-                                        <span>${ach?.bankAccount}</span>
-                                    </g:applyLayout>
-
-                                    <g:applyLayout name="form/text">
-                                        <content tag="label"><g:message code="prompt.bank.name"/></content>
-                                        <content tag="label.for">ach.bankName</content>
-                                        <span>${ach?.bankName}</span>
-                                    </g:applyLayout>
-
-                                    <g:applyLayout name="form/text">
-                                        <content tag="label"><g:message code="prompt.name.customer.account"/></content>
-                                        <content tag="label.for">ach.accountName</content>
-                                        <span>${ach?.accountName}</span>
-                                    </g:applyLayout>
-
-                                    <g:applyLayout name="form/text">
-                                        <content tag="label"><g:message code="prompt.account.type" /></content>
-
-                                        <g:if test="${ach?.accountType == 1}">
-                                            <span><g:message code="label.account.checking"/></span>
-                                        </g:if>
-                                        <g:elseif test="${ach?.accountType == 2}">
-                                            <span><g:message code="label.account.savings"/></span>
-                                        </g:elseif>
-                                    </g:applyLayout>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </g:if>
-
-                <!-- cheque -->
-                <g:if if="cheque" test="${payment?.cheque}">
-                    <g:set var="cheque" value="${payment?.cheque}"/>
-
-                    <div id="cheque" class="box-cards ${cheque ? 'box-cards-open' : ''}">
-                        <div class="box-cards-title">
-                            <a class="btn-open"><span><g:message code="prompt.cheque"/></span></a>
-                        </div>
-                        <div class="box-card-hold">
-                            <div class="form-columns">
-                                <div class="column">
-                                    <g:applyLayout name="form/text">
-                                        <content tag="label"><g:message code="prompt.cheque.bank"/></content>
-                                        <content tag="label.for">cheque.bank</content>
-                                        <span>${cheque?.bank}</span>
-                                    </g:applyLayout>
-
-                                    <g:applyLayout name="form/text">
-                                        <content tag="label"><g:message code="prompt.cheque.number"/></content>
-                                        <content tag="label.for">cheque.number</content>
-                                        <span>${cheque?.number}</span>
-                                    </g:applyLayout>
-
-                                    <g:applyLayout name="form/text">
-                                        <content tag="label"><g:message code="prompt.cheque.date"/></content>
-                                        <content tag="label.for">cheque.date</content>
-                                        <span><g:formatDate date="${cheque?.date}" formatName="date.format"/></span>
-                                    </g:applyLayout>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </g:if>
+                <!-- Payment Methods -->
+				<div id="payment-methods" class="box-cards box-cards-open" >
+                   	    <div class="box-cards-title">
+                       	    <a class="btn-open"><span>
+                           	    <label><g:message code="promt.payment.methods"/></label>
+                           	</span></a>
+                       	</div>
+                       	<div id= "payment-method-main" class="box-card-hold">
+                       		<g:if test="${paymentMethods?.size() > 0}">
+								<g:render template="/payment/paymentMethods" model="[ paymentMethods: paymentMethods, paymentInstruments : paymentInstruments ]"/>
+							</g:if>
+							<g:else>
+								<g:message code="prompt.payment.method.types.not.available"/>
+							</g:else>
+						</div>
+           		</div>
 
                 <!-- box text -->
                 <div class="box-text">

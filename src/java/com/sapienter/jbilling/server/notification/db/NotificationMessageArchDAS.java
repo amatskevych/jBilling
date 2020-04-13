@@ -23,6 +23,7 @@ import java.util.Date;
 import java.util.HashSet;
 
 import com.sapienter.jbilling.server.notification.MessageSection;
+import com.sapienter.jbilling.server.user.db.UserDTO;
 import com.sapienter.jbilling.server.util.db.AbstractDAS;
 
 /**
@@ -33,6 +34,12 @@ import com.sapienter.jbilling.server.util.db.AbstractDAS;
 public class NotificationMessageArchDAS extends
         AbstractDAS<NotificationMessageArchDTO> {
     private static int LINE_LENGTH = 500;
+
+    public NotificationMessageArchDTO create(Integer id, MessageSection[] sections, UserDTO userDTO) {
+        NotificationMessageArchDTO notificationMessageArchDTO = create(id, sections);
+        notificationMessageArchDTO.setBaseUser(userDTO);
+        return notificationMessageArchDTO;
+    }
 
     public NotificationMessageArchDTO create(Integer id,
             MessageSection[] sections) {

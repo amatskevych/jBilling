@@ -105,7 +105,7 @@
 				<textElement>
 					<font size="12"/>
 				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[$P{entityCity} + ", " + $P{entityProvince} + " " + $P{entityPostalCode}]]></textFieldExpression>
+				<textFieldExpression class="java.lang.String"><![CDATA[ ($P{entityProvince}!=null && !$P{entityProvince}.trim().equals(""))?$P{entityCity}+", "+ $P{entityProvince}+" "+$P{entityPostalCode}:$P{entityCity}+" "+ $P{entityProvince}+" "+$P{entityPostalCode}]]></textFieldExpression>
 			</textField>
 			<textField isBlankWhenNull="true" hyperlinkType="None">
 				<reportElement positionType="Float" x="14" y="153" width="238" height="17"/>
@@ -175,7 +175,7 @@
 				<textElement>
 					<font size="12" isBold="true"/>
 				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[$P{customerCity} + ", " + $P{customerProvince} + " " + $P{customerPostalCode}]]></textFieldExpression>
+				<textFieldExpression class="java.lang.String"><![CDATA[ ($P{customerProvince}!=null && !$P{customerProvince}.trim().equals(""))?$P{customerCity}+", "+ $P{customerProvince}+" "+$P{customerPostalCode}:$P{customerCity}+" "+ $P{customerProvince}+" "+$P{customerPostalCode}]]></textFieldExpression>
 			</textField>
 		</band>
 	</title>
@@ -228,7 +228,7 @@
 				<textElement textAlignment="Right">
 					<font size="11"/>
 				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[(new DecimalFormat("#,##0.##")).format($F{quantity})]]></textFieldExpression>
+				<textFieldExpression class="java.lang.String"><![CDATA[(new DecimalFormat("#,##0.##")).format($F{quantity}.doubleValue())]]></textFieldExpression>
 			</textField>
 			<textField isStretchWithOverflow="true" hyperlinkType="None">
 				<reportElement positionType="Float" x="64" y="6" width="328" height="20"/>
@@ -244,7 +244,7 @@
 				<textElement textAlignment="Right">
 					<font size="11"/>
 				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[(new DecimalFormat("#,##0.00")).format($F{price})]]></textFieldExpression>
+				<textFieldExpression class="java.lang.String"><![CDATA[(new DecimalFormat("#,##0.00")).format($F{price}.doubleValue())]]></textFieldExpression>
 			</textField>
 			<textField hyperlinkType="None">
 				<reportElement positionType="Float" x="481" y="6" width="59" height="17">
@@ -253,7 +253,7 @@
 				<textElement textAlignment="Right">
 					<font size="11"/>
 				</textElement>
-				<textFieldExpression class="java.lang.String"><![CDATA[(new DecimalFormat("#,##0.00")).format($F{amount})]]></textFieldExpression>
+				<textFieldExpression class="java.lang.String"><![CDATA[(new DecimalFormat("#,##0.00")).format($F{amount}.doubleValue())]]></textFieldExpression>
 			</textField>
 		</band>
 	</detail>

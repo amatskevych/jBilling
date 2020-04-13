@@ -25,9 +25,15 @@ import java.io.StringWriter;
 
 import org.apache.log4j.Logger;
 
+import javax.xml.ws.WebFault;
+
+@WebFault(name = "SessionInternalError", targetNamespace = "http://jbilling/")
 public class SessionInternalError extends RuntimeException {
 
+    protected SessionInternalErrorMessages sessionInternalErrorMessages = new SessionInternalErrorMessages();
 	private String errorMessages[] = null;
+	private String params[] = null;
+	private String uuid;
 	
     public SessionInternalError() {
     }
@@ -37,8 +43,8 @@ public class SessionInternalError extends RuntimeException {
     }
     
     public SessionInternalError(String s, Class className, Exception e) {
-        super(s);
-        Logger log = Logger.getLogger(className);
+        super(e);
+        FormatLogger log = new FormatLogger(Logger.getLogger(className));
         StringWriter sw = new StringWriter();
         PrintWriter pw = new PrintWriter(sw);
         e.printStackTrace(pw);
@@ -49,13 +55,13 @@ public class SessionInternalError extends RuntimeException {
     }
 
     public SessionInternalError(Exception e) {
-        super(e.getMessage());
+        super(e);
 
         if (e instanceof SessionInternalError) {
             setErrorMessages(((SessionInternalError) e).getErrorMessages());
         }
 
-        Logger log = Logger.getLogger("com.sapienter.jbilling");
+        FormatLogger log = new FormatLogger(Logger.getLogger("com.sapienter.jbilling"));
         StringWriter sw = new StringWriter();
         PrintWriter pw = new PrintWriter(sw);
         e.printStackTrace(pw);
@@ -68,20 +74,71 @@ public class SessionInternalError extends RuntimeException {
     }
 
     public SessionInternalError(String message, Throwable e, String[] errors) {
-        super(message, e);
+        super(message + getErrorsAsString(errors), e);
         setErrorMessages(errors);
     }
 
     public SessionInternalError(String message, String[] errors) {
-        super(message);
+        super(message + getErrorsAsString(errors));
         setErrorMessages(errors);
+    }
+    
+    public SessionInternalError(String message, String[] errors, String[] params) {
+        super(message + getErrorsAsString(errors));
+        setErrorMessages(errors);
+        setParams(params);
+    }
+
+    private static String getErrorsAsString(String[] errors){
+        StringBuilder builder = new StringBuilder();
+        if (errors != null) {
+            builder.append(". Errors: ");
+            for (String error : errors) {
+                builder.append(error);
+                builder.append(System.getProperty("line.separator"));
+            }
+        }
+        return builder.toString();
     }
 
 	public void setErrorMessages(String errors[]) {
-		this.errorMessages = errors;
+        sessionInternalErrorMessages.setErrorMessages(errors);
 	}
 
 	public String[] getErrorMessages() {
-		return errorMessages;
+		return sessionInternalErrorMessages.getErrorMessages();
 	}
+
+    public SessionInternalErrorMessages getFaultInfo() {
+        return this.sessionInternalErrorMessages;
+    }
+	
+    public String[] getParams() {
+		return params;
+	}
+
+	public void setParams(String[] params) {
+		this.params = params;
+	}
+	
+	public boolean hasParams() {
+		return getParams() != null && getParams().length > 0;
+	}
+
+	public String getUuid() {
+		return uuid;
+	}
+
+	public void setUuid(String uuid) {
+		this.uuid = uuid;
+	}
+
+	public void copyErrorInformation(Throwable throwable) {
+		if(throwable instanceof SessionInternalError){
+			SessionInternalError internal = (SessionInternalError) throwable;
+			this.setErrorMessages(internal.getErrorMessages());
+			this.setParams(internal.getParams());
+		}
+	}
+
 }

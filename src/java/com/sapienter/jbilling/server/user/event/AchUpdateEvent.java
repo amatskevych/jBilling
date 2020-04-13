@@ -20,7 +20,7 @@
 
 package com.sapienter.jbilling.server.user.event;
 
-import com.sapienter.jbilling.server.user.db.AchDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.system.event.Event;
 
 /**
@@ -29,14 +29,14 @@ import com.sapienter.jbilling.server.system.event.Event;
  */
 public class AchUpdateEvent implements Event {
 
-    private final AchDTO ach;
+    private final PaymentInformationDTO ach;
     private final Integer entityId;
 
-    public AchDTO getAch() {
+    public PaymentInformationDTO getAch() {
         return ach;
     }
 
-    public AchUpdateEvent(AchDTO ach, Integer entityId) {
+    public AchUpdateEvent(PaymentInformationDTO ach, Integer entityId) {
         this.ach = ach;
         this.entityId = entityId;
     }

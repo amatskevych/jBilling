@@ -63,11 +63,13 @@ public class MapPeriodToCalendar {
         if (period.compareTo(Constants.PERIOD_UNIT_DAY) == 0) {
             retValue = 1;
         } else if (period.compareTo(Constants.PERIOD_UNIT_MONTH) == 0) {
-            retValue = 30;
+            retValue = 31;
         } else if (period.compareTo(Constants.PERIOD_UNIT_WEEK) == 0) {
             retValue = 7;
         } else if (period.compareTo(Constants.PERIOD_UNIT_YEAR) == 0) {
             retValue = 365;
+        } else if (period.compareTo(Constants.PERIOD_UNIT_SEMI_MONTHLY) == 0) {
+            retValue = 15;
         } else { // error !
             throw new SessionInternalError("Period not supported:" + period);
         }

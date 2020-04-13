@@ -19,8 +19,11 @@
  */
 
 package jbilling
+
+import com.sapienter.jbilling.client.util.Constants
+
 enum SearchType {
-    CUSTOMERS, ORDERS, INVOICES, PAYMENTS, BILLINGPROCESS, MEDIATIONPROCESS
+    CUSTOMERS, ORDERS, INVOICES, PAYMENTS, BILLINGPROCESS
 }
 
 class SearchCommand {
@@ -35,18 +38,24 @@ class SearchCommand {
  * @since 15-Dec-2010
  */
 class SearchController {
-
+	static scope = "prototype"
     def filterService
     def recentItemService
     def breadcrumbService
 
-    def index = { SearchCommand cmd ->
+    def index (SearchCommand cmd) {
+
+        // Check if the supplied id is invalid (type or length)
+        if(cmd.errors.hasFieldErrors('id')){
+            // add a pre-defined error value to the id
+            cmd.id = Constants.INVALID_SEARCH_ID_ERROR_CODE
+        }
 
         // add a filter to limit the list by the ID searched
         def filter = new Filter(type: FilterType.ALL, constraintType: FilterConstraint.EQ, field: 'id', template: 'id', visible: true, integerValue: cmd.id)
 
         // redirect to the controller of the type being searched
-        def type = Enum.valueOf(SearchType.class, cmd.type)
+        def type = cmd?.type ? Enum.valueOf(SearchType.class, cmd?.type) : ""
         switch (type) {
             case SearchType.CUSTOMERS:
                 filterService.setFilter(FilterType.CUSTOMER, filter)
@@ -67,16 +76,13 @@ class SearchController {
                 filterService.setFilter(FilterType.PAYMENT, filter)
                 redirect(controller: 'payment', action: 'list', id: cmd.id)
                 break
-				
+
 			case SearchType.BILLINGPROCESS:
 				filterService.setFilter(FilterType.BILLINGPROCESS, filter)
 				redirect(controller: 'billing', action: 'index', id: cmd.id)
 				break
-				
-			case SearchType.MEDIATIONPROCESS:
-				filterService.setFilter(FilterType.MEDIATIONPROCESS, filter)
-				redirect(controller: 'mediation', action: 'index', id: cmd.id)
-				break
+            default:
+                redirect(controller: 'home', action: 'index')
         }
     }
 }

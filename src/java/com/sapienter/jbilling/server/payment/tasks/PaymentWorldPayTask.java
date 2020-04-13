@@ -20,30 +20,17 @@
 
 package com.sapienter.jbilling.server.payment.tasks;
 
-import com.sapienter.jbilling.server.payment.IExternalCreditCardStorage;
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDTO;
-import com.sapienter.jbilling.server.payment.db.PaymentResultDAS;
-import com.sapienter.jbilling.server.pluggableTask.PaymentTask;
-import com.sapienter.jbilling.server.pluggableTask.PaymentTaskWithTimeout;
-import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.user.ContactBL;
-import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
-import com.sapienter.jbilling.server.util.Constants;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.NameValuePair;
-import org.apache.commons.httpclient.methods.PostMethod;
-import org.apache.commons.httpclient.util.ParameterParser;
 import org.apache.log4j.Logger;
 
-import java.io.IOException;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.text.SimpleDateFormat;
-import java.util.LinkedList;
-import java.util.List;
 
 /**
  * A pluggable PaymentTask that uses RBS WorldPay gateway for credit card
@@ -64,7 +51,7 @@ import java.util.List;
  */
 
 public class PaymentWorldPayTask extends PaymentWorldPayBaseTask {
-    private static final Logger LOG = Logger.getLogger(PaymentWorldPayTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaymentWorldPayTask.class));
 
     @Override
     String getProcessorName() { return "WorldPay"; }
@@ -105,7 +92,7 @@ public class PaymentWorldPayTask extends PaymentWorldPayBaseTask {
 
     public boolean confirmPreAuth(PaymentAuthorizationDTO auth, PaymentDTOEx payment)
             throws PluggableTaskException {
-
+    	PaymentInformationBL piBl = new PaymentInformationBL();
         LOG.debug("Confirming pre-authorization for " + getProcessorName() + " gateway");
 
         if (!getProcessorName() .equals(auth.getProcessor())) {
@@ -114,8 +101,8 @@ public class PaymentWorldPayTask extends PaymentWorldPayBaseTask {
             LOG.warn("The processor of the pre-auth is not " + getProcessorName() + ", is " + auth.getProcessor());
         }
 
-        CreditCardDTO card = payment.getCreditCard();
-        if (card == null) {
+        PaymentInformationDTO card = payment.getInstrument();
+        if (card == null || !piBl.isCreditCard(card)) {
             throw new PluggableTaskException("Credit card is required capturing" + " payment: " + payment.getId());
         }
 
@@ -151,15 +138,12 @@ public class PaymentWorldPayTask extends PaymentWorldPayBaseTask {
 
         request.add(WorldPayParams.General.AMOUNT, formatDollarAmount(payment.getAmount()));
         request.add(WorldPayParams.General.SVC_TYPE, transaction.getCode());
-
-        CreditCardDTO card = payment.getCreditCard();
-        request.add(WorldPayParams.CreditCard.CARD_NUMBER, card.getNumber());
-        request.add(WorldPayParams.CreditCard.EXPIRATION_DATE, EXPIRATION_DATE_FORMAT.format(card.getCcExpiry()));
-
-        if (card.getSecurityCode() != null) {
-            request.add(WorldPayParams.CreditCard.CVV2, String.valueOf(payment.getCreditCard().getSecurityCode()));
-        }
-
+        
+        PaymentInformationBL piBl = new PaymentInformationBL();
+        PaymentInformationDTO card = payment.getInstrument();
+        request.add(WorldPayParams.CreditCard.CARD_NUMBER, piBl.getStringMetaFieldByType(card, MetaFieldType.PAYMENT_CARD_NUMBER));
+        request.add(WorldPayParams.CreditCard.EXPIRATION_DATE, EXPIRATION_DATE_FORMAT.print(piBl.getDateMetaFieldByType(card, MetaFieldType.DATE).getTime()));
+        
         return request;
     }
 

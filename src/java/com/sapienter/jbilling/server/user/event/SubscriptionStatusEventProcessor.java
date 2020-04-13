@@ -19,6 +19,9 @@
  */
 package com.sapienter.jbilling.server.user.event;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.order.db.OrderStatusDAS;
+import com.sapienter.jbilling.server.order.OrderStatusFlag;
 import com.sapienter.jbilling.server.order.event.NewActiveUntilEvent;
 import com.sapienter.jbilling.server.payment.event.PaymentFailedEvent;
 import com.sapienter.jbilling.server.payment.event.PaymentProcessorUnavailableEvent;
@@ -33,7 +36,7 @@ import org.apache.log4j.Logger;
 
 public class SubscriptionStatusEventProcessor extends EventProcessor<ISubscriptionStatusManager> {
     
-    private static final Logger LOG = Logger.getLogger(SubscriptionStatusEventProcessor.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(SubscriptionStatusEventProcessor.class));
 
     public void process(Event event) {
         // get an instance of the pluggable task
@@ -60,7 +63,7 @@ public class SubscriptionStatusEventProcessor extends EventProcessor<ISubscripti
             // process the event only if the order is not a one timer
             // and is active
             if (!auEvent.getOrderType().equals(Constants.ORDER_PERIOD_ONCE) &&
-                    auEvent.getStatusId().equals(Constants.ORDER_STATUS_ACTIVE)) {
+                    auEvent.getStatusId().equals(new OrderStatusDAS().getDefaultOrderStatusId(OrderStatusFlag.INVOICE, event.getEntityId()))) {
                 task.subscriptionEnds(auEvent.getUserId(), 
                         auEvent.getNewActiveUntil(), auEvent.getOldActiveUntil());
             }

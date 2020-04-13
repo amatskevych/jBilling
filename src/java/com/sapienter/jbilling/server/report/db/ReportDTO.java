@@ -72,7 +72,6 @@ import java.util.Set;
 )
 @Cache(usage = CacheConcurrencyStrategy.READ_ONLY)
 public class ReportDTO extends AbstractDescription implements Serializable {
-
     public static final String BASE_PATH = Util.getSysProp("base_dir") + File.separator + "reports" + File.separator;
 
     private int id;
@@ -82,7 +81,8 @@ public class ReportDTO extends AbstractDescription implements Serializable {
     private String fileName;
     private List<ReportParameterDTO<?>> parameters = new ArrayList<ReportParameterDTO<?>>();
     private Integer versionNum;
-
+    private List<Integer> childEntities = new ArrayList<Integer>(0);
+    
     @Id
     @GeneratedValue(strategy = GenerationType.TABLE, generator = "report_GEN")
     @Column(name = "id", unique = true, nullable = false)
@@ -139,36 +139,6 @@ public class ReportDTO extends AbstractDescription implements Serializable {
         this.fileName = fileName;
     }
 
-    /**
-     * Returns the base path for this Jasper Report file on disk.
-     *
-     * @return base path for the Jasper Report file
-     */
-    @Transient
-    public String getReportBaseDir() {
-        return BASE_PATH + getType().getName() + File.separator;
-    }
-
-    /**
-     * Returns the expected path for the Jasper Report file on disk.
-     *
-     * @return path to Jasper Report file.
-     */
-    @Transient
-    public String getReportFilePath() {
-        return getReportBaseDir() + getFileName();
-    }
-
-    /**
-     * Returns a File object for the Jasper Report file.
-     *
-     * @return Jasper Report file.
-     */
-    @Transient
-    public File getReportFile() {
-        return fileName != null ? new File(getReportFilePath()) : null;
-    }
-
     @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER, mappedBy = "report")
     @Fetch(FetchMode.SELECT)
     public List<ReportParameterDTO<?>> getParameters() {
@@ -210,6 +180,26 @@ public class ReportDTO extends AbstractDescription implements Serializable {
         return map;
     }
 
+    /**
+     * Returns the base path for this Jasper Report file on disk.
+     *
+     * @return base path for the Jasper Report file
+     */
+    @Transient
+    public String getReportBaseDir() {
+        return BASE_PATH + getType().getName() + File.separator;
+    }
+
+    /**
+     * Returns the expected path for the Jasper Report file on disk.
+     *
+     * @return path to Jasper Report file.
+     */
+    @Transient
+    public String getReportFilePath() {
+        return getReportBaseDir() + getFileName();
+    }
+
     @Version
     @Column(name = "OPTLOCK")
     public Integer getVersionNum() {
@@ -221,6 +211,15 @@ public class ReportDTO extends AbstractDescription implements Serializable {
     }
 
     @Transient
+	public List<Integer> getChildEntities() {
+		return childEntities;
+	}
+
+	public void setChildEntities(List<Integer> childEntities) {
+		this.childEntities = childEntities;
+	}
+
+	@Transient
     protected String getTable() {
         return Constants.TABLE_REPORT;
     }
@@ -233,4 +232,5 @@ public class ReportDTO extends AbstractDescription implements Serializable {
                + ", fileName='" + fileName + '\''
                + '}';
     }
+
 }

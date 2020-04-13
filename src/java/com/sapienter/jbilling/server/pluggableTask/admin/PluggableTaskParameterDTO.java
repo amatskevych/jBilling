@@ -39,6 +39,8 @@ import org.apache.log4j.Logger;
 import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
 
+import com.sapienter.jbilling.common.FormatLogger;
+
 @Entity
 @TableGenerator(
         name="pluggable_task_parameter_GEN",
@@ -52,7 +54,7 @@ import org.hibernate.annotations.CacheConcurrencyStrategy;
 @Cache(usage = CacheConcurrencyStrategy.NONSTRICT_READ_WRITE)
 public class PluggableTaskParameterDTO implements Serializable {
 
-    private static final Logger LOG = Logger.getLogger(PluggableTaskParameterDTO.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PluggableTaskParameterDTO.class));
     
     public static final int INT = 1;
     public static final int STR = 2;
@@ -210,5 +212,5 @@ public class PluggableTaskParameterDTO implements Serializable {
     public Integer getVersionNum() {
         return versionNum;
     }
-    
+
 }

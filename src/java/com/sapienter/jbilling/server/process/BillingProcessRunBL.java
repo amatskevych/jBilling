@@ -28,6 +28,7 @@ import java.io.IOException;
 import org.apache.log4j.Logger;
 
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.common.Constants;
 import com.sapienter.jbilling.server.item.CurrencyBL;
@@ -51,7 +52,8 @@ public class BillingProcessRunBL  extends ResultList implements ProcessSQL {
     private ProcessRunTotalDAS processRunTotalDas = null;
     private ProcessRunTotalPmDAS billingProcessRunTotalPmDas = null;
     private ProcessRunDTO billingProcessRun = null;
-    private static final Logger LOG = Logger.getLogger(BillingProcessRunBL.class);
+    
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(BillingProcessRunBL.class));
 
     public class DateComparator implements Comparator {
 
@@ -202,8 +204,8 @@ public class BillingProcessRunBL  extends ResultList implements ProcessSQL {
      */
     public void updateTotals(Integer billingProcessId) {
 
-        for (Iterator it = new BillingProcessDAS().getCountAndSum(billingProcessId); it.hasNext();) {
-            Object[] row = (Object[]) it.next();
+        for (Object listObj: new BillingProcessDAS().getCountAndSum(billingProcessId)) {
+            Object[] row = (Object[]) listObj;
             // add the total to the total invoiced
             ProcessRunTotalDTO totalRow = findOrCreateTotal((Integer) row[2]);
 
@@ -243,6 +245,15 @@ public class BillingProcessRunBL  extends ResultList implements ProcessSQL {
         LOG.debug("updating run " + billingProcessRun.getId() +" version " + billingProcessRun.getVersionNum());
         billingProcessRun = processRunDas.save(billingProcessRun);
     }
+    
+    public void updatePaymentsFinished() {
+        // get the very latest version
+        billingProcessRun = processRunDas.findForUpdate(billingProcessRun.getId());
+        billingProcessRun.setPaymentFinished(Calendar.getInstance().getTime());
+        LOG.debug("updating payments run " + billingProcessRun.getId() +" version " + billingProcessRun.getVersionNum());
+        billingProcessRun = processRunDas.save(billingProcessRun);
+    }
+    
 
     public ProcessRunUserDTO addProcessRunUser(Integer userId, Integer status) {
 
@@ -255,15 +266,6 @@ public class BillingProcessRunBL  extends ResultList implements ProcessSQL {
         processRunUser.setStatus(status);
         return processRunUser;
     }
-    
-    public void updatePaymentsFinished() {
-        // get the very latest version
-        billingProcessRun = processRunDas.findForUpdate(billingProcessRun.getId());
-        billingProcessRun.setPaymentFinished(Calendar.getInstance().getTime());
-        LOG.debug("updating payments run " + billingProcessRun.getId() +" version " + billingProcessRun.getVersionNum());
-        billingProcessRun = processRunDas.save(billingProcessRun);
-    }
-    
     
     public BillingProcessRunDTOEx getDTO(Integer language) {
 
@@ -327,18 +329,46 @@ public class BillingProcessRunBL  extends ResultList implements ProcessSQL {
 
     public void updatePaymentsStatistic(Integer runId) {
         BillingProcessRunBL run = new BillingProcessRunBL(runId);
-        for (Iterator it = new BillingProcessDAS().getSuccessfulProcessCurrencyMethodAndSum(run.getEntity().getBillingProcess().getId()); it.hasNext();) {
-            Object[] row = (Object[]) it.next();
+        for (Object invoicePymObj: new BillingProcessDAS().getSuccessfulProcessCurrencyMethodAndSum(run.getEntity().getBillingProcess().getId())) {
+            Object[] row= (Object[]) invoicePymObj;
             run.updateNewPayment((Integer) row[0], (Integer) row[1], (BigDecimal) row[2], true);
         }
 
-        for (Iterator it = new BillingProcessDAS().getFailedProcessCurrencyAndSum(run.getEntity().getBillingProcess().getId()); it.hasNext();) {
-            Object[] row = (Object[]) it.next();
+        for (Object unpayedObj: new BillingProcessDAS().getFailedProcessCurrencyAndSum(run.getEntity().getBillingProcess().getId())) {
+            Object[] row = (Object[]) unpayedObj;
             run.updateNewPayment((Integer) row[0], null, (BigDecimal) row[1], false);
         }
     }
 
     public List<Integer> findSuccessfullUsers() {
         return new ProcessRunUserDAS().findSuccessfullUserIds(billingProcessRun.getId());
+    }
+
+    public boolean isUserAlreadySuccessful(Integer userId) { 
+    	return new ProcessRunUserDAS().findIfUserIsSuccessful(billingProcessRun.getId(), userId);
+    }
+    
+    public ProcessStatusWS getBillingProcessStatus(Integer entityId) {
+        ProcessRunDTO processRunDTO = new ProcessRunDAS().getLatest(entityId);
+        if (processRunDTO == null) {
+            return null;
+        } else {
+            ProcessStatusWS result = new ProcessStatusWS();
+            result.setStart(processRunDTO.getStarted());
+            result.setProcessId(processRunDTO.getBillingProcess().getId());
+
+            if (processRunDTO.getFinished() == null) {
+                result.setState(ProcessStatusWS.State.RUNNING);
+            } else if (processRunDTO.getStatus().getId() == Constants.PROCESS_RUN_STATUS_RINNING) {
+                result.setState(ProcessStatusWS.State.RUNNING);
+            } else if (processRunDTO.getStatus().getId() == Constants.PROCESS_RUN_STATUS_FAILED) {
+                result.setState(ProcessStatusWS.State.FAILED);
+                result.setEnd(processRunDTO.getFinished());
+            } else {
+                result.setState(ProcessStatusWS.State.FINISHED);
+                result.setEnd(processRunDTO.getFinished());
+            }
+            return result;
+        }
     }
 }

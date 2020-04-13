@@ -20,11 +20,12 @@
 
 package com.sapienter.jbilling.server.user.partner;
 
-import com.sapienter.jbilling.server.user.partner.db.PartnerPayout;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.Date;
+
+import com.sapienter.jbilling.common.Util;
 
 /**
  * PartnerPayoutWS
@@ -46,17 +47,7 @@ public class PartnerPayoutWS implements Serializable {
     public PartnerPayoutWS() {
     }
 
-    public PartnerPayoutWS(PartnerPayout dto) {
-        this.id = dto.getId();
-        this.partnerId = dto.getPartner() != null ? dto.getPartner().getId() : null;
-        this.paymentId = dto.getPayment() != null ? dto.getPayment().getId() : null;
-        this.startingDate = dto.getStartingDate();
-        this.endingDate = dto.getEndingDate();
-        setPaymentsAmount(dto.getPaymentsAmount());
-        setRefundsAmount(dto.getRefundsAmount());
-        setBalanceLeft(dto.getBalanceLeft());
-    }
-
+   
     public int getId() {
         return id;
     }
@@ -102,7 +93,7 @@ public class PartnerPayoutWS implements Serializable {
     }
 
     public BigDecimal getPaymentsAmountAsDecimal() {
-        return paymentsAmount != null ? new BigDecimal(paymentsAmount) : null;
+        return Util.string2decimal(paymentsAmount);
     }
 
     public void setPaymentsAmount(String paymentsAmount) {
@@ -118,7 +109,7 @@ public class PartnerPayoutWS implements Serializable {
     }
 
     public BigDecimal getRefundsAmountAsDecimal() {
-        return refundsAmount != null ? new BigDecimal(refundsAmount) : null;
+        return Util.string2decimal(refundsAmount);
     }
 
     public void setRefundsAmount(String refundsAmount) {
@@ -134,7 +125,7 @@ public class PartnerPayoutWS implements Serializable {
     }
 
     public BigDecimal getBalanceLeftAsDecimal() {
-        return balanceLeft != null ? new BigDecimal(balanceLeft) : null;
+        return Util.string2decimal(balanceLeft);
     }
 
     public void setBalanceLeft(String balanceLeft) {

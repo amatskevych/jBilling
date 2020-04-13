@@ -19,6 +19,8 @@
  */
 package com.sapienter.jbilling.server.order.db;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.order.OrderStatusFlag;
 import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.user.db.UserDTO;
 import com.sapienter.jbilling.server.util.Constants;
@@ -31,7 +33,7 @@ import java.util.Collections;
 import java.util.List;
 
 public class OrderLineDAS extends AbstractDAS<OrderLineDTO> {
-    private static final Logger LOG = Logger.getLogger(OrderLineDAS.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(OrderLineDAS.class));
 
     public Long findLinesWithDecimals(Integer itemId) {
 
@@ -71,13 +73,13 @@ public class OrderLineDAS extends AbstractDAS<OrderLineDTO> {
                         + "where line.deleted = 0 "
                         + "  and line.purchaseOrder.baseUserByUserId.id = :userId "
                         + "  and line.purchaseOrder.orderPeriod.id != :period "
-                        + "  and line.purchaseOrder.orderStatus.id = :status "
+                        + "  and line.purchaseOrder.orderStatus.orderStatusFlag = :status "
                         + "  and line.purchaseOrder.deleted = 0 ";
 
         Query query = getSession().createQuery(hql);
         query.setParameter("userId", userId);
         query.setParameter("period", Constants.ORDER_PERIOD_ONCE);
-        query.setParameter("status", Constants.ORDER_STATUS_ACTIVE);
+        query.setParameter("status", OrderStatusFlag.INVOICE.ordinal());
 
         return query.list();
     }
@@ -98,17 +100,16 @@ public class OrderLineDAS extends AbstractDAS<OrderLineDTO> {
                         + "  and line.item.id = :itemId "
                         + "  and line.purchaseOrder.baseUserByUserId.id = :userId "
                         + "  and line.purchaseOrder.orderPeriod.id != :period "
-                        + "  and line.purchaseOrder.orderStatus.id = :status "
+                        + "  and line.purchaseOrder.orderStatus.orderStatusFlag = :status "
                         + "  and line.purchaseOrder.deleted = 0 ";
 
         Query query = getSession().createQuery(hql);
         query.setParameter("itemId", itemId);
         query.setParameter("userId", userId);
         query.setParameter("period", Constants.ORDER_PERIOD_ONCE);
-        query.setParameter("status", Constants.ORDER_STATUS_ACTIVE);
+        query.setParameter("status", OrderStatusFlag.INVOICE.ordinal());
 
-        List<OrderLineDTO> results = query.list();
-        return results.isEmpty() ? null : results.get(0);
+        return findFirst(query);
     }
 
     @SuppressWarnings("unchecked")
@@ -120,14 +121,14 @@ public class OrderLineDAS extends AbstractDAS<OrderLineDTO> {
                         + "  and line.item.id = :itemId "
                         + "  and line.purchaseOrder.baseUserByUserId.id = :userId "
                         + "  and line.purchaseOrder.orderPeriod.id = :period "
-                        + "  and line.purchaseOrder.orderStatus.id = :status "
+                        + "  and line.purchaseOrder.orderStatus.orderStatusFlag = :status "
                         + "  and line.purchaseOrder.deleted = 0 ";
 
         Query query = getSession().createQuery(hql);
         query.setParameter("itemId", itemId);
         query.setParameter("userId", userId);
         query.setParameter("period", Constants.ORDER_PERIOD_ONCE);
-        query.setParameter("status", Constants.ORDER_STATUS_ACTIVE);
+        query.setParameter("status", OrderStatusFlag.INVOICE.ordinal());
 
         return query.list();
     }
@@ -150,8 +151,8 @@ public class OrderLineDAS extends AbstractDAS<OrderLineDTO> {
                         + "  and line.item.id = :itemId "
                         + "  and line.purchaseOrder.baseUserByUserId.id = :userId "
                         + "  and line.purchaseOrder.orderPeriod.id = :period "
-                        + "  and (line.purchaseOrder.orderStatus.id = :active_status"
-                        + "       or line.purchaseOrder.orderStatus.id = :finished_status)"
+                        + "  and (line.purchaseOrder.orderStatus.orderStatusFlag = :active_status"
+                        + "       or line.purchaseOrder.orderStatus.orderStatusFlag = :finished_status)"
                         + "  and line.purchaseOrder.deleted = 0 "
                         + "  and line.purchaseOrder.createDate > :startdate";
 
@@ -159,8 +160,8 @@ public class OrderLineDAS extends AbstractDAS<OrderLineDTO> {
         query.setParameter("itemId", itemId);
         query.setParameter("userId", userId);
         query.setParameter("period", Constants.ORDER_PERIOD_ONCE);
-        query.setParameter("active_status", Constants.ORDER_STATUS_ACTIVE);
-        query.setParameter("finished_status", Constants.ORDER_STATUS_FINISHED);
+        query.setParameter("active_status", OrderStatusFlag.INVOICE.ordinal());
+        query.setParameter("finished_status", OrderStatusFlag.FINISHED.ordinal());
 
         DateMidnight startdate = new DateMidnight().minusMonths(months);
         query.setParameter("startdate", startdate.toDate());
@@ -193,8 +194,8 @@ public class OrderLineDAS extends AbstractDAS<OrderLineDTO> {
                         + "  and line.item.id = :itemId "
                         + "  and line.purchaseOrder.baseUserByUserId.customer.parent.id = :parentId"
                         + "  and line.purchaseOrder.orderPeriod.id = :period "
-                        + "  and (line.purchaseOrder.orderStatus.id = :active_status"
-                        + "       or line.purchaseOrder.orderStatus.id = :finished_status)"
+                        + "  and (line.purchaseOrder.orderStatus.orderStatusFlag = :active_status"
+                        + "       or line.purchaseOrder.orderStatus.orderStatusFlag = :finished_status)"
                         + "  and line.purchaseOrder.deleted = 0 "
                         + "  and line.purchaseOrder.createDate > :startdate ";
 
@@ -202,8 +203,8 @@ public class OrderLineDAS extends AbstractDAS<OrderLineDTO> {
         query.setParameter("itemId", itemId);
         query.setParameter("parentId", parent.getCustomer().getId());
         query.setParameter("period", Constants.ORDER_PERIOD_ONCE);
-        query.setParameter("active_status", Constants.ORDER_STATUS_ACTIVE);
-        query.setParameter("finished_status", Constants.ORDER_STATUS_FINISHED);
+        query.setParameter("active_status", OrderStatusFlag.INVOICE.ordinal());
+        query.setParameter("finished_status", OrderStatusFlag.FINISHED);
 
         DateMidnight startdate = new DateMidnight().minusMonths(months);
         query.setParameter("startdate", startdate.toDate());
@@ -211,6 +212,53 @@ public class OrderLineDAS extends AbstractDAS<OrderLineDTO> {
         return query.list();
     }
 
+    /**
+     * Find order lines by user ID and description.
+     *
+     * @param userId user id
+     * @param description order line description to match
+     * @return list of found orders lines, empty if none
+     */
+    @SuppressWarnings("unchecked")
+    public List<OrderLineDTO> findByDescription(Integer userId, String description) {
+        final String hql =
+                "select line "
+                + "  from OrderLineDTO line "
+                + "where line.deleted = 0 "
+                + "  and line.purchaseOrder.deleted = 0 "
+                + "  and line.purchaseOrder.baseUserByUserId.id = :userId "
+                + "  and line.description = :description";
 
+        Query query = getSession().createQuery(hql);
+        query.setParameter("userId", userId);
+        query.setParameter("description", description);
+
+        return query.list();
+    }
+
+    /**
+     * Find order lines by user ID and where description is like the given string. This method
+     * can accept wildcard characters '%' for matching.
+     *
+     * @param userId user id
+     * @param like string to match against order line description
+     * @return list of found orders lines, empty if none
+     */
+    @SuppressWarnings("unchecked")
+    public List<OrderLineDTO> findByDescriptionLike(Integer userId, String like) {
+        final String hql =
+                "select line "
+                + "  from OrderLineDTO line "
+                + "where line.deleted = 0 "
+                + "  and line.purchaseOrder.deleted = 0 "
+                + "  and line.purchaseOrder.baseUserByUserId.id = :userId "
+                + "  and line.description like :description";
+
+        Query query = getSession().createQuery(hql);
+        query.setParameter("userId", userId);
+        query.setParameter("description", like);
+
+        return query.list();
+    }
 
 }

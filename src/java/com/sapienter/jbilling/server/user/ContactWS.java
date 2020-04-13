@@ -26,11 +26,12 @@
  */
 package com.sapienter.jbilling.server.user;
 
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldDTO;
 import com.sapienter.jbilling.server.util.api.validation.EntitySignupValidationGroup;
-import org.hibernate.validator.constraints.Email;
 import org.hibernate.validator.constraints.NotEmpty;
 
+import javax.validation.constraints.Max;
+import javax.validation.constraints.Pattern;
+import javax.validation.constraints.Size;
 import java.io.Serializable;
 import java.util.Date;
 import java.util.Iterator;
@@ -38,46 +39,55 @@ import java.util.Iterator;
 /** @author Emil */
 public class ContactWS implements Serializable {
 
+    private static final long serialVersionUID = 20140605L;
+
     private Integer id;
     @NotEmpty(message = "validation.error.notnull", groups = EntitySignupValidationGroup.class)
+    @Size(min = 0, max = 200, message = "validation.error.size,0,200")
     private String organizationName;
     @NotEmpty(message = "validation.error.notnull", groups = EntitySignupValidationGroup.class)
+    @Size(min = 0, max = 100, message = "validation.error.size,0,100")
     private String address1;
+    @Size(min = 0, max = 100, message = "validation.error.size,0,100")
     private String address2;
+    @Size(min = 0, max = 50, message = "validation.error.size,0,50")
     private String city;
     @NotEmpty(message = "validation.error.notnull", groups = EntitySignupValidationGroup.class)
+    @Size(min = 0, max = 30, message = "validation.error.size,0,30")
     private String stateProvince;
     @NotEmpty(message = "validation.error.notnull", groups = EntitySignupValidationGroup.class)
+    @Size(min = 0, max = 15, message = "validation.error.size,0,15")
     private String postalCode;
     @NotEmpty(message = "validation.error.notnull", groups = EntitySignupValidationGroup.class)
+    @Size(min = 0, max = 2, message = "validation.error.size,0,2")
+    @Pattern(regexp = "^$|[A-Z]{2}", message = "validation.error.contact.countryCode.pattern")
     private String countryCode;
     @NotEmpty(message = "validation.error.notnull", groups = EntitySignupValidationGroup.class)
+    @Size(min = 0, max = 30, message = "validation.error.size,0,30")
     private String lastName;
     @NotEmpty(message = "validation.error.notnull", groups = EntitySignupValidationGroup.class)
+    @Size(min = 0, max = 30, message = "validation.error.size,0,30")
     private String firstName;
+    @Size(min = 0, max = 30, message = "validation.error.size,0,30")
     private String initial;
     private String title;
-    private Integer phoneCountryCode;
-    private Integer phoneAreaCode;
+    private String phoneCountryCode;
+    private String phoneAreaCode;
+    @Size(min = 0, max = 20, message = "validation.error.size,0,20")
     @NotEmpty(message = "validation.error.notnull", groups = EntitySignupValidationGroup.class)
     private String phoneNumber;
     private Integer faxCountryCode;
     private Integer faxAreaCode;
     private String faxNumber;
-    @NotEmpty(message = "validation.error.notnull")
-    @Email(message = "validation.error.email")
+    @NotEmpty(message = "validation.error.notnull", groups = EntitySignupValidationGroup.class)
+    //Bug4089 regexp for meeting rfc3696 restriction for email addresses. 
+    @Pattern(regexp = "^([a-zA-Z0-9#\\!$%&'\\*\\+/=\\?\\^_`\\{\\|}~-]|(\\\\@|\\\\,|\\\\\\[|\\\\\\]|\\\\ ))+(\\.([a-zA-Z0-9!#\\$%&'\\*\\+/=\\?\\^_`\\{\\|}~-]|(\\\\@|\\\\,|\\\\\\[|\\\\\\]))+)*@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*\\.([A-Za-z]{2,})$", message = "validation.error.email")
+    @Size(min = 6, max = 320, message = "validation.error.size,6,320")
     private String email;
     private Date createDate;
     private int deleted;
     private Boolean include;
-
-    private Integer[] fieldIDs = null;
-    private String[] fieldNames = null;
-    private String[] fieldValues = null;
-    private Integer type = null; // the contact type
-
-    private Integer contactTypeId = null;
-    private String contactTypeDescr = null;
+    private Boolean invoiceAsReseller;
 
     public ContactWS() {
         super();
@@ -95,12 +105,12 @@ public class ContactWS implements Serializable {
             this.countryCode = countryCode;
             this.deleted = deleted;
         }
-    
+
     public ContactWS(Integer id, String organizationName, String address1,
                      String address2, String city, String stateProvince,
                      String postalCode, String countryCode, String lastName,
                      String firstName, String initial, String title,
-                     Integer phoneCountryCode, Integer phoneAreaCode,
+                     String phoneCountryCode, String phoneAreaCode,
                      String phoneNumber, Integer faxCountryCode, Integer faxAreaCode,
                      String faxNumber, String email, Date createDate, Integer deleted,
                      Boolean include) {
@@ -141,8 +151,8 @@ public class ContactWS implements Serializable {
         setFirstName(other.getFirstName());
         setInitial(other.getInitial());
         setTitle(other.getTitle());
-        setPhoneCountryCode(other.getPhoneCountryCode());
-        setPhoneAreaCode(other.getPhoneAreaCode());
+        setPhoneCountryCode(null != other.getPhoneCountryCode() ? other.getPhoneCountryCode().toString() : "");
+        setPhoneAreaCode(null != other.getPhoneAreaCode() ? other.getPhoneAreaCode().toString() : "");
         setPhoneNumber(other.getPhoneNumber());
         setFaxCountryCode(other.getFaxCountryCode());
         setFaxAreaCode(other.getFaxAreaCode());
@@ -151,49 +161,6 @@ public class ContactWS implements Serializable {
         setCreateDate(other.getCreateDate());
         setDeleted(other.getDeleted());
         setInclude(other.getInclude());
-    }
-
-    public ContactWS(ContactDTOEx other) {
-        setId(other.getId());
-        setOrganizationName(other.getOrganizationName());
-        setAddress1(other.getAddress1());
-        setAddress2(other.getAddress2());
-        setCity(other.getCity());
-        setStateProvince(other.getStateProvince());
-        setPostalCode(other.getPostalCode());
-        setCountryCode(other.getCountryCode());
-        setLastName(other.getLastName());
-        setFirstName(other.getFirstName());
-        setInitial(other.getInitial());
-        setTitle(other.getTitle());
-        setPhoneCountryCode(other.getPhoneCountryCode());
-        setPhoneAreaCode(other.getPhoneAreaCode());
-        setPhoneNumber(other.getPhoneNumber());
-        setFaxCountryCode(other.getFaxCountryCode());
-        setFaxAreaCode(other.getFaxAreaCode());
-        setFaxNumber(other.getFaxNumber());
-        setEmail(other.getEmail());
-        setCreateDate(other.getCreateDate());
-        setDeleted(other.getDeleted());
-        setInclude(other.getInclude() != null && other.getInclude().equals(1) );
-        setType(other.getType());
-        fieldIDs = new Integer[other.getFieldsTable().size()];
-        fieldNames = new String[other.getFieldsTable().size()];
-        fieldValues = new String[other.getFieldsTable().size()];
-        int index = 0;
-
-        for (Iterator it = other.getFieldsTable().keySet().iterator(); it.hasNext();) {
-            fieldIDs[index] = new Integer((String) it.next());
-            ContactFieldDTO fieldDto = (ContactFieldDTO) other.getFieldsTable().get(fieldIDs[index].toString());
-            fieldNames[index] = fieldDto.getType().getPromptKey();
-            fieldValues[index] = fieldDto.getContent();
-            index++;
-        }
-
-        //set Contact Type Name
-        if (null != other.getContactMap() && null != other.getContactMap().getContactType()) {
-            setContactTypeId(other.getContactMap().getContactType().getId());
-        }
     }
 
     public Integer getId() {
@@ -292,19 +259,19 @@ public class ContactWS implements Serializable {
         this.title = title;
     }
 
-    public Integer getPhoneCountryCode() {
+    public String getPhoneCountryCode() {
         return phoneCountryCode;
     }
 
-    public void setPhoneCountryCode(Integer phoneCountryCode) {
+    public void setPhoneCountryCode(String phoneCountryCode) {
         this.phoneCountryCode = phoneCountryCode;
     }
 
-    public Integer getPhoneAreaCode() {
+    public String getPhoneAreaCode() {
         return phoneAreaCode;
     }
 
-    public void setPhoneAreaCode(Integer phoneAreaCode) {
+    public void setPhoneAreaCode(String phoneAreaCode) {
         this.phoneAreaCode = phoneAreaCode;
     }
 
@@ -371,60 +338,19 @@ public class ContactWS implements Serializable {
     public void setInclude(Boolean include) {
         this.include = include;
     }
+    
+    public Boolean getInvoiceAsReseller() {
+		return invoiceAsReseller;
+	}
 
-    public Integer[] getFieldIDs() {
-        return fieldIDs;
-    }
-
-    public void setFieldIDs(Integer[] fieldIDs) {
-        this.fieldIDs = fieldIDs;
-    }
-
-    public String[] getFieldNames() {
-        return fieldNames;
-    }
-
-    public void setFieldNames(String[] fieldNames) {
-        this.fieldNames = fieldNames;
-    }
-
-    public String[] getFieldValues() {
-        return fieldValues;
-    }
-
-    public void setFieldValues(String[] fieldValues) {
-        this.fieldValues = fieldValues;
-    }
-
-    public Integer getType() {
-        return type;
-    }
-
-    public void setType(Integer type) {
-        this.type = type;
-    }
-
-    public Integer getContactTypeId() {
-        return contactTypeId;
-    }
-
-    public void setContactTypeId(Integer contactTypeId) {
-        this.contactTypeId = contactTypeId;
-    }
-
-    public String getContactTypeDescr() {
-        return contactTypeDescr;
-    }
-
-    public void setContactTypeDescr(String contactTypeDescr) {
-        this.contactTypeDescr = contactTypeDescr;
-    }
+	public void setInvoiceAsReseller(Boolean invoiceAsReseller) {
+		this.invoiceAsReseller = invoiceAsReseller;
+	}
 
     @Override
     public String toString() {
         return "ContactWS{"
                + "id=" + id
-               + ", type=" + type
                + ", title='" + title + '\''
                + ", lastName='" + lastName + '\''
                + ", firstName='" + firstName + '\''
@@ -443,7 +369,6 @@ public class ContactWS implements Serializable {
                            + (faxAreaCode != null ? faxAreaCode : "")
                            + (faxNumber != null ? faxNumber : "") + '\''
                + ", email='" + email + '\''
-               + ", type='" + type + '\''
                + ", include='" + include + '\''
                + '}';
     }

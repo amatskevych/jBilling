@@ -27,6 +27,8 @@ import java.util.Queue;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
+
 /**
  * Stateful factory alarm class for ProcessorEmailAlarmTask.
  * Decides if emails should be sent.
@@ -39,7 +41,7 @@ public class ProcessorEmailAlarm {
     private Queue times;          // holds queue of failure times
     private long lastEmailTime;   // last time email was sent
 
-    private Logger log = Logger.getLogger(ProcessorEmailAlarm.class);
+    private FormatLogger log = new FormatLogger(Logger.getLogger(ProcessorEmailAlarm.class));
 
     // Constructor
     public ProcessorEmailAlarm() {

@@ -25,6 +25,7 @@ import java.util.Collection;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDAS;
@@ -35,7 +36,7 @@ import com.sapienter.jbilling.server.payment.db.PaymentDTO;
 public class PaymentAuthorizationBL {
     private PaymentAuthorizationDAS paymentAuthorizationDas = null;
     private PaymentAuthorizationDTO paymentAuthorization = null;
-    private static final Logger LOG = Logger.getLogger(PaymentAuthorizationBL.class); 
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaymentAuthorizationBL.class)); 
 
     public PaymentAuthorizationBL(Integer paymentAuthorizationId) {
         init();
@@ -53,7 +54,6 @@ public class PaymentAuthorizationBL {
 
     private void init() {
         paymentAuthorizationDas = new PaymentAuthorizationDAS();
-
     }
 
     public PaymentAuthorizationDTO getEntity() {

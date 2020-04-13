@@ -20,17 +20,12 @@
 
 package com.sapienter.jbilling.server.util.db;
 
-import javax.persistence.Column;
-import javax.persistence.DiscriminatorColumn;
-import javax.persistence.DiscriminatorType;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.Inheritance;
-import javax.persistence.InheritanceType;
-import javax.persistence.Table;
+import javax.persistence.*;
 
 import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
+
+import java.io.Serializable;
 
 /**
  * Abstract class for status classes. The get/setId() methods maps to
@@ -39,18 +34,26 @@ import org.hibernate.annotations.CacheConcurrencyStrategy;
  */
 @Entity
 @Table(name = "generic_status")
+@TableGenerator(
+        name = "generic_status_GEN",
+        table = "jbilling_seqs",
+        pkColumnName = "name",
+        valueColumnName = "next_id",
+        pkColumnValue = "generic_status",
+        allocationSize = 1
+)
 @Inheritance(strategy = InheritanceType.SINGLE_TABLE)
 @DiscriminatorColumn(
     name="dtype",
     discriminatorType = DiscriminatorType.STRING
 )
-@Cache(usage = CacheConcurrencyStrategy.READ_ONLY)
 public abstract class AbstractGenericStatus extends AbstractDescription {
 
     protected int id;
     protected Integer statusValue;
+    protected Integer order;
 
-    @Id 
+    @Id @GeneratedValue(strategy = GenerationType.TABLE, generator = "generic_status_GEN")
     @Column(name="id", unique=true, nullable=false)
     public Integer getPrimaryKey() {
         return id;
@@ -68,4 +71,14 @@ public abstract class AbstractGenericStatus extends AbstractDescription {
     public void setId(int statusValue) {
         this.statusValue = statusValue;
     }
+
+    @Column(name="ordr")
+    public Integer getOrder() {
+        return order;
+    }
+
+    public void setOrder(Integer order) {
+        this.order = order;
+    }
+
 }

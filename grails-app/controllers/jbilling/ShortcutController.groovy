@@ -20,14 +20,15 @@
 
 package jbilling
 
-import grails.plugins.springsecurity.Secured
+import grails.plugin.springsecurity.annotation.Secured
 
 @Secured(["isAuthenticated()"])
 class ShortcutController {
 
+	static scope = "prototype"
 	def breadcrumbService
 
-	def index = {
+	def index () {
 		session['shortcuts'] = getShortcuts().asList()
         render template: "/layouts/includes/shortcuts"
     }
@@ -38,13 +39,14 @@ class ShortcutController {
 	 * @return list of user's Shortcuts
 	 */
 	def Object getShortcuts() {
+		def userId =  session["user_id"]
 		return Shortcut.withCriteria {
-			eq("userId", session["user_id"])
+			eq("userId",  userId)
 			order("id", "asc")
 		}
 	}
 
-	def add = {
+	def add () {
         def crumbs = breadcrumbService.getBreadcrumbs()
 		def lastCrumb= !crumbs.isEmpty() ? crumbs.getAt(-1) : null
 
@@ -62,9 +64,10 @@ class ShortcutController {
 				flash.message = 'shortcuts.save.success'
 			}
 		}
+		index ()
    }
 	
-	def remove = {
+	def remove () {
 		def shortcuts= getShortcuts().asList()
 		Shortcut exists= shortcuts.find { it.id == params.id as Integer}
 		if (exists) {
@@ -75,5 +78,6 @@ class ShortcutController {
 		log.info shortcuts.size
 		session['shortcuts']= shortcuts
 		//render template: "/layouts/includes/shortcuts"
+		index ()
 	}
 }

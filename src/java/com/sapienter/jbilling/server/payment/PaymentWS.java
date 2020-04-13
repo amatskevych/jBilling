@@ -20,19 +20,21 @@
 
 package com.sapienter.jbilling.server.payment;
 
-import com.sapienter.jbilling.server.entity.AchDTO;
-import com.sapienter.jbilling.server.entity.CreditCardDTO;
+import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.entity.PaymentAuthorizationDTO;
-import com.sapienter.jbilling.server.entity.PaymentInfoChequeDTO;
+import com.sapienter.jbilling.server.metafields.MetaFieldValueWS;
 import com.sapienter.jbilling.server.security.WSSecured;
+
 import org.hibernate.validator.constraints.NotEmpty;
 
 import javax.validation.Valid;
 import javax.validation.constraints.Digits;
 import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
+
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.util.Date;
+import java.util.*;
 
 
 /**
@@ -43,13 +45,6 @@ public class PaymentWS implements WSSecured, Serializable {
     @NotNull(message="validation.error.notnull")
     private Integer userId = null;
 
-    @Valid
-    private PaymentInfoChequeDTO cheque = null;
-    @Valid
-    private CreditCardDTO creditCard = null;
-    @Valid
-    private AchDTO ach = null;
-
     private String method = null;
     private Integer invoiceIds[] = null;
 
@@ -59,10 +54,11 @@ public class PaymentWS implements WSSecured, Serializable {
 
     //missing properties from PaymentDTO
     @NotEmpty(message="validation.error.notnull")
-    @Digits(integer=22, fraction=10, message="validation.error.not.a.number")
+    @Digits(integer=12, fraction=10, message="validation.error.not.a.number")
     private String amount;
     @NotNull(message="validation.error.notnull")
     private Integer isRefund;
+    //@NotNull(message="validation.error.apply.without.method")
     private Integer paymentMethodId;
     @NotNull(message="validation.error.notnull")
     private Date paymentDate;
@@ -75,10 +71,18 @@ public class PaymentWS implements WSSecured, Serializable {
     private Date createDatetime;
     private Date updateDatetime;
     private int deleted;
-    private Integer baseUserId;
     private Integer resultId;
+    @Size(min = 0, max = 500, message = "validation.error.size,0,500")
     private String paymentNotes = null;
     private Integer paymentPeriod;
+
+    @Valid
+    private MetaFieldValueWS[] metaFields;
+
+    private List<PaymentInformationWS> paymentInstruments = new ArrayList<PaymentInformationWS>(0);
+    
+    // those instruments that are not linked to any payment and user user uses them to make payments
+    private List<PaymentInformationWS> userPaymentInstruments = new ArrayList<PaymentInformationWS>(0);
     
     public Integer getResultId() {
         return resultId;
@@ -98,30 +102,6 @@ public class PaymentWS implements WSSecured, Serializable {
 
     public void setUserId(Integer userId) {
         this.userId = userId;
-    }
-
-    public PaymentInfoChequeDTO getCheque() {
-        return cheque;
-    }
-
-    public void setCheque(PaymentInfoChequeDTO cheque) {
-        this.cheque = cheque;
-    }
-
-    public CreditCardDTO getCreditCard() {
-        return creditCard;
-    }
-
-    public void setCreditCard(CreditCardDTO creditCard) {
-        this.creditCard = creditCard;
-    }
-
-    public AchDTO getAch() {
-        return ach;
-    }
-
-    public void setAch(AchDTO ach) {
-        this.ach = ach;
     }
 
     public String getMethod() {
@@ -166,7 +146,7 @@ public class PaymentWS implements WSSecured, Serializable {
     }
 
     public BigDecimal getAmountAsDecimal() {
-        return amount != null ? new BigDecimal(amount) : null;
+        return Util.string2decimal(amount);
     }
 
     public void setAmountAsDecimal(BigDecimal amount) {
@@ -242,7 +222,7 @@ public class PaymentWS implements WSSecured, Serializable {
     }
 
     public BigDecimal getBalanceAsDecimal() {
-        return balance != null ? new BigDecimal(balance) : null;
+        return Util.string2decimal(balance);
     }
 
     public void setBalanceAsDecimal(BigDecimal balance) {
@@ -281,14 +261,6 @@ public class PaymentWS implements WSSecured, Serializable {
         this.deleted = deleted;
     }
 
-    public Integer getBaseUserId() {
-        return baseUserId;
-    }
-
-    public void setBaseUserId(Integer baseUserId) {
-        this.baseUserId = baseUserId;
-    }
-    
     public void setPaymentNotes(String paymentNotes){
         this.paymentNotes = paymentNotes;
     }
@@ -305,7 +277,31 @@ public class PaymentWS implements WSSecured, Serializable {
         return paymentPeriod;
     }
 
-    /**
+    public MetaFieldValueWS[] getMetaFields() {
+        return metaFields;
+    }
+
+    public void setMetaFields(MetaFieldValueWS[] metaFields) {
+        this.metaFields = metaFields;
+    }
+
+    public List<PaymentInformationWS> getPaymentInstruments() {
+		return paymentInstruments;
+	}
+
+	public void setPaymentInstruments(List<PaymentInformationWS> paymentInstruments) {
+		this.paymentInstruments = paymentInstruments;
+	}
+	
+	public List<PaymentInformationWS> getUserPaymentInstruments() {
+		return userPaymentInstruments;
+	}
+
+	public void setUserPaymentInstruments(List<PaymentInformationWS> paymentInstruments) {
+		this.userPaymentInstruments = paymentInstruments;
+	}
+
+	/**
      * Unsupported, web-service security enforced using {@link #getOwningUserId()}
      * @return null
      */
@@ -321,7 +317,7 @@ public class PaymentWS implements WSSecured, Serializable {
     public String toString() {
         return "PaymentWS{"
                + "id=" + id
-               + ", baseUserId=" + baseUserId
+               + ", userId=" + userId
                + ", paymentMethodId=" + paymentMethodId
                + ", method='" + method + '\''
                + ", amount='" + amount + '\''
@@ -329,7 +325,9 @@ public class PaymentWS implements WSSecured, Serializable {
                + ", isRefund=" + isRefund
                + ", isPreauth=" + isPreauth
                + ", paymentDate=" + paymentDate
-               + ", deleted=" + deleted               
+               + ", deleted=" + deleted
+               + ", paymentId=" + paymentId
+               + ", currencyId=" + currencyId
                + '}';
     }
 }

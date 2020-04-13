@@ -19,46 +19,49 @@
  */
 package com.sapienter.jbilling.server.item.tasks;
 
-import java.math.BigDecimal;
-import java.util.Collection;
-import java.util.Date;
-
-import org.apache.log4j.Logger;
-import org.drools.KnowledgeBase;
-import org.drools.runtime.rule.FactHandle;
-
 import com.sapienter.jbilling.common.Constants;
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.item.ItemBL;
 import com.sapienter.jbilling.server.item.PricingField;
 import com.sapienter.jbilling.server.item.db.ItemDTO;
-import com.sapienter.jbilling.server.mediation.Record;
+import com.sapienter.jbilling.server.util.Record;
 import com.sapienter.jbilling.server.order.OrderBL;
 import com.sapienter.jbilling.server.order.db.OrderDAS;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
 import com.sapienter.jbilling.server.order.db.OrderLineDAS;
 import com.sapienter.jbilling.server.order.db.OrderLineDTO;
 import com.sapienter.jbilling.server.order.db.OrderStatusDAS;
+import com.sapienter.jbilling.server.order.OrderStatusFlag;
 import com.sapienter.jbilling.server.pluggableTask.TaskException;
 import com.sapienter.jbilling.server.user.ContactBL;
 import com.sapienter.jbilling.server.user.ContactDTOEx;
 import com.sapienter.jbilling.server.user.UserDTOEx;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldDTO;
 import com.sapienter.jbilling.server.util.DTOFactory;
 import com.sapienter.jbilling.server.util.db.CurrencyDAS;
+import org.apache.log4j.Logger;
+import org.drools.KnowledgeBase;
+import org.drools.runtime.rule.FactHandle;
+
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
+@Deprecated
 public class RulesItemManager extends BasicItemManager {
 
-    private static final Logger LOG = Logger.getLogger(RulesItemManager.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(RulesItemManager.class));
     protected OrderManager helperOrder = null;
     private List<Record> records;
+    private List<OrderLineDTO> lines;
 
     public void addItem(Integer itemID, BigDecimal quantity, Integer language,
                         Integer userId, Integer entityId, Integer currencyId,
-                        OrderDTO order, List<Record> records) throws TaskException {       
-        super.addItem(itemID, quantity, language, userId, entityId, currencyId, order, records);
+                        OrderDTO order, List<Record> records,
+                        List<OrderLineDTO> lines, boolean singlePurchase) throws TaskException {
+        super.addItem(itemID, quantity, language, userId, entityId, currencyId, order, records, lines, singlePurchase, null, null);
         this.records = records;
+        this.lines = lines;
         helperOrder = new OrderManager(order, language, userId, entityId, currencyId);
         processRules(order);
     }
@@ -105,9 +108,6 @@ public class RulesItemManager extends BasicItemManager {
             contact.set(userId);
             ContactDTOEx contactDTO = contact.getDTO();
             rulesMemoryContext.add(contactDTO);
-            for (ContactFieldDTO field : (Collection<ContactFieldDTO>) contactDTO.getFieldsTable().values()) {
-                rulesMemoryContext.add(field);
-            }
 
 
             // Add the subscriptions
@@ -135,8 +135,7 @@ public class RulesItemManager extends BasicItemManager {
         private Integer entityId = null;
         private Integer currencyId = null;
 
-        public OrderManager(OrderDTO order, Integer language,
-                Integer userId, Integer entityId, Integer currencyId) {
+        public OrderManager(OrderDTO order, Integer language, Integer userId, Integer entityId, Integer currencyId) {
             this.order = order;
             this.language = language;
             this.userId = userId;
@@ -152,14 +151,12 @@ public class RulesItemManager extends BasicItemManager {
             this.order = order;
         }
 
-        public OrderLineDTO addItem(Integer itemID, Integer quantity)
-                throws TaskException {
+        public OrderLineDTO addItem(Integer itemID, Integer quantity) throws TaskException {
             return addItem(itemID, new BigDecimal(quantity));
         }
 
-        public OrderLineDTO addItem(Integer itemID, BigDecimal quantity)
-                throws TaskException {
-            LOG.debug("Adding item " + itemID + " q: " + quantity);
+        public OrderLineDTO addItem(Integer itemID, BigDecimal quantity) throws TaskException {
+            LOG.debug("Adding item %s q: %s", itemID, quantity);
 
             BasicItemManager helper = new BasicItemManager();
             OrderLineDTO oldLine = order.getLine(itemID);
@@ -167,7 +164,7 @@ public class RulesItemManager extends BasicItemManager {
             if (oldLine != null) {
                 h = handlers.get(oldLine);
             }
-            helper.addItem(itemID, quantity, language, userId, entityId, currencyId, order, records);
+            helper.addItem(itemID, quantity, language, userId, entityId, currencyId, order, records, lines, false, null, null);
             OrderLineDTO retValue = helper.getLatestLine();
             if (h != null) {
                 LOG.debug("updating");
@@ -177,7 +174,7 @@ public class RulesItemManager extends BasicItemManager {
                 handlers.put(retValue, session.insert(retValue));
             }
 
-            LOG.debug("Now order line is " + retValue + " hash: " + retValue.hashCode());
+            LOG.debug("Now order line is %s , hash: %s", retValue, retValue.hashCode());
             return retValue;
         }
 
@@ -190,42 +187,13 @@ public class RulesItemManager extends BasicItemManager {
             order.removeLine(itemId);
         }
 
-        /**
-         * Adds or updates an order line. It will calculate the amount to add based on the
-         * price of the itemBase, using the price as a percentage of the itemId
-         * @param itemId
-         * @param itemBase
-         * @return
-         * @throws TaskException
-         */
-        public OrderLineDTO percentageIncrease(Integer itemId, Integer itemBase)
-                throws TaskException {
-            OrderLineDTO updateLine = order.getLine(itemId);
-            if (updateLine == null) {
-                // no luck, create a new one
-                updateLine = addItem(itemId);
-                updateLine.setAmount(BigDecimal.ZERO); // starts from 0
-                updateLine.setTotalReadOnly(true);
-            }
-
-            // now add the amount based on the itemBase
-            ItemBL item = new ItemBL(itemBase);
-            ItemDTO itemDto = item.getDTO(language, userId, entityId, currencyId);
-            BigDecimal percentage = updateLine.getItem().getPercentage();
-            BigDecimal base = itemDto.getPrice();
-            BigDecimal result = base.divide(new BigDecimal("100"), Constants.BIGDECIMAL_SCALE, Constants.BIGDECIMAL_ROUND)
-                    .multiply(percentage).add(updateLine.getAmount());
-            updateLine.setAmount(result);
-
-            return updateLine;
-        }
 
         /**
          * Adds or updates an order line. Calculates a percentage item order
          * line amount based on the amount of another order line. This is added
-         * to the existing percentage order line's amount. 
+         * to the existing percentage order line's amount.
          */
-        public OrderLineDTO percentageOnOrderLine(Integer percentageItemId, 
+        public OrderLineDTO percentageOnOrderLine(Integer percentageItemId,
                 OrderLineDTO line) throws TaskException {
             // try to get percentage item order line
             OrderLineDTO percentageLine = order.getLine(percentageItemId);
@@ -251,8 +219,7 @@ public class RulesItemManager extends BasicItemManager {
             return createOrder(itemId, quant);
         }
 
-        public OrderDTO createOrder(Integer itemId, BigDecimal quantity)
-                throws TaskException {
+        public OrderDTO createOrder(Integer itemId, BigDecimal quantity) throws TaskException {
             // copy the current order
             OrderDTO newOrder = new OrderDTO(order);
             newOrder.setId(0);
@@ -260,7 +227,7 @@ public class RulesItemManager extends BasicItemManager {
             // the period needs to be in the session
             newOrder.setOrderPeriodId(order.getOrderPeriod().getId());
             // the status should be active
-            newOrder.setOrderStatus(new OrderStatusDAS().find(Constants.ORDER_STATUS_ACTIVE));
+            newOrder.setOrderStatus(new OrderStatusDAS().find(new OrderStatusDAS().getDefaultOrderStatusId(OrderStatusFlag.INVOICE, entityId)));
             // but without the lines
             newOrder.getLines().clear();
             // but do get the new line in
@@ -268,16 +235,15 @@ public class RulesItemManager extends BasicItemManager {
             OrderLineDTO newLine = helper.addItem(itemId, quantity);
             newLine.setPurchaseOrder(newOrder);
             newLine.setDefaults();
-            
+
             return new OrderDAS().save(newOrder);
         }
 
         public void removeOrder(Integer itemId) {
-            List<OrderLineDTO> list = new OrderLineDAS().findByUserItem(
-                    order.getBaseUserByUserId().getId(), itemId);
+            List<OrderLineDTO> list = new OrderLineDAS().findByUserItem(order.getBaseUserByUserId().getId(), itemId);
 
             for (OrderLineDTO line : list) {
-                LOG.debug("Deleting order " + line.getPurchaseOrder().getId());
+                LOG.debug("Deleting order %s", line.getPurchaseOrder().getId());
 
                 // who is the executor? we'll use the owner.. she is cancelling
                 new OrderBL(line.getPurchaseOrder()).delete(order.getBaseUserByUserId().getId());

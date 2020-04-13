@@ -20,7 +20,6 @@
 
 package com.sapienter.jbilling.server.order;
 
-import com.sapienter.jbilling.server.order.db.OrderProcessDTO;
 
 import java.io.Serializable;
 import java.util.Date;
@@ -44,18 +43,6 @@ public class OrderProcessWS implements Serializable {
     private Integer origin;
 
     public OrderProcessWS() {
-    }
-
-    public OrderProcessWS(OrderProcessDTO dto) {
-        this.id = dto.getId();
-        this.billingProcessId = dto.getBillingProcess() != null ? dto.getBillingProcess().getId() : null;
-        this.orderId = dto.getPurchaseOrder() != null ? dto.getPurchaseOrder().getId() : null;
-        this.invoiceId = dto.getInvoice() != null ? dto.getInvoice().getId() : null;
-        this.periodsIncluded = dto.getPeriodsIncluded();
-        this.periodStart = dto.getPeriodStart();
-        this.periodEnd = dto.getPeriodEnd();
-        this.isReview = dto.getIsReview();
-        this.origin = dto.getOrigin();
     }
 
     public Integer getId() {

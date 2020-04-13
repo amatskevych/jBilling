@@ -1,21 +1,22 @@
 %{--
-  jBilling - The Enterprise Open Source Billing System
-  Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
+     jBilling - The Enterprise Open Source Billing System
+   Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
 
-  This file is part of jbilling.
-
-  jbilling is free software: you can redistribute it and/or modify
-  it under the terms of the GNU Affero General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  jbilling is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU Affero General Public License for more details.
-
-  You should have received a copy of the GNU Affero General Public License
-  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+   This file is part of jbilling.
+   
+   jbilling is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+   
+   jbilling is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+   
+   You should have received a copy of the GNU Affero General Public License
+   along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+ 
   --}%
 
 <%--
@@ -30,14 +31,10 @@
 <%-- will also print all messages from 'flash.errorMessages' as an unordered list --%>
 <div id="messages">
 
-    <!-- hidden div for javascript validation errors -->
-    <div id="error-messages" class="msg-box error" style="display: none;">
-        <img src="${resource(dir:'images', file:'icon14.gif')}" alt="${message(code:'error.icon.alt',default:'Error')}"/>
-        <strong><g:message code="flash.error.title"/></strong>
-        <ul></ul>
-    </div>
-
     <g:if test='${session.message}'>
+        <script type="text/javascript">
+            canReloadMessages = false;
+        </script>
         <div class="msg-box successfully">
             <img src="${resource(dir:'images', file:'icon20.gif')}" alt="${message(code:'success.icon.alt',default:'Success')}"/>
             <strong><g:message code="flash.success.title"/></strong>
@@ -48,6 +45,10 @@
     </g:if>
 
     <g:if test='${session.error}'>
+        <script type="text/javascript">
+            canReloadMessages = false;
+        </script>
+
         <div class="msg-box error">
             <img src="${resource(dir:'images', file:'icon14.gif')}" alt="${message(code:'error.icon.alt',default:'Error')}"/>
             <strong><g:message code="flash.error.title"/></strong>
@@ -58,6 +59,10 @@
     </g:if>
 
     <g:if test='${flash.message}'>
+        <script type="text/javascript">
+            canReloadMessages = false;
+        </script>
+
         <div class="msg-box successfully">
             <img src="${resource(dir:'images', file:'icon20.gif')}" alt="${message(code:'success.icon.alt',default:'Success')}"/>
             <strong><g:message code="flash.success.title"/></strong>
@@ -66,6 +71,10 @@
     </g:if>
 
     <g:if test='${flash.info}'>
+        <script type="text/javascript">
+            canReloadMessages = false;
+        </script>
+
         <div class="msg-box info">
             <img src="${resource(dir:'images', file:'icon34.gif')}" alt="${message(code:'info.icon.alt',default:'Information')}"/>
             <strong><g:message code="flash.info.title"/></strong>
@@ -74,6 +83,10 @@
     </g:if>
 
     <g:if test='${flash.warn}'>
+        <script type="text/javascript">
+            canReloadMessages = false;
+        </script>
+
         <div class="msg-box warn">
             <img src="${resource(dir:'images', file:'icon32.gif')}" alt="${message(code:'warn.icon.alt',default:'Warning')}"/>
             <strong><g:message code="flash.warn.title"/></strong>
@@ -82,6 +95,10 @@
     </g:if>
 
     <g:if test='${flash.error}'>
+        <script type="text/javascript">
+            canReloadMessages = false;
+        </script>
+
         <div class="msg-box error">
             <img src="${resource(dir:'images', file:'icon14.gif')}" alt="${message(code:'error.icon.alt',default:'Error')}"/>
             <strong><g:message code="flash.error.title"/></strong>
@@ -95,6 +112,10 @@
             <strong><g:message code="flash.validation.error.title"/></strong>
             <ul>
                 <g:each var="message" in="${flash.errorMessages}">
+                    <script type="text/javascript">
+                        canReloadMessages = false;
+                    </script>
+
                     <li>${message}</li>
                 </g:each>
             </ul>

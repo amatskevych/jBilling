@@ -26,6 +26,7 @@ import java.util.List;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.notification.NotificationBL;
 import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskDTO;
@@ -67,7 +68,7 @@ public class ProcessorEmailAlarmTask extends PluggableTask
     private int failedTime;
     private int timeBetweenAlarms;
 
-    private Logger log = Logger.getLogger(ProcessorEmailAlarmTask.class);
+    private FormatLogger log = new FormatLogger(Logger.getLogger(ProcessorEmailAlarmTask.class));
     
     @Override
     public void initializeParamters(PluggableTaskDTO task) throws PluggableTaskException {

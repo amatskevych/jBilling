@@ -24,6 +24,7 @@ import java.util.List;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
 import com.sapienter.jbilling.server.payment.blacklist.db.BlacklistDAS;
 import com.sapienter.jbilling.server.payment.blacklist.db.BlacklistDTO;
@@ -32,7 +33,7 @@ import com.sapienter.jbilling.server.user.db.UserDAS;
 
 public class TestBlacklistFilter implements BlacklistFilter {
 
-    private static final Logger LOG = Logger.getLogger(TestBlacklistFilter.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(TestBlacklistFilter.class));
 
     public Result checkPayment(PaymentDTOEx paymentInfo) {
         return checkUser(paymentInfo.getUserId());

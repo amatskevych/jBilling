@@ -20,6 +20,7 @@
 package com.sapienter.jbilling.server.util.db;
 
 
+import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -87,7 +88,7 @@ public class JbillingTable  implements java.io.Serializable {
         this.name = name;
     }
     
-@OneToMany(cascade=CascadeType.ALL, fetch=FetchType.LAZY, mappedBy="jbillingTable")
+    @OneToMany(cascade=CascadeType.ALL, fetch=FetchType.LAZY, mappedBy="jbillingTable")
     public Set<ContactMapDTO> getContactMaps() {
         return this.contactMaps;
     }
@@ -112,6 +113,7 @@ public class JbillingTable  implements java.io.Serializable {
     public void setEventLogs(Set<EventLogDTO> eventLogs) {
         this.eventLogs = eventLogs;
     }
+
 }
 
 

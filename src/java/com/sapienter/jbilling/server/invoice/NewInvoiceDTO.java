@@ -24,24 +24,24 @@
  */
 package com.sapienter.jbilling.server.invoice;
 
-import java.math.BigDecimal;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
-import java.util.List;
-
-import org.apache.log4j.Logger;
-
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
 import com.sapienter.jbilling.server.invoice.db.InvoiceLineDTO;
 import com.sapienter.jbilling.server.order.TimePeriod;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
 import com.sapienter.jbilling.server.process.PeriodOfTime;
+import org.apache.log4j.Logger;
+
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class NewInvoiceDTO extends InvoiceDTO {
 
@@ -54,14 +54,14 @@ public class NewInvoiceDTO extends InvoiceDTO {
     private Date billingDate = null;
     private TimePeriod dueDatePeriod = null;
     boolean dateIsRecurring;
-    private static final Logger LOG = Logger.getLogger(NewInvoiceDTO.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(NewInvoiceDTO.class));
 
     public NewInvoiceDTO() {
         orders = new ArrayList<OrderDTO>();
         invoices = new HashSet<InvoiceDTO>();
         resultLines = new ArrayList<InvoiceLineDTO>();
         orderTotalContributions = new HashMap<Integer, BigDecimal>();
-        LOG.debug("New invoice object with date = " + billingDate);
+        LOG.debug("New invoice object with date = %s", billingDate);
     }
 
     public void setDate(Date newDate) {
@@ -92,8 +92,7 @@ public class NewInvoiceDTO extends InvoiceDTO {
     }
 
     public void addOrder(OrderDTO order, Date start, Date end, List<PeriodOfTime> periods) throws SessionInternalError {
-        Logger.getLogger(NewInvoiceDTO.class).debug("Adding order " +
-                order.getId() + " to new invoice");
+        new FormatLogger(Logger.getLogger(NewInvoiceDTO.class)).debug("Adding order %d to new invoice", order.getId());
         orders.add(order);
         if (start != null && end != null && start.after(end)) {
             // how come it starts after it ends ???
@@ -125,7 +124,7 @@ public class NewInvoiceDTO extends InvoiceDTO {
     }
 
     /**
-     * 
+     *
      * @return If this object holds any order lines or invoice lines,
      * therefore if it makes sense to apply invoice composition tasks to it.
      */

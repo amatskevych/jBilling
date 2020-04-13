@@ -42,7 +42,7 @@ public interface IItemSessionBean {
     public Integer create(ItemDTO dto, Integer languageId) 
             throws SessionInternalError;    
 
-    public void update(Integer executorId, ItemDTO dto, Integer languageId) 
+    public void update(Integer executorId, ItemDTO dto, Integer languageId, boolean isPlan) 
             throws SessionInternalError;
     
     public boolean validateDecimals( Integer hasDecimals, Integer itemId );

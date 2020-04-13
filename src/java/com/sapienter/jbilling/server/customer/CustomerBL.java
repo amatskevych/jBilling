@@ -21,10 +21,16 @@
 package com.sapienter.jbilling.server.customer;
 
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.sql.rowset.CachedRowSet;
 
 import com.sapienter.jbilling.server.list.ResultList;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldDAS;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue;
 import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.user.db.CustomerDAS;
 import com.sapienter.jbilling.server.user.db.CustomerDTO;
@@ -131,6 +137,75 @@ public final class CustomerBL extends ResultList implements CustomerSQL {
         execute();
         conn.close();
         return cachedResults;
+    }
+
+    /**
+     * Returns a list of userIds for the descendants of the customer given
+     * @param parent: top parent customer
+     * @return
+     */
+    public List<Integer> getDescendants(CustomerDTO parent){
+        List<Integer> descendants = new ArrayList<Integer>();
+        if(parent != null){
+            for(CustomerDTO customer: parent.getChildren()){
+                if(customer.getBaseUser().getDeleted() == 0){
+                    //add it as descendant
+                    descendants.add(customer.getBaseUser().getId());
+                    //call the same function in a recursive way to get all the descendants
+                    descendants.addAll(getDescendants(customer));
+                }
+            }
+        }
+        return descendants;
+    }
+
+    public List<String> getCustomerEmails(Integer userId, Integer entityId) {
+        MetaFieldDAS metaFieldDAS = new MetaFieldDAS();
+        CustomerDAS customerDas = new CustomerDAS();
+        List<String> emails = new ArrayList<String>();
+
+        Integer customerId = customerDas.getCustomerId(userId);
+        if(null != customerId){
+
+            List<Integer> emailMetaFieldIds = metaFieldDAS.getByFieldType(
+                    entityId, new MetaFieldType[]{MetaFieldType.EMAIL});
+
+            List<Integer> valueIds = metaFieldDAS.getValuesByCustomerAndFields(
+                    customerId, emailMetaFieldIds);
+
+
+            for(Integer valueId : valueIds){
+                MetaFieldValue value = metaFieldDAS.getStringMetaFieldValue(valueId);
+                String email = null != value.getValue() ? (String) value.getValue() : null;
+                if(null != email && !email.trim().isEmpty()){
+                    emails.add(email);
+                }
+            }
+        }
+
+        return emails;
+    }
+
+    /**
+     * Returns the top parent of the hierarchy and all the descendants
+     * @param parent
+     * @return
+     */
+    public List<Integer> getUsersOfSameTree(CustomerDTO parent){
+        List<Integer> usersInTree = new ArrayList<Integer>();
+
+        CustomerDTO topParent = parent;
+        while (topParent.getParent() != null){
+            topParent = topParent.getParent();
+        }
+
+        if(topParent.getBaseUser().getDeleted() == 0){
+            usersInTree.add(topParent.getBaseUser().getId());
+        }
+
+        usersInTree.addAll(getDescendants(topParent));
+
+        return  usersInTree;
     }
 
 }

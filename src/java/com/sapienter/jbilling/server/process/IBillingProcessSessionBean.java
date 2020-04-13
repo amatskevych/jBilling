@@ -23,10 +23,15 @@ package com.sapienter.jbilling.server.process;
 import java.sql.SQLException;
 import java.util.Collection;
 import java.util.Date;
+import java.util.List;
 
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
+import com.sapienter.jbilling.server.process.db.AgeingEntityStepDTO;
 import com.sapienter.jbilling.server.process.db.BillingProcessConfigurationDTO;
+import com.sapienter.jbilling.server.process.db.BillingProcessDTO;
+import com.sapienter.jbilling.server.user.db.UserDTO;
+import com.sapienter.jbilling.server.user.db.UserStatusDTO;
 
 /**
  *
@@ -72,7 +77,7 @@ public interface IBillingProcessSessionBean {
      * transaction (thus, in its own method), so new invoices can link to
      * an existing process record in the db.
      */
-    public Integer createProcessRecord(Integer entityId, Date billingDate,
+    public BillingProcessDTO createProcessRecord(Integer entityId, Date billingDate,
             Integer periodType, Integer periodValue, boolean isReview,
             Integer retries) throws  SQLException;
 
@@ -96,18 +101,17 @@ public interface IBillingProcessSessionBean {
     public void endPayments(Integer runId);
 
     public boolean verifyIsRetry(Integer processId, int retryDays, Date today);
-
-    public void doRetry(Integer processId, int retryDays, Date today) 
-            throws SessionInternalError;
     
-    public void emailAndPayment(Integer entityId, Integer invoiceId,
-            Integer processId, boolean processPayment);        
+    /*public void emailAndPayment(Integer entityId, Integer invoiceId,
+            Integer processId);*/        
+    public void email(Integer entityId, Integer invoiceId, Integer processId); 
 
     /**
      * Process a user, generating the invoice/s,
+     * @param billingDate 
      * @param userId
      */
-    public Integer[] processUser(Integer processId, Integer userId,
+    public Integer[] processUser(Integer processId, Date billingDate, Integer userId,
             boolean isReview, boolean onlyRecurring);
 
     public BillingProcessDTOEx getDto(Integer processId, Integer languageId);
@@ -126,15 +130,24 @@ public interface IBillingProcessSessionBean {
     public BillingProcessConfigurationDTO setReviewApproval(Integer executorId,
             Integer entityId, Boolean flag) throws SessionInternalError;
 
-    public boolean trigger(Date pToday) throws SessionInternalError;
+    public boolean trigger(Date pToday, Integer entityId) throws SessionInternalError;
 
     /**
      * @return the id of the invoice generated
      */
     public InvoiceDTO generateInvoice(Integer orderId, Integer invoiceId,
-            Integer languageId) throws SessionInternalError;
+            Integer languageId, Integer executorUserId) throws SessionInternalError;
     
     public void reviewUsersStatus(Integer entityId, Date today) throws SessionInternalError;
+
+    /**
+     *  Reviews user status, determines if ageing is needed
+     *
+     * @param entityId
+     * @param userId
+     * @param today
+     */
+    public List<InvoiceDTO> reviewUserStatus(Integer entityId, Integer userId, Date today);
 
     /**
      * Update status of BillingProcessRun in new transaction
@@ -157,7 +170,28 @@ public interface IBillingProcessSessionBean {
 
     /**
      * Returns true if the Billing Process is currently running.
+     * @param entityId
      * @return
      */
-    public boolean isBillingRunning() ;
+    public boolean isBillingRunning(Integer entityId) ;
+
+    /**
+     * Returns status of last billing process for the entity specified
+     * @param entityId entity for status retrieve
+     * @return ProcessStatusWS with current state of execution
+     */
+    public ProcessStatusWS getBillingProcessStatus(Integer entityId);
+
+    /**
+     * Returns true if the Ageing Process is currently running.
+     * @return
+     */
+    public boolean isAgeingProcessRunning(Integer entityId);
+
+    /**
+     * Returns status of last ageing process for the entity specified
+     * @param entityId entity for status retrieve
+     * @return ProcessStatusWS with current state of execution
+     */
+    public ProcessStatusWS getAgeingProcessStatus(Integer entityId);
 }

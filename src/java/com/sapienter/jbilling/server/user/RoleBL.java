@@ -20,12 +20,17 @@
 
 package com.sapienter.jbilling.server.user;
 
-import com.sapienter.jbilling.server.user.db.UserDTO;
-import com.sapienter.jbilling.server.user.permisson.db.PermissionDTO;
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.user.permisson.db.RoleDAS;
 import com.sapienter.jbilling.server.user.permisson.db.RoleDTO;
+import com.sapienter.jbilling.server.util.Constants;
+import com.sapienter.jbilling.server.util.db.InternationalDescriptionDAS;
+import com.sapienter.jbilling.server.util.db.InternationalDescriptionDTO;
+
 import org.apache.log4j.Logger;
 
+import java.util.Collection;
 import java.util.Set;
 
 /**
@@ -35,7 +40,7 @@ import java.util.Set;
  * @since 03/06/11
  */
 public class RoleBL {
-    private static final Logger LOG = Logger.getLogger(RoleBL.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(RoleBL.class));
 
     private RoleDAS roleDas;
     private RoleDTO role;
@@ -77,40 +82,35 @@ public class RoleBL {
     public Integer create(RoleDTO role) {
         if (role != null) {
             this.role = roleDas.save(role);
+            roleDas.flush();
             return this.role.getId();
         }
 
         LOG.error("Cannot save a null RoleDTO!");
         return null;
     }
+    
+    public void validateDuplicateRoleName(String roleName, Integer languageId, Integer companyId) {
+        	
+    	if (roleName != null && !roleName.trim().isEmpty()) {
 
-    /**
-     * Updates this role's permissions with those of the given role. This method does not
-     * update the description or title of a permission. Use {@link #setDescription(Integer, String)} and
-     * {@link #setTitle(Integer, String)} to update the roles international descriptions.
-     *
-     * @param dto role with permissions
-     */
-    public void update(RoleDTO dto) {
-        setPermissions(dto.getPermissions());
-    }
+    		InternationalDescriptionDAS internationalDescriptionDAS = InternationalDescriptionDAS.getInstance();
+	        
+    		//check if the description already exists in international_description
+    		Collection<InternationalDescriptionDTO> list = 
+	        		internationalDescriptionDAS.roleExists(Constants.TABLE_ROLE,
+	        										   Constants.PSUDO_COLUMN_TITLE, 
+	        										   roleName.trim(), 
+	        										   languageId,
+                                                       companyId);
 
-    /**
-     * Sets the granted permissions of this role to the given set.
-     *
-     * @param grantedPermissions list of granted permissions
-     */
-    public void setPermissions(Set<PermissionDTO> grantedPermissions) {
-        if (role != null) {
-            role.getPermissions().clear();
-            role.getPermissions().addAll(grantedPermissions);
-
-            this.role = roleDas.save(role);
-            roleDas.flush();
-
-        } else {
-            LOG.error("Cannot update, RoleDTO not found or not set!");
-        }
+            if (list != null && !list.isEmpty()){
+	        	throw new SessionInternalError("The role already exists with name " + roleName,
+	                    new String[]{"RoleDTO,title,validation.error.roleName.already.exists," + roleName});
+	        	
+	        }
+    	}
+    	
     }
 
     /**
@@ -122,7 +122,6 @@ public class RoleBL {
      */
     public void delete() {
         if (role != null) {
-            role.getPermissions().clear();
             role.getBaseUsers().clear();
 
             roleDas.delete(role);
@@ -132,6 +131,17 @@ public class RoleBL {
             LOG.error("Cannot delete, RoleDTO not found or not set!");
         }
     }
+    
+    public void updateRoleType(int roleTypeId) {
+    	
+    	if (role != null) {
+    		role.setRoleTypeId(roleTypeId);
+    		roleDas.save(role);
+    		 roleDas.flush();
+    	} else {
+    		LOG.error("Cannot delete, RoleDTO not found or not set!");
+    	}
+    }
 
     public void setDescription(Integer languageId, String description) {
         this.role.setDescription("description", languageId, description);
@@ -139,5 +149,13 @@ public class RoleBL {
 
     public void setTitle(Integer languageId, String title) {
         this.role.setDescription("title", languageId, title);
+    }
+    
+    public void deleteDescription(Integer languageId) {
+    	this.role.deleteDescription(languageId);
+    }
+    
+    public void deleteTitle(Integer languageId) {
+    	this.role.deleteDescription(Constants.PSUDO_COLUMN_TITLE, languageId);
     }
 }

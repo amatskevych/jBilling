@@ -1,5 +1,3 @@
-<%@ page import="com.sapienter.jbilling.server.user.contact.db.ContactDTO" %>
-
 %{--
   jBilling - The Enterprise Open Source Billing System
   Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
@@ -19,6 +17,8 @@
   You should have received a copy of the GNU Affero General Public License
   along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
 --}%
+
+<%@ page import="org.apache.commons.lang.StringEscapeUtils; com.sapienter.jbilling.server.user.contact.db.ContactDTO"%>
 
 <%--
   Payment list table.
@@ -42,6 +42,13 @@
                             <g:message code="invoice.label.customer"/>
                         </g:remoteSort>
                     </th>
+                    <g:isRoot>
+                		<th class="tiny3">
+                			<g:remoteSort action="list" sort="company.description" alias="[company: 'baseUser.company']" update="column1">
+                    	    	<g:message code="invoice.label.company.name"/>
+                    		</g:remoteSort>
+                		</th>
+                	</g:isRoot>
                     <th class="medium">
                         <g:remoteSort action="list" sort="paymentDate" update="column1">
                             <g:message code="payment.th.date"/>
@@ -86,15 +93,22 @@
                         <g:remoteLink breadcrumb="id" class="cell double" action="show" id="${payment.id}" params="['template': 'show']" before="register(this);" onSuccess="render(data, next);">
                             <strong>
                                 <g:if test="${contact?.firstName || contact?.lastName}">
-                                    ${contact.firstName} &nbsp;${contact.lastName}
+                                    ${StringEscapeUtils.escapeHtml(contact?.firstName)} &nbsp;${StringEscapeUtils.escapeHtml(contact?.lastName)}
                                 </g:if>
                                 <g:else>
-                                    ${payment?.baseUser?.userName}
+                                    ${StringEscapeUtils.escapeHtml(payment?.baseUser?.userName)}
                                 </g:else>
                             </strong>
-                            <em>${contact?.organizationName}</em>
+                            <em>${StringEscapeUtils.escapeHtml(contact?.organizationName)}</em>
                         </g:remoteLink>
                     </td>
+                    <g:isRoot>
+                		<td>
+                    		<g:remoteLink breadcrumb="id" class="cell" action="show" id="${payment.id}" params="['template': 'show']" before="register(this);" onSuccess="render(data, next);">
+                        		<strong>${StringEscapeUtils.escapeHtml(payment?.baseUser?.company?.description)}</strong>
+                   			</g:remoteLink>
+                		</td>
+                	</g:isRoot>
                     <td class="medium">
                         <g:remoteLink class="cell" action="show" id="${payment.id}" before="register(this);" onSuccess="render(data, next);">
                             <span><g:formatDate date="${payment.paymentDate}" formatName="date.pretty.format"/></span>
@@ -112,17 +126,17 @@
                     </td>
                     <td class="small">
                         <g:remoteLink class="cell" action="show" id="${payment.id}" before="register(this);" onSuccess="render(data, next);">
-                            <span><g:formatNumber number="${payment.amount}" type="currency" currencySymbol="${payment.currencyDTO.symbol}"/></span>
+                            <span><g:formatNumber number="${payment.amount}" type="currency" currencySymbol="${payment?.getCurrency()?.getSymbol()}"/></span>
                         </g:remoteLink>
                     </td>
                     <td class="small">
                         <g:remoteLink class="cell" action="show" id="${payment.id}" before="register(this);" onSuccess="render(data, next);">
-                            <span>${payment.paymentMethod.getDescription(session['language_id'])}</span>
+                            <span>${StringEscapeUtils.escapeHtml(payment?.paymentMethod?.getDescription(session['language_id']))}</span>
                         </g:remoteLink>
                     </td>
                     <td class="small">
                         <g:remoteLink class="cell" action="show" id="${payment.id}" before="register(this);" onSuccess="render(data, next);">
-                            <span>${payment.paymentResult.getDescription(session['language_id'])}</span>
+                            <span>${StringEscapeUtils.escapeHtml(payment?.paymentResult?.getDescription(session['language_id']))}</span>
                         </g:remoteLink>
                     </td>
 
@@ -136,11 +150,11 @@
 <div class="pager-box">
     <div class="row">
         <div class="results">
-            <g:render template="/layouts/includes/pagerShowResults" model="[steps: [10, 20, 50], update: 'column1']"/>
+            <g:render template="/layouts/includes/pagerShowResults" model="[steps: [10, 20, 50], update: 'column1', contactFieldTypes: contactFieldTypes]"/>
         </div>
         <div class="download">
             <sec:access url="/payment/csv">
-                <g:link action="csv" id="${selected?.id}">
+                <g:link action="csv" id="${selected?.id}" params="${sortableParams(params: [partial: true, contactFieldTypes: contactFieldTypes])}">
                     <g:message code="download.csv.link"/>
                 </g:link>
             </sec:access>
@@ -148,7 +162,7 @@
     </div>
 
     <div class="row">
-        <util:remotePaginate controller="payment" action="list" params="${sortableParams(params: [partial: true])}" total="${payments?.totalCount ?: 0}" update="column1"/>
+        <util:remotePaginate controller="payment" action="list" params="${sortableParams(params: [partial: true, contactFieldTypes: contactFieldTypes])}" total="${payments?.totalCount ?: 0}" update="column1"/>
     </div>
 </div>
 

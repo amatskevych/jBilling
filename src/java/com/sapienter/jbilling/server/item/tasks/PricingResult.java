@@ -20,17 +20,18 @@
 
 package com.sapienter.jbilling.server.item.tasks;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.rule.Result;
-import java.math.BigDecimal;
 import org.apache.log4j.Logger;
 
+import java.math.BigDecimal;
+
 /**
- *
  * @author emilc
  */
 public class PricingResult extends Result {
 
-    private static final Logger LOG = Logger.getLogger(PricingResult.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PricingResult.class));
 
     private final Integer itemId;
     private final Integer userId;
@@ -38,11 +39,16 @@ public class PricingResult extends Result {
     private BigDecimal price;
     private BigDecimal quantity;
     private long pricingFieldsResultId;
+    private boolean perCurrencyRateCard;
+    private BigDecimal freeUsageQuantity;
+    private boolean isChained;
+    private boolean isPercentage;
 
     public PricingResult(Integer itemId, Integer userId, Integer currencyId) {
         this.itemId = itemId;
         this.userId = userId;
         this.currencyId = currencyId;
+        this.perCurrencyRateCard = false;
     }
 
     public PricingResult(Integer itemId, BigDecimal quantity, Integer userId, Integer currencyId) {
@@ -50,7 +56,8 @@ public class PricingResult extends Result {
         this.quantity = quantity;
         this.userId = userId;
         this.currencyId = currencyId;
-    }    
+        this.perCurrencyRateCard = false;
+    }
 
     public Integer getCurrencyId() {
         return currencyId;
@@ -69,7 +76,7 @@ public class PricingResult extends Result {
     }
 
     public void setPrice(BigDecimal price) {
-        LOG.debug("Setting price. Result fields id " + pricingFieldsResultId + " item " + itemId + " price " + price );
+        LOG.debug("Setting price. Result fields id %s item %s price %s", pricingFieldsResultId, itemId, price);
         this.price = price;
     }
 
@@ -92,15 +99,49 @@ public class PricingResult extends Result {
     public void setPricingFieldsResultId(long pricingFieldsResultId) {
         this.pricingFieldsResultId = pricingFieldsResultId;
     }
+    
+    public BigDecimal getFreeUsageQuantity() {
+        return (freeUsageQuantity != null ? freeUsageQuantity : BigDecimal.ZERO);
+    }
 
-    public String toString() {
+    public boolean isPerCurrencyRateCard() {
+        return perCurrencyRateCard;
+    }
+
+    public void setPerCurrencyRateCard(boolean perCurrencyRateCard) {
+        this.perCurrencyRateCard = perCurrencyRateCard;
+    }
+
+    public void setFreeUsageQuantity(BigDecimal freeUsageQuantity) {
+        this.freeUsageQuantity = freeUsageQuantity;
+    }
+    
+    public boolean isChained() {
+		return isChained;
+	}
+    
+	public void setIsChained(boolean isChained) {
+		this.isChained = isChained;
+	}
+
+	public boolean isPercentage() {
+		return isPercentage;
+	}
+
+	public void setIsPercentage(boolean isPercentage) {
+		this.isPercentage = isPercentage;
+	}
+	
+	public String toString() {
         return  "PricingResult:" +
                 "itemId=" + itemId + " " +
                 "userId=" + userId + " " +
+                "isPercentage=" + isPercentage + " " +
                 "currencyId=" + currencyId + " " +
                 "price=" + price + " " +
                 "pricing fields result id=" + pricingFieldsResultId + " " +
                 super.toString();
     }
+
 
 }

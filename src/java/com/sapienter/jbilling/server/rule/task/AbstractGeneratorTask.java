@@ -37,6 +37,7 @@ import org.drools.rule.Package;
 import org.drools.util.DroolsStreamUtils;
 import org.xml.sax.SAXException;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.pluggableTask.PluggableTask;
 import com.sapienter.jbilling.server.pluggableTask.TaskException;
@@ -64,7 +65,7 @@ public abstract class AbstractGeneratorTask extends PluggableTask
 	
     private static final String PARAM_CONFIG_FILENAME_DEFAULT = "rules-generator-config.xml";
 
-    private static final Logger LOG = Logger.getLogger(AbstractGeneratorTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(AbstractGeneratorTask.class));
 
     private Object data;
     private String rules;

@@ -37,8 +37,8 @@ public class BillingProcessRunDTOEx extends ProcessRunDTO {
 
     List<BillingProcessRunTotalDTOEx> totals = null;
     String statusStr;
-    Integer usersSucceeded;
-    Integer usersFailed;
+    Long usersSucceeded;
+    Long usersFailed;
     /**
      * 
      */
@@ -86,19 +86,19 @@ public class BillingProcessRunDTOEx extends ProcessRunDTO {
         this.statusStr = statusStr;
     }
 
-    public Integer getUsersSucceeded() {
+    public Long getUsersSucceeded() {
         return usersSucceeded;
     }
 
-    public void setUsersSucceeded(Integer usersSucceeded) {
+    public void setUsersSucceeded(Long usersSucceeded) {
         this.usersSucceeded = usersSucceeded;
     }
 
-    public Integer getUsersFailed() {
+    public Long getUsersFailed() {
         return usersFailed;
     }
 
-    public void setUsersFailed(Integer usersFailed) {
+    public void setUsersFailed(Long usersFailed) {
         this.usersFailed = usersFailed;
     }
 

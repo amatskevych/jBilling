@@ -146,4 +146,5 @@ public class NotificationMessageArchDTO implements Serializable {
     public void setVersionNum(int versionNum) {
         this.versionNum = versionNum;
     }
+
 }

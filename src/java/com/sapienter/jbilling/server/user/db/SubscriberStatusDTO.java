@@ -32,9 +32,12 @@ import javax.persistence.Transient;
 
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.db.AbstractGenericStatus;
+import org.hibernate.annotations.Cache;
+import org.hibernate.annotations.CacheConcurrencyStrategy;
 
 @Entity
 @DiscriminatorValue("subscriber_status")
+@Cache(usage = CacheConcurrencyStrategy.READ_ONLY)
 public class SubscriberStatusDTO extends AbstractGenericStatus implements java.io.Serializable {
 
      private Set<UserDTO> baseUsers = new HashSet<UserDTO>(0);

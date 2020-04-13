@@ -21,16 +21,17 @@ package com.sapienter.jbilling.server.order;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 import javax.validation.constraints.Min;
 import javax.validation.constraints.Digits;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 
-import com.sapienter.jbilling.server.order.db.OrderPeriodDAS;
-import com.sapienter.jbilling.server.order.db.OrderPeriodDTO;
-import com.sapienter.jbilling.server.user.db.CompanyDAS;
+import com.sapienter.jbilling.server.util.Constants;
+import com.sapienter.jbilling.server.util.Context;
 import com.sapienter.jbilling.server.util.InternationalDescriptionWS;
-import com.sapienter.jbilling.server.util.db.LanguageDTO;
 
 /**
  * OrderPeriodWS
@@ -45,13 +46,16 @@ public class OrderPeriodWS implements Serializable {
     private Integer entityId;
     
     private Integer periodUnitId;
-    
+
+    @NotNull(message = "orderPeriodWS.value.validation.error.notnull")
     @Min(value = 1, message = "validation.error.min,1")
-    @Digits(integer=3, fraction=0, message="validation.error.not.a.number")
+    @Digits(integer=3, fraction=0, message="validation.error.invalid.digits.max.three")
     private Integer value;
     private Integer versionNum;
-    
+
+    @Size(min=1, message="validation.error.notnull")
     private List<InternationalDescriptionWS> descriptions = new ArrayList<InternationalDescriptionWS>();
+
 
     public OrderPeriodWS() {
     }
@@ -61,13 +65,6 @@ public class OrderPeriodWS implements Serializable {
        this.entityId = entityId;
        this.periodUnitId= periodUnitId;
        this.value = value;
-    }
-
-    public OrderPeriodWS(OrderPeriodDTO dto) {
-    	this.id= dto.getId();
-    	this.entityId= dto.getCompany().getId();
-    	this.value=dto.getValue();
-    	this.periodUnitId= dto.getPeriodUnit().getId();
     }
     
 	public Integer getId() {

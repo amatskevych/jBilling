@@ -39,8 +39,8 @@ public interface IInvoiceSessionBean {
 
     public InvoiceDTO getInvoice(Integer invoiceId) throws SessionInternalError;
 
-    public void create(Integer entityId, Integer userId,
-            NewInvoiceDTO newInvoice) throws SessionInternalError;
+    public InvoiceDTO create(Integer entityId, Integer userId,
+            NewInvoiceContext newInvoice) throws SessionInternalError;
 
     public String getFileName(Integer invoiceId) throws SessionInternalError;
 

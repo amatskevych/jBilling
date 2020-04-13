@@ -31,6 +31,7 @@ import java.util.List;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.notification.NotificationBL;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
 import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
@@ -60,7 +61,7 @@ public class PaymentEmailAuthorizeNetTask extends PaymentAuthorizeNetTask {
 	
     public boolean process(PaymentDTOEx paymentInfo) 
             throws PluggableTaskException {
-        Logger log = Logger.getLogger(PaymentEmailAuthorizeNetTask.class);
+        FormatLogger log = new FormatLogger(Logger.getLogger(PaymentEmailAuthorizeNetTask.class));
         boolean retValue = super.process(paymentInfo);
         String address = (String) parameters.get(PARAMETER_EMAIL_ADDRESS.getName());
         try {

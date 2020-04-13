@@ -20,7 +20,7 @@
 
 package com.sapienter.jbilling.server.order;
 
-import com.sapienter.jbilling.server.util.Constants;
+import com.sapienter.jbilling.server.order.OrderStatusFlag;
 
 /**
  * @author Emil
@@ -72,15 +72,14 @@ public interface OrderSQL {
         "where active_until >= ? " +
         "  and active_until <= ? " +
         "  and notify = 1 " +
-        "  and purchase_order.status_id = (select id from generic_status " +
-        "    where dtype = 'order_status' AND status_value = 1 )" +
+        "  and purchase_order.orderStatus.orderStatusFlag = "+OrderStatusFlag.INVOICE.ordinal()+ // invoice
         "  and user_id = base_user.id " +
         "  and entity_id = ? " +
         "  and (notification_step is null or notification_step < ?)";
     
     static final String getLatest =
-    	"select id from purchase_order where " +
-    	"create_datetime = (select max(create_datetime) " +
+    	"select max(id) from purchase_order " +
+    	"where user_id = ? and deleted = 0 and create_datetime = (select max(create_datetime) " +
     	"from purchase_order where user_id = ? and deleted = 0)";
     
     static final String getLatestByItemType =

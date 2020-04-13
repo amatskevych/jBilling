@@ -45,9 +45,9 @@ class Breadcrumb implements Serializable {
 
     static constraints = {
         action(blank: true, nullable: true)
-        name(blank: true, nullable: true)
+        name(blank: true, nullable: true , size:1..255)
         objectId(nullable: true)
-        description(nullable: true)
+        description(nullable: true, size:1..255)
     }
 
     Integer userId

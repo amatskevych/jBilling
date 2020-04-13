@@ -20,13 +20,17 @@
 package com.sapienter.jbilling.server.item.tasks;
 
 import java.util.Collection;
+import java.util.Date;
 import java.util.List;
 
+import com.sapienter.jbilling.server.rule.RulesBaseTask;
 import org.apache.log4j.Logger;
 import org.drools.KnowledgeBase;
 import org.drools.runtime.StatelessKnowledgeSession;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.item.PricingField;
+import com.sapienter.jbilling.server.item.db.ItemDTO;
 import com.sapienter.jbilling.server.order.OrderBL;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
 import com.sapienter.jbilling.server.order.db.OrderLineDTO;
@@ -35,18 +39,19 @@ import com.sapienter.jbilling.server.pluggableTask.TaskException;
 import com.sapienter.jbilling.server.user.ContactBL;
 import com.sapienter.jbilling.server.user.ContactDTOEx;
 import com.sapienter.jbilling.server.user.UserDTOEx;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldDTO;
 import com.sapienter.jbilling.server.util.DTOFactory;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 
-public class RulesPricingTask extends PluggableTask implements IPricing {
-    
-    private static final Logger LOG = Logger.getLogger(RulesPricingTask.class);
+@Deprecated
+public class RulesPricingTask extends RulesBaseTask implements IPricing {
 
-    public BigDecimal getPrice(Integer itemId, BigDecimal quantity, Integer userId, Integer currencyId,
-            List<PricingField> fields, BigDecimal defaultPrice, OrderDTO pricingOrder)
-            throws TaskException {
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(RulesPricingTask.class));
+    protected FormatLogger getLog() { return LOG; }
+
+    public BigDecimal getPrice(ItemDTO item, BigDecimal quantity, Integer userId, Integer currencyId,
+            List<PricingField> fields, BigDecimal defaultPrice, OrderDTO pricingOrder, OrderLineDTO orderLine,
+            boolean singlePurchase, Date eventDate) throws TaskException {
         // now we have the line with good defaults, the order and the item
         // These have to be visible to the rules
         KnowledgeBase knowledgeBase;
@@ -58,7 +63,7 @@ public class RulesPricingTask extends PluggableTask implements IPricing {
         StatelessKnowledgeSession mySession = knowledgeBase.newStatelessKnowledgeSession();
         List<Object> rulesMemoryContext = new ArrayList<Object>();
         
-        PricingManager manager = new PricingManager(itemId, userId, currencyId, defaultPrice);
+        PricingManager manager = new PricingManager(item.getId(), userId, currencyId, defaultPrice);
         mySession.setGlobal("manager", manager);
         
         if (fields != null && !fields.isEmpty()) {
@@ -73,9 +78,6 @@ public class RulesPricingTask extends PluggableTask implements IPricing {
                 contact.set(userId);
                 ContactDTOEx contactDTO = contact.getDTO();
                 rulesMemoryContext.add(contactDTO);
-                for (ContactFieldDTO field: (Collection<ContactFieldDTO>) contactDTO.getFieldsTable().values()) {
-                    rulesMemoryContext.add(field);    
-                }
             }
             rulesMemoryContext.add(manager);
 
@@ -92,7 +94,7 @@ public class RulesPricingTask extends PluggableTask implements IPricing {
         }
         // then execute the rules
         for (Object o: rulesMemoryContext) {
-            LOG.debug("in memory context=" + o);
+            LOG.debug("in memory context=%s", o);
         }
         mySession.execute(rulesMemoryContext);
 

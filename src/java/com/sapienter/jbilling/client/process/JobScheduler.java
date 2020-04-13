@@ -25,6 +25,8 @@ import org.quartz.SchedulerException;
 import org.quartz.SchedulerFactory;
 import org.quartz.impl.StdSchedulerFactory;
 
+import com.sapienter.jbilling.common.FormatLogger;
+
 /**
  * Singleton wrapper to provide easy access to the Quartz Scheduler. Used to schedule
  * all of jBilling's batch processes and {@link com.sapienter.jbilling.server.process.task.IScheduledTask}
@@ -34,7 +36,7 @@ import org.quartz.impl.StdSchedulerFactory;
  * @since 02-02-2010
  */
 public class JobScheduler {
-    private static final Logger LOG = Logger.getLogger(JobScheduler.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(JobScheduler.class));
 
     private static JobScheduler instance = null;
     private SchedulerFactory factory = null;

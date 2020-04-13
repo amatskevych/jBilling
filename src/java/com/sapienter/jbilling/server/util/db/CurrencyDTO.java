@@ -26,7 +26,7 @@ import com.sapienter.jbilling.server.payment.db.PaymentDTO;
 import com.sapienter.jbilling.server.process.db.ProcessRunTotalDTO;
 import com.sapienter.jbilling.server.user.db.CompanyDTO;
 import com.sapienter.jbilling.server.user.db.UserDTO;
-import com.sapienter.jbilling.server.user.partner.db.Partner;
+import com.sapienter.jbilling.server.user.partner.db.PartnerDTO;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.CurrencyWS;
 import org.apache.commons.lang.StringUtils;
@@ -34,21 +34,8 @@ import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
 import org.hibernate.annotations.Cascade;
 
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.JoinTable;
-import javax.persistence.ManyToMany;
-import javax.persistence.OneToMany;
-import javax.persistence.Table;
-import javax.persistence.TableGenerator;
-import javax.persistence.Transient;
-import javax.persistence.Version;
+import javax.persistence.*;
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.Set;
@@ -64,7 +51,7 @@ import java.util.Set;
         allocationSize = 10
 )
 @Cache(usage = CacheConcurrencyStrategy.NONSTRICT_READ_WRITE)
-public class CurrencyDTO extends AbstractDescription implements java.io.Serializable {
+public class CurrencyDTO extends AbstractDescription implements java.io.Serializable, IDeletable {
 
     private int id;
     private String symbol;
@@ -73,7 +60,7 @@ public class CurrencyDTO extends AbstractDescription implements java.io.Serializ
     private Set<CompanyDTO> entities = new HashSet<CompanyDTO>(0);
     private Set<UserDTO> baseUsers = new HashSet<UserDTO>(0);
     private Set<OrderDTO> orderDTOs = new HashSet<OrderDTO>(0);
-    private Set<Partner> partners = new HashSet<Partner>(0);
+    private Set<PartnerDTO> partners = new HashSet<PartnerDTO>(0);
     private Set<PaymentDTO> payments = new HashSet<PaymentDTO>(0);
     private Set<CurrencyExchangeDTO> currencyExchanges = new HashSet<CurrencyExchangeDTO>(0);
     private Set<CompanyDTO> entities_1 = new HashSet<CompanyDTO>(0);
@@ -103,7 +90,7 @@ public class CurrencyDTO extends AbstractDescription implements java.io.Serializ
     }
 
     public CurrencyDTO(int id, String symbol, String code, String countryCode, Set<CompanyDTO> entities,
-                       Set<UserDTO> baseUsers, Set<OrderDTO> orderDTOs, Set<Partner> partners, Set<PaymentDTO> payments,
+                       Set<UserDTO> baseUsers, Set<OrderDTO> orderDTOs, Set<PaymentDTO> payments,
                        Set<CurrencyExchangeDTO> currencyExchanges, Set<CompanyDTO> entities_1, Set<InvoiceDTO> invoices,
                        Set<ProcessRunTotalDTO> processRunTotals) {
         this.id = id;
@@ -113,7 +100,6 @@ public class CurrencyDTO extends AbstractDescription implements java.io.Serializ
         this.entities = entities;
         this.baseUsers = baseUsers;
         this.orderDTOs = orderDTOs;
-        this.partners = partners;
         this.payments = payments;
         this.currencyExchanges = currencyExchanges;
         this.entities_1 = entities_1;
@@ -205,15 +191,6 @@ public class CurrencyDTO extends AbstractDescription implements java.io.Serializ
         this.orderDTOs = orderDTOs;
     }
 
-    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "feeCurrency")
-    public Set<Partner> getPartners() {
-        return this.partners;
-    }
-
-    public void setPartners(Set<Partner> partners) {
-        this.partners = partners;
-    }
-
     @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "currency")
     public Set<PaymentDTO> getPayments() {
         return this.payments;
@@ -254,8 +231,8 @@ public class CurrencyDTO extends AbstractDescription implements java.io.Serializ
     public void setInvoices(Set<InvoiceDTO> invoices) {
         this.invoices = invoices;
     }
-
-    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "currency")
+    
+	@OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "currency")
     public Set<ProcessRunTotalDTO> getProcessRunTotals() {
         return this.processRunTotals;
     }
@@ -313,6 +290,15 @@ public class CurrencyDTO extends AbstractDescription implements java.io.Serializ
     public void setSysRate(BigDecimal sysRate) {
         this.sysRate = sysRate;
     }
+    
+    @Transient
+    public boolean isDeletable() {
+    	return (getEntities().isEmpty() && getBaseUsers().isEmpty() 
+    			&& getPurchaseOrders().isEmpty()
+    			&& getPayments().isEmpty() && getInvoices().isEmpty() 
+    			&& getProcessRunTotals().isEmpty() );
+    }
+
 }
 
 

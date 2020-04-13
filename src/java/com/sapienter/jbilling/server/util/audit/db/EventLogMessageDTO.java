@@ -21,6 +21,8 @@ package com.sapienter.jbilling.server.util.audit.db;
 
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.db.AbstractDescription;
+
+import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -71,7 +73,7 @@ public class EventLogMessageDTO extends AbstractDescription {
     public Set<EventLogDTO> getEventLogs() {
         return this.eventLogs;
     }
-    
+
 }
 
 

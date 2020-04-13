@@ -32,6 +32,7 @@ import org.apache.log4j.Logger;
 import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.db.AbstractDescription;
 
@@ -40,7 +41,7 @@ import com.sapienter.jbilling.server.util.db.AbstractDescription;
 @Cache(usage = CacheConcurrencyStrategy.READ_ONLY)
 public class PluggableTaskTypeDTO extends AbstractDescription implements Serializable {
 
-    private static final Logger LOG = Logger.getLogger(PluggableTaskTypeDTO.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PluggableTaskTypeDTO.class));
 
     @Id
     @Column(name = "id")
@@ -127,4 +128,11 @@ public class PluggableTaskTypeDTO extends AbstractDescription implements Seriali
         return (str.toString());
 
     }
+
+    public void touch(){
+        if(null != getCategory()){
+            getCategory().getId();
+        }
+    }
+
 }

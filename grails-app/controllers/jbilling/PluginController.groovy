@@ -20,8 +20,9 @@
 
 package jbilling
 
-import com.sapienter.jbilling.client.ViewUtils;
-import com.sapienter.jbilling.server.pluggableTask.PluggableTask 
+import com.sapienter.jbilling.client.ViewUtils
+import com.sapienter.jbilling.client.util.SortableCriteria;
+import com.sapienter.jbilling.server.pluggableTask.PluggableTask
 import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskDAS;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskDTO;
@@ -30,44 +31,147 @@ import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskTypeCatego
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskTypeCategoryDTO;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskTypeDAS 
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskTypeDTO;
-import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskWS;
-import com.sapienter.jbilling.server.user.UserBL 
-import com.sapienter.jbilling.server.util.WebServicesSessionSpringBean;
-import com.sapienter.jbilling.common.SessionInternalError;
+import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskWS
+import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskBL
+import com.sapienter.jbilling.server.util.Constants
+import com.sapienter.jbilling.server.util.PreferenceBL
+import com.sapienter.jbilling.server.util.IWebServicesSessionBean
+import com.sapienter.jbilling.common.SessionInternalError
 
-import org.springframework.context.support.ReloadableResourceBundleMessageSource 
+import grails.converters.JSON
+import grails.gorm.PagedResultList
+import grails.plugin.springsecurity.annotation.Secured
+import org.codehaus.groovy.grails.context.support.PluginAwareResourceBundleMessageSource
+import org.codehaus.groovy.grails.web.servlet.mvc.GrailsParameterMap
+
+import org.hibernate.criterion.MatchMode
+import org.hibernate.criterion.Restrictions;
+import org.hibernate.ObjectNotFoundException;
+import org.springframework.context.support.ReloadableResourceBundleMessageSource
 import org.springframework.security.access.annotation.Secured 
 
-@Secured(["MENU_99"])
+@Secured(["isAuthenticated()"])
 class PluginController {
-    
+	
+	static scope = "prototype"
+	static pagination = [ max: 10, offset: 0 ]
+	static final viewColumnsToFields =
+			['categoryId': 'id',
+			 'pluginId': 'id',
+			 'type': 'pluginType.className',
+			 'order': 'processingOrder',
+			 'description': 'description']
+	
     // all automatically injected by Grails. Thanks.
-    WebServicesSessionSpringBean webServicesSession;
-    ReloadableResourceBundleMessageSource messageSource
+    IWebServicesSessionBean webServicesSession
+    PluginAwareResourceBundleMessageSource messageSource
     PluggableTaskDAS pluggableTaskDAS
     ViewUtils viewUtils
     RecentItemService recentItemService;
     BreadcrumbService breadcrumbService;
     
-    def index = {
-        listCategories();
+    def index () {
+        list();
     }
-    
+
     /*
      * Lists all the categories. The same for every company
      */
-    def listCategories = {
-        breadcrumbService.addBreadcrumb("plugin", "listCategories", null, null);
-        List categorylist= PluggableTaskTypeCategoryDTO.list();
-        log.info "Categories found= " + categorylist?.size()
-        render (view:"categories", model:[categories:categorylist])
+    def list () {
+        if (params.id) {
+            showListAndPlugin(params.id as Integer);
+            return
+        }
+
+		breadcrumbService.addBreadcrumb("plugin", "list", null, null);
+        def usingJQGrid = PreferenceBL.getPreferenceValueAsBoolean(session['company_id'], Constants.PREFERENCE_USE_JQGRID);
+        //If JQGrid is showing, the data will be retrieved when the template renders
+        if (usingJQGrid) {
+            render (view: "list")
+            return
+        }
+
+        params.max = Integer.MAX_VALUE // There is no pagination in the old look
+        def categories = getPluginCategories(params)
+        log.info "Categories found= " + categories?.totalCount
+        render (view:"list", model:[categories:categories])
+	}
+
+    def findCategories () {
+        params.sort = viewColumnsToFields[params.sidx]
+        params.order = params.sord
+        params.max = params.rows
+        params.offset = params?.page ? (params.int('page') - 1) * params.int('rows') : 0
+        params.alias = SortableCriteria.NO_ALIAS
+
+        def categories = getPluginCategories(params)
+
+        try {
+            render getAsJsonData(categories, params) as JSON
+
+        } catch (SessionInternalError e) {
+            viewUtils.resolveException(flash, session.locale, e)
+            render e.getMessage()
+        }
+
     }
-    
+
+    def getPluginCategories(params) {
+        params.max = params?.max?.toInteger() ?: pagination.max
+        params.offset = params?.offset?.toInteger() ?: pagination.offset
+        def languageId = session['language_id']
+
+        return PluggableTaskTypeCategoryDTO.createCriteria().list(
+                max: params.max,
+                offset: params.offset
+        ) {
+            if (params.categoryId) {
+                eq('id', params.getInt('categoryId'));
+            }
+            if (params.description){
+                def searchParam = params.description
+                or {
+                    addToCriteria(Restrictions.ilike("interfaceName", searchParam, MatchMode.ANYWHERE));
+                    searchParam = searchParam.toLowerCase()
+                    sqlRestriction(
+                            """ exists (
+                                            select a.foreign_id
+                                            from international_description a
+                                            where a.foreign_id = {alias}.id
+                                            and a.table_id =
+                                             (select b.id from jbilling_table b where b.name =? )
+                                            and a.language_id = ?
+                                            and a.psudo_column = 'description'
+                                            and lower(a.content) like ?
+                                        )
+                                    """, [Constants.TABLE_PLUGGABLE_TASK_TYPE_CATEGORY, languageId, "%" + searchParam + "%"]
+                    )
+                }
+            }
+            SortableCriteria.sort(params, delegate)
+        }
+    }
+
+    /**
+     * Converts * to JSon
+     */
+    private def Object getAsJsonData(elements, GrailsParameterMap params) {
+        def jsonCells = elements
+        def currentPage = params.page ? Integer.valueOf(params.page) : 1
+        def rowsNumber = params.rows ? Integer.valueOf(params.rows): 1
+        def totalRecords = jsonCells ? jsonCells.totalCount : 0
+        def numberOfPages = Math.ceil(totalRecords / rowsNumber)
+
+        def jsonData = [rows: jsonCells, page: currentPage, records: totalRecords, total: numberOfPages]
+
+        jsonData
+    }
+
     /*
      * This action lists all the plug-ins that belong to a Company and to 
      * the selected Category
      */
-    def plugins = {
+    def plugins () {
         Integer languageId = session.language_id;
         Integer entityId = session.company_id;
         log.info "entityId=" + entityId
@@ -77,53 +181,141 @@ class PluginController {
             log.info "Category Id selected=" + categoryId
             
             breadcrumbService.addBreadcrumb("plugin", "plugins", null, categoryId);
-            def lstByCateg= pluggableTaskDAS.findByEntityCategory(entityId, categoryId);
-            
-            log.info "number of plug-ins=" + lstByCateg.size();
-            // add the category id to the session, so the 'create' button can know 
+
+            // add the category id to the session, so the 'create' button can know
             // which category to create for
             session.selected_category_id = categoryId;
-        
+
+            def usingJQGrid = PreferenceBL.getPreferenceValueAsBoolean(session['company_id'], Constants.PREFERENCE_USE_JQGRID);
+            //If JQGrid is showing, the data will be retrieved when the template renders
+            if (usingJQGrid){
+                if (params.template == 'show') {
+                    render template: "pluginsTemplate", model:[selectedCategoryId: categoryId]
+                } else {
+                    render (view:"list", model:[selectedCategoryId: categoryId])
+                }
+                return
+            }
+
+            def lstByCateg = getPlugins(params, params.getInt('id'))
+            log.info "number of plug-ins=" + lstByCateg.size();
             // show the list of the plug-ins
             if (params.template == 'show') {
-                render template: "plugins", model:[plugins:lstByCateg]
+                render template: "pluginsTemplate", model:[plugins:lstByCateg]
             } else {
-                render (view:"categories", model:[categories:PluggableTaskTypeCategoryDTO.list(),plugins:lstByCateg])
+                params.max = Integer.MAX_VALUE // There is no pagination in the old look
+                def categories = getPluginCategories(params)
+                render (view:"list", model:[categories:categories, plugins:lstByCateg])
             }
         } else {
             log.error "No Category selected?"
         }
     }
-    
-    def show = {
-        Integer taskId = params.id.toInteger();
-        breadcrumbService.addBreadcrumb("plugin", "show", null, taskId);
-        PluggableTaskDTO dto = pluggableTaskDAS.find(taskId);
-        if (params.template == 'show') {
-            render template: "show", model:[plugin:dto]
-        } else {
-            // its being called by the breadcrumbs
-            showListAndPlugin(taskId);
+
+    def findPlugins () {
+        params.sort = viewColumnsToFields[params.sidx]
+        params.order = params.sord
+        params.max = params.rows
+        params.offset = params?.page ? (params.int('page') - 1) * params.int('rows') : 0
+        params.alias = SortableCriteria.NO_ALIAS
+
+        def plugins = getPlugins(params, params.getInt('id'))
+
+        try {
+            render getAsJsonData(plugins, params) as JSON
+
+        } catch (SessionInternalError e) {
+            viewUtils.resolveException(flash, session.locale, e)
+            render e.getMessage()
         }
     }
+
+    def getPlugins(params, categoryId) {
+        params.max = pagination.max
+        // This fixes an issue when retrieving the plugins from the database
+        // If more than max appear, they will be left out.
+        params.offset = params?.offset?.toInteger() ?: pagination.offset
+        def languageId = session['language_id']
+
+        return PluggableTaskDTO.createCriteria().list(
+                //max: params.max,
+                offset: params.offset
+        ) {
+            eq('entityId', session['company_id'])
+            createAlias('type', 'pluginType')
+            createAlias('pluginType.category', 'pluginCategory')
+            eq('pluginCategory.id', categoryId);
+            if (params.pluginId) {
+                eq('id', params.getInt('pluginId'));
+            }
+            if (params.type){
+                def searchParam = params.type
+                or {
+                    addToCriteria(Restrictions.ilike("pluginType.className", searchParam, MatchMode.ANYWHERE));
+                    searchParam = searchParam.toLowerCase()
+                    sqlRestriction(
+                            """ exists (
+                                            select a.foreign_id
+                                            from international_description a
+                                            where a.foreign_id = {alias}.type_id
+                                            and a.table_id =
+                                             (select b.id from jbilling_table b where b.name = ? )
+                                            and a.language_id = ?
+                                            and a.psudo_column = 'title'
+                                            and lower(a.content) like ?
+                                        )
+                                    """, [Constants.TABLE_PLUGGABLE_TASK_TYPE, languageId, "%" + searchParam + "%"]
+                    )
+                }
+            }
+            resultTransformer org.hibernate.Criteria.DISTINCT_ROOT_ENTITY
+            SortableCriteria.sort(params, delegate)
+        }
+    }
+
+    def show () {
+        Integer taskId = params.id.toInteger();
+
+            breadcrumbService.addBreadcrumb("plugin", "show", null, taskId);
+            PluggableTaskDTO dto = pluggableTaskDAS.findNow(taskId);
+            if ( null == dto ) {
+                pluginNotFoundErrorRedirect(taskId)
+                return
+            }
+            
+            if (params.template == 'show') {
+                render template: "show", model: [plugin: dto]
+            } else {
+                // its being called by the breadcrumbs
+                showListAndPlugin(taskId);
+            }
+    }
     
-    def showForm = {
+    def showForm () {
+
         // find out the category name
-        PluggableTaskTypeCategoryDTO category =  new PluggableTaskTypeCategoryDAS().find(
-               session.selected_category_id);
-        
+        PluggableTaskTypeCategoryDTO category =  
+			new PluggableTaskTypeCategoryDAS().find(session.selected_category_id);
+
         List<PluggableTaskTypeDTO> typesList = new PluggableTaskTypeDAS().findAllByCategory(category.getId());
+
+        if (typesList?.isEmpty()){
+            flash.error = messageSource.getMessage("no.plugin.types",null, session.locale)
+            redirect (action: 'list')
+            return
+        }
+
         // show the form with the description
         render (view:"form", model:
-                [description:category.getDescription(session.language_id),
-                 types:typesList, parametersDesc : getDescriptions(typesList.get(0).getId())])
+                [description: category?.getDescription(session.language_id), isEdit: false,
+                 types:typesList, parametersDesc : getDescriptions(typesList.first()?.getId())])
     }
     
     /*
      * This is called when a new type is picked from the drop down list of plug-in types (classes)
      * and the parameters need to be re-rendered
      */
-    def getTypeParametersDescriptions = {
+    def getTypeParametersDescriptions () {
         log.info "Getting parameters for plug-in type " + params.typeId;
         
         render template:"formParameters", model:[parametersDesc : getDescriptions(params.typeId as Integer) ]
@@ -136,17 +328,13 @@ class PluginController {
             type.getCategory().getInterfaceName());
         return thisTask.getParameterDescriptions();
     }
-    
-    def save = {
+
+    def save () {
         // Create a new object from the form
         PluggableTaskWS newTask = new PluggableTaskWS();
         bindData(newTask, params);
-        for(String key: params.keySet()) { // manually bind the plug-in parameters
-            def value = params.get(key)
-            if (key.startsWith("plg-parm-") && value) {
-                newTask.getParameters().put(key.substring(9), value);
-            }
-        }
+
+        bindPluginParameters(newTask, params, false)
         
         // save
         Locale locale = session.locale;
@@ -165,6 +353,10 @@ class PluginController {
             	flash.message = messageSource.getMessage("plugins.create.plugin_updated", [newTask.getId()].toArray(), locale);
                 pluginId = newTask.getId();
             }
+
+            if ( com.sapienter.jbilling.common.Util.getSysPropBooleanTrue(Constants.PROPERTY_RUN_API_ONLY_BUT_NO_BATCH) ) {
+                flash.warn = "plugins.plugin.no.batch"
+            }
             
             // forward to the list of plug-in types and the new plug-in selected
             showListAndPlugin(pluginId);
@@ -173,68 +365,137 @@ class PluginController {
             // put in the flash
             viewUtils.resolveException(flash, locale, e);
             // mmm... this can fail if the this is a new plug-in, started after a recent item click?
-            PluggableTaskTypeCategoryDTO category =  new PluggableTaskTypeCategoryDAS().find(
-                   session.selected_category_id);
+            PluggableTaskTypeCategoryDTO category =  
+					new PluggableTaskTypeCategoryDAS().find( session.selected_category_id );
             
             // render the form again, with all the data
-            render (view:"form", model:
-                [description: category.getDescription(session.language_id),
-                 types: new PluggableTaskTypeDAS().findAllByCategory(category.getId()),
-                 pluginws: newTask,
-                 parametersDesc : getDescriptions(newTask.getTypeId())])
+            render(view: "form", model:
+                    [description: category?.getDescription(session.language_id),
+                            types: new PluggableTaskTypeDAS().findAllByCategory(category.getId()),
+                            pluginws: newTask, isEdit: Boolean.valueOf(params.isEdit),
+                            parametersDesc: getDescriptions(newTask.getTypeId())])
+        }
+    }
+
+    def addPluginParameter (){
+
+        PluggableTaskWS newTask = new PluggableTaskWS();
+        bindData(newTask, params);
+        bindPluginParameters(newTask, params, false)
+
+        render template: 'formParameters', model: [pluginws: newTask,
+                parametersDesc : getDescriptions(newTask.getTypeId())]
+    }
+
+    def removePluginParameter (){
+
+        PluggableTaskWS newTask = new PluggableTaskWS();
+        bindData(newTask, params);
+        bindPluginParameters(newTask, params, true)
+
+        render template: 'formParameters', model: [pluginws: newTask,
+                parametersDesc : getDescriptions(newTask.getTypeId())]
+    }
+
+    def bindPluginParameters(newTask, params, excluded) {
+
+        Integer parameterIndex = params.parameterIndexField.toInteger()
+        for(String key: params.keySet()) { // manually bind the plug-in parameters
+            def value = params.get(key)
+            if (key.startsWith("plg-parm-") && value) {
+                newTask.parameters.put(key.substring(9), value);
+            }
+        }
+
+        def dynamicParameterMap = new TreeMap<Integer, GrailsParameterMap>()
+        params.plgDynamic.each{ k, v ->
+            if (v instanceof Map)
+                dynamicParameterMap.put(k, v)
+        }
+
+        dynamicParameterMap.each{ i, parameterMap ->
+            if (parameterMap instanceof Map && parameterMap.name) {
+
+                if ((excluded && i.toInteger() != parameterIndex)
+                        || (i.toInteger() < parameterIndex)) {
+                    newTask.parameters.put(parameterMap.name, parameterMap.value)
+                }
+            }
         }
     }
     
     private void showListAndPlugin(Integer pluginId) {
-        PluggableTaskDTO dto = new PluggableTaskDAS().find(pluginId);
-        render (view: "showListAndPlugin", model:
-            [plugin: dto,
-             plugins: pluggableTaskDAS.findByEntityCategory(session.company_id, dto.getType().getCategory().getId())]);
-    }
-    
-    def cancel = {
-        flash.message = messageSource.getMessage("plugins.edit.canceled",null, session.locale);
+        
+		try {
+			PluggableTaskDTO dto = pluginId ? new PluggableTaskDAS().findNow(pluginId) : null;
+
+			if (pluginId && dto == null) {
+				pluginNotFoundErrorRedirect(pluginId)
+			} else {
+                def categoryId = dto?.getType()?.getCategory().getId()
+                breadcrumbService.addBreadcrumb("plugin", "show", null, pluginId);
+				render (view: "showListAndPlugin", model:
+				[plugin: dto,
+					selectedCategoryId: categoryId,
+					plugins: pluggableTaskDAS.findByEntityCategory(session.company_id, categoryId),
+					parametersDesc: getDescriptions(dto.getType().getId())]);
+			}
+		} catch (ObjectNotFoundException ex) {
+			println"Caught exception"
+			flash.error = g.message(code: "validation.error.invalid.pluginid", args: [pluginId])
+			redirect(action: 'list')
+		}
+	}
+
+    def cancel () {
+		
+        flash.message = messageSource.getMessage("plugins.edit.canceled", null, session.locale);
         if ((params.plugin_id as Integer) > 0 ) {
             // go the the list with the plug selected
             showListAndPlugin(params.plugin_id as Integer);
         } else {
             // it was creating a new one
-            redirect (action:listCategories)
+            redirect (action:'list')
         }
     }
-    
-    def edit = {
+
+    def edit () {
         PluggableTaskDTO dto =  pluggableTaskDAS.find(params.id as Integer);
         if (dto != null) {
             breadcrumbService.addBreadcrumb("plugin", "edit", null, dto.getId());
             recentItemService.addRecentItem(dto.getId(), RecentItemType.PLUGIN);
             PluggableTaskTypeCategoryDTO category =  dto.getType().getCategory();
-            render (view:"form", model:
-                [description: category.getDescription(session.language_id),
-                 types: new PluggableTaskTypeDAS().findAllByCategory(category.getId()),
-                 pluginws: new PluggableTaskWS(dto),
-                 parametersDesc : getDescriptions(dto.getType().getId())])
+            render (view: "form", model:
+                    [description: category.getDescription(session.language_id),
+                            types: new PluggableTaskTypeDAS().findAllByCategory(category.getId()),
+                            pluginws: PluggableTaskBL.getWS(dto), isEdit: true,
+                            parametersDesc: getDescriptions(dto.getType().getId())])
         } else {
-            flash.error="plugins.error.invalid_id";
-            render (view:"categories");
+            pluginNotFoundErrorRedirect(params.id)
         }
     }
     
-    def delete = {
-        
+    private void pluginNotFoundErrorRedirect(pluginId) {
+    	flash.error="plugins.plugin.not.found"
+		flash.args = [ pluginId as String ]
+        redirect action: 'list'
+    }
+
+    def delete () {
+        Integer id = null
         try {
-            Integer id = params.id as Integer;
+            id = params.id as Integer;
         	webServicesSession.deletePlugin(id);
         	pluggableTaskDAS.invalidateCache(); // or the list will still show the deleted plug-in
         	flash.message = messageSource.getMessage("plugins.delete.done",[id].toArray(), session.locale);
         } catch (SessionInternalError e) {
             viewUtils.resolveException(flash, session.locale, e);
+            showListAndPlugin(id)
+            return
+        } catch (Exception e){
+            viewUtils.resolveException(flash, session.locale, e)
         }
-        redirect (action:listCategories)
+        redirect (action:'list')
     }
-    
-    // the next method is to support the 'Recent Items'
-    def list = {
-        showListAndPlugin(params.id as Integer);
-    }
+	
 }

@@ -20,7 +20,7 @@
 
 import grails.converters.JSON
 
-import org.codehaus.groovy.grails.plugins.springsecurity.SpringSecurityUtils
+import grails.plugin.springsecurity.SpringSecurityUtils
 
 import org.springframework.security.authentication.AccountExpiredException
 import org.springframework.security.authentication.CredentialsExpiredException
@@ -30,8 +30,17 @@ import org.springframework.security.core.context.SecurityContextHolder as SCH
 import org.springframework.security.web.authentication.AbstractAuthenticationProcessingFilter
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 import com.sapienter.jbilling.server.user.db.CompanyDTO
+import com.sapienter.jbilling.client.authentication.exception.LicenseMissingException
+import com.sapienter.jbilling.client.authentication.exception.LicenseExpiredException
+import com.sapienter.jbilling.client.authentication.exception.LicenseInvalidException
+import com.sapienter.jbilling.client.authentication.CompanyUserDetails
+import com.sapienter.jbilling.server.user.db.UserDTO
+import com.sapienter.jbilling.server.util.IWebServicesSessionBean
 
 class LoginController {
+
+	IWebServicesSessionBean webServicesSession
+	static scope = "singleton"
 
 	/**
 	 * Dependency injection for the authenticationTrustResolver.
@@ -46,19 +55,19 @@ class LoginController {
 	/**
 	 * Default action; redirects to 'defaultTargetUrl' if logged in, /login/auth otherwise.
 	 */
-	def index = {
+	def index () {
 		if (springSecurityService.isLoggedIn()) {
 			redirect uri: SpringSecurityUtils.securityConfig.successHandler.defaultTargetUrl
 		}
 		else {
-			redirect action: auth, params: params
+			redirect action: 'auth', params: params
 		}
 	}
 
 	/**
 	 * Show the login page.
 	 */
-	def auth = {
+	def auth () {
 
 		def config = SpringSecurityUtils.securityConfig
 
@@ -79,18 +88,18 @@ class LoginController {
 	/**
 	 * Show denied page.
 	 */
-	def denied = {
+	def denied () {
 		if (springSecurityService.isLoggedIn() &&
 				authenticationTrustResolver.isRememberMe(SCH.context?.authentication)) {
 			// have cookie but the page is guarded with IS_AUTHENTICATED_FULLY
-			redirect action: full, params: params
+			redirect action: 'full', params: params
 		}
 	}
 
 	/**
 	 * Login page for users with a remember-me cookie but accessing a IS_AUTHENTICATED_FULLY page.
 	 */
-	def full = {
+	def full () {
 		def config = SpringSecurityUtils.securityConfig
 		render view: 'auth', params: params,
 			model: [hasCookie: authenticationTrustResolver.isRememberMe(SCH.context?.authentication),
@@ -100,26 +109,39 @@ class LoginController {
 	/**
 	 * Callback after a failed login. Redirects to the auth page with a warning message.
 	 */
-	def authfail = {
+	def authfail () {
 
 		def username = session[UsernamePasswordAuthenticationFilter.SPRING_SECURITY_LAST_USERNAME_KEY]
 		String msg = ''
 		def exception = session[AbstractAuthenticationProcessingFilter.SPRING_SECURITY_LAST_EXCEPTION_KEY]
+		System.out.println("Exception ******************" +exception);
 		if (exception) {
 			if (exception instanceof AccountExpiredException) {
-				msg = SpringSecurityUtils.securityConfig.errors.login.expired
+                msg = g.message(code: "springSecurity.errors.login.inactive")
 			}
 			else if (exception instanceof CredentialsExpiredException) {
-				msg = SpringSecurityUtils.securityConfig.errors.login.passwordExpired
+				msg = g.message(code: "springSecurity.errors.login.passwordExpired")
+				flash.error = msg
+				redirect url: '/resetPassword/resetExpiryPassword'
+				return
 			}
 			else if (exception instanceof DisabledException) {
-				msg = SpringSecurityUtils.securityConfig.errors.login.disabled
+                msg = g.message(code: "springSecurity.errors.login.disabled")
 			}
 			else if (exception instanceof LockedException) {
-				msg = SpringSecurityUtils.securityConfig.errors.login.locked
+                msg = g.message(code: "springSecurity.errors.login.locked.temporary")
 			}
+            else if (exception instanceof LicenseMissingException) {
+                msg = 'auth.fail.license.missing.exception'
+            }
+            else if (exception instanceof LicenseInvalidException) {
+                msg = 'auth.fail.license.invalid.exception'
+            }
+            else if (exception instanceof LicenseExpiredException) {
+                msg = 'auth.fail.license.expired.exception'
+            }
 			else {
-				msg = SpringSecurityUtils.securityConfig.errors.login.fail
+                msg = g.message(code: "springSecurity.errors.login.fail")
 			}
 		}
 
@@ -129,21 +151,21 @@ class LoginController {
 		}
 		else {
 			flash.error = msg
-			redirect action: auth, params: params
+			redirect action: 'auth', params: params
 		}
 	}
 
 	/**
 	 * The Ajax success redirect url.
 	 */
-	def ajaxSuccess = {
+	def ajaxSuccess () {
 		render([success: true, username: springSecurityService.authentication.name] as JSON)
 	}
 
 	/**
 	 * The Ajax denied redirect url.
 	 */
-	def ajaxDenied = {
+	def ajaxDenied () {
 		render([error: 'access denied'] as JSON)
 	}
 }

@@ -20,16 +20,26 @@
 package com.sapienter.jbilling.server.payment.blacklist.db;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
+import org.apache.commons.lang.StringUtils;
+import org.apache.log4j.Logger;
 import org.hibernate.Criteria;
+import org.hibernate.Hibernate;
 import org.hibernate.Query;
+import org.hibernate.criterion.CriteriaSpecification;
 import org.hibernate.criterion.Criterion;
 import org.hibernate.criterion.Restrictions;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDAS;
 import com.sapienter.jbilling.server.util.db.AbstractDAS;
 
+
 public class BlacklistDAS extends AbstractDAS<BlacklistDTO> {
+
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(BlacklistDAS.class));
     
     public List<BlacklistDTO> findByEntity(Integer entityId) {
         // I need to access an association, so I can't use the parent helper class
@@ -122,30 +132,38 @@ public class BlacklistDAS extends AbstractDAS<BlacklistDTO> {
         return criteria.list();
     }
 
+    private final String queryFilterByCCNumber = "select bl.id from blacklist bl " +
+					" inner join payment_information p on p.id = bl.credit_card_id " + 
+					" inner join payment_information_meta_fields_map pimf on p.id = pimf.payment_information_id " +
+					" inner join meta_field_value mf on pimf.meta_field_value_id = mf.id " + 
+					" inner join meta_field_name mfn  on (mf.meta_field_name_id = mfn.id and mfn.field_usage = 'PAYMENT_CARD_NUMBER' )" + 
+						" where mf.string_value in (:rawNumbers) and bl.entity_id = :companyId";
+
     public List<BlacklistDTO> filterByCcNumbers(Integer entityId, 
             Collection<String> rawNumbers) {
-        Criteria criteria = getSession().createCriteria(BlacklistDTO.class)
-                .createAlias("company", "c")
-                    .add(Restrictions.eq("c.id", entityId))
-                .add(Restrictions.eq("type", BlacklistDTO.TYPE_CC_NUMBER))
-                .createAlias("creditCard", "cc")
-                    .add(Restrictions.in("cc.rawNumber", rawNumbers));
-
-        return criteria.list();
+    	Query query = getSession().createSQLQuery(queryFilterByCCNumber)
+    			.setParameterList("rawNumbers", rawNumbers)
+    			.setParameter("companyId", entityId);
+    	return query.list();
     }
 
-    public List<BlacklistDTO> filterByIpAddress(Integer entityId, 
-            String ipAddress, Integer ccfId) {
+    public List<BlacklistDTO> filterByIpAddress(Integer entityId, String ipAddress, Integer ccfId) {
+
+        // don't try and filter if there's no IP address to lookup
+        if (StringUtils.isBlank(ipAddress)) {
+            return Collections.emptyList();
+        }
+
         Criteria criteria = getSession().createCriteria(BlacklistDTO.class)
                 .createAlias("company", "c")
                     .add(Restrictions.eq("c.id", entityId))
-                .add(Restrictions.eq("type", BlacklistDTO.TYPE_IP_ADDRESS))
-                .createAlias("contact.fields.type", "cfType")
-                    .add(Restrictions.eq("cfType.id", ccfId))
-                .createAlias("contact.fields", "cf")
-                    .add(Restrictions.eq("cf.content", ipAddress));
+                .add(Restrictions.eq("type", BlacklistDTO.TYPE_IP_ADDRESS));
+        
+         Criteria secondCriteria = criteria.createCriteria("metaFieldValue", "fieldValue", CriteriaSpecification.LEFT_JOIN)
+                    .add(Restrictions.eq("fieldValue.field.id", ccfId))
+                    .add(Restrictions.sqlRestriction("{alias}.string_value = ?", ipAddress, Hibernate.STRING));
 
-        return criteria.list();
+        return secondCriteria.list();
     }
 
     /**
@@ -171,16 +189,34 @@ public class BlacklistDAS extends AbstractDAS<BlacklistDTO> {
         */
 
         // should be faster than above, but hql doesn't do cascading deletes :(
-        String hql = "DELETE FROM CreditCardDTO WHERE id IN (" +
-                "SELECT creditCard.id FROM BlacklistDTO " + 
-                "WHERE company.id = :company AND source = :source)";
+    	String hql = "DELETE FROM MetaFieldValue v WHERE v.id IN (" +
+    			"SELECT val.id FROM PaymentInformationDTO p inner join p.metaFields val " +
+                "WHERE p.id IN (" +
+                "SELECT bl.creditCard.id FROM BlacklistDTO bl" + 
+                "WHERE bl.company.id = :company AND bl.source = :source))";
         Query query = getSession().createQuery(hql);
         query.setParameter("company", entityId);
         query.setParameter("source", source);
         query.executeUpdate();
-
-        hql = "DELETE FROM ContactFieldDTO WHERE contact.id IN (" +
-                "SELECT contact.id FROM BlacklistDTO " + 
+    	
+    	hql = "DELETE FROM PaymentInformationDTO WHERE id IN (" +
+                "SELECT creditCard.id FROM BlacklistDTO " + 
+                "WHERE company.id = :company AND source = :source)";
+        query = getSession().createQuery(hql);
+        query.setParameter("company", entityId);
+        query.setParameter("source", source);
+        query.executeUpdate();
+    	
+        hql = "DELETE FROM MetaFieldValue WHERE id IN (" +
+                "SELECT creditCard.id FROM BlacklistDTO " + 
+                "WHERE company.id = :company AND source = :source)";
+        query = getSession().createQuery(hql);
+        query.setParameter("company", entityId);
+        query.setParameter("source", source);
+        query.executeUpdate();
+        
+        hql = "DELETE FROM MetaFieldValue WHERE id IN (" +
+                "SELECT metaFieldValue.id FROM BlacklistDTO " +
                 "WHERE company.id = :company AND source = :source)";
         query = getSession().createQuery(hql);
         query.setParameter("company", entityId);

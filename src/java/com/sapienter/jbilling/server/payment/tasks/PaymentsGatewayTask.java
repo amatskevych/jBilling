@@ -32,8 +32,11 @@ import javax.net.ssl.SSLSocketFactory;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
 import com.sapienter.jbilling.server.payment.PaymentAuthorizationBL;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentResultDAS;
 import com.sapienter.jbilling.server.pluggableTask.PaymentTask;
@@ -76,7 +79,7 @@ public class PaymentsGatewayTask extends PaymentTaskWithTimeout implements
      * Integer(2); public static final Integer PAYMENT_METHOD_MASTERCARD = new
      * Integer(3); public static final Integer PAYMENT_METHOD_AMEX = new
      * Integer(4); public static final Integer PAYMENT_METHOD_ACH = new
-     * Integer(5); public static final Integer PAYMENT_METHOD_DISCOVERY = new
+     * Integer(5); public static final Integer PAYMENT_METHOD_DISCOVER = new
      * Integer(6); public static final Integer PAYMENT_METHOD_DINERS = new
      * Integer(7); public static final Integer PAYMENT_METHOD_PAYPAL = new
      * Integer(8);
@@ -107,11 +110,11 @@ public class PaymentsGatewayTask extends PaymentTaskWithTimeout implements
     private static final String RESPONSE_CODE_DECLINED = "D"; // Declined
     private static final String RESPONSE_CODE_ERROR = "E"; // Exception
 
-    private Logger log;
+    private FormatLogger log;
     private String payloadData = "";
 
     public PaymentsGatewayTask() {
-        log = Logger.getLogger(PaymentsGatewayTask.class);
+        log = new FormatLogger(Logger.getLogger(PaymentsGatewayTask.class));
     }
 
     public boolean process(PaymentDTOEx paymentInfo)
@@ -129,12 +132,13 @@ public class PaymentsGatewayTask extends PaymentTaskWithTimeout implements
             }
             log.debug("Payment request Received ; Method : "
                     + paymentInfo.getMethod());
-
-            if (paymentInfo.getCreditCard() != null) {
+            
+            PaymentInformationBL piBl = new PaymentInformationBL();
+            if (piBl.isCreditCard(paymentInfo.getInstrument())) {
                 method = PAYMENT_METHOD_CC;
-            } else if (paymentInfo.getCheque() != null && paymentInfo.getAch() != null) {
+            } else if (piBl.isCheque(paymentInfo.getInstrument()) && piBl.isACH(paymentInfo.getInstrument())) {
                 method = PAYMENT_METHOD_CHEQUE;
-            } else if (paymentInfo.getAch() != null) {
+            } else if (piBl.isACH(paymentInfo.getInstrument())) {
                 method = PAYMENT_METHOD_ACH;
             } else {
                 // hmmm problem
@@ -253,24 +257,23 @@ public class PaymentsGatewayTask extends PaymentTaskWithTimeout implements
             // makes some optional fields required. See Appendix C for more
             // information on AVS.
 
+            PaymentInformationBL piBl = new PaymentInformationBL();
             if (method == PAYMENT_METHOD_CC) {
-
-                String ccType = getCCType(paymentInfo.getCreditCard().getType());
+            	String cardNumber = piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.PAYMENT_CARD_NUMBER);
+                String ccType = getCCType(piBl.getPaymentMethod(cardNumber));
                 payloadData += "ecom_payment_card_type=" + ccType + "\n";
                 payloadData += "ecom_payment_card_name="
-                        + paymentInfo.getCreditCard().getName() + "\n";
+                        + piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.TITLE) + "\n";
                 payloadData += "ecom_payment_card_number="
-                        + paymentInfo.getCreditCard().getNumber() + "\n";
+                        + cardNumber + "\n";
 
                 Calendar calendar = Calendar.getInstance();
-                calendar.setTime(paymentInfo.getCreditCard().getCcExpiry());
+                calendar.setTime(piBl.getDateMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.DATE));
 
                 payloadData += "ecom_payment_card_expdate_month="
                         + calendar.get(Calendar.MONTH) + "\n";
                 payloadData += "ecom_payment_card_expdate_year="
                         + calendar.get(Calendar.YEAR) + "\n";
-                payloadData += "ecom_payment_card_verification="
-                        + paymentInfo.getCreditCard().getSecurityCode() + "\n";
 
             } else if (method == PAYMENT_METHOD_ACH) {
 
@@ -282,17 +285,18 @@ public class PaymentsGatewayTask extends PaymentTaskWithTimeout implements
 
                 String accType = "";
                 payloadData += "Ecom_Payment_Check_TRN="
-                        + paymentInfo.getAch().getAbaRouting() + "\n";
+                        + piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ROUTING_NUMBER) + "\n";
                 payloadData += "Ecom_Payment_Check_Account="
-                        + paymentInfo.getAch().getBankAccount() + "\n";
+                        + piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ACCOUNT_NUMBER) + "\n";
 
-                if (paymentInfo.getAch().getAccountType() == 1) {
+                String accountType = piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ACCOUNT_TYPE);
+                if (accountType.equalsIgnoreCase(Constants.ACH_CHECKING)) {
                     accType += "C";
-                } else if (paymentInfo.getAch().getAccountType() == 2) {
+                } else if (accountType.equalsIgnoreCase(Constants.ACH_SAVING)) {
                     accType += "S";
                 } else {
                     log.error("unknown Account Type : "
-                            + paymentInfo.getAch().getAccountType());
+                            + accountType);
                     throw new PluggableTaskException("unknown Account Type");
                 }
 
@@ -301,12 +305,12 @@ public class PaymentsGatewayTask extends PaymentTaskWithTimeout implements
 
             } else if (method == PAYMENT_METHOD_CHEQUE) {
                 payloadData += "Ecom_Payment_Check_TRN="
-                        + paymentInfo.getAch().getAbaRouting() + "\n";
+                        + piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ROUTING_NUMBER) + "\n";
                 payloadData += "Ecom_Payment_Check_Account="
-                        + paymentInfo.getAch().getBankAccount() + "\n";
+                        + piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.BANK_ACCOUNT_NUMBER) + "\n";
                 payloadData += "Ecom_Payment_Check_Account_Type=C\n";
                 payloadData += "ecom_payment_check_checkno=" + 
-                        paymentInfo.getCheque().getNumber() + "\n";
+                		piBl.getStringMetaFieldByType(paymentInfo.getInstrument(), MetaFieldType.CHEQUE_NUMBER) + "\n";
                 // payloadData += "PG_Entry_Class_Code=POS\n";
             }
         } catch (PluggableTaskException e) {
@@ -318,7 +322,9 @@ public class PaymentsGatewayTask extends PaymentTaskWithTimeout implements
         }
         payloadData += "endofdata\n";
 
-        log.debug("charge data : " + payloadData);
+        //TODO: check this log and payloadData values
+        String maskedCCNumber = payloadData.toString().replaceAll("ecom_payment_card_number=[^\n]*", "ecom_payment_card_number=******");
+        log.debug("charge data : " + maskedCCNumber);
         return payloadData;
 
     }
@@ -519,16 +525,16 @@ public class PaymentsGatewayTask extends PaymentTaskWithTimeout implements
     }
 
     public boolean preAuth(PaymentDTOEx payment) throws PluggableTaskException {
-        log = Logger.getLogger(PaymentsGatewayTask.class);
-
+        log = new FormatLogger(Logger.getLogger(PaymentsGatewayTask.class));
+        PaymentInformationBL piBl = new PaymentInformationBL();
         log.error("Prcessing preAuth Reqquest");
         int method = 1; // CC
         boolean preAuth = true;
-        if (payment.getCreditCard() != null) {
+        if (piBl.isCreditCard(payment.getInstrument())) {
             method = PAYMENT_METHOD_CC;
-        } else if (payment.getCheque() != null && payment.getAch() != null) {
+        } else if (piBl.isACH(payment.getInstrument()) && piBl.isCheque(payment.getInstrument())) {
             method = PAYMENT_METHOD_CHEQUE;
-        } else if (payment.getAch() != null) {
+        } else if (piBl.isACH(payment.getInstrument())) {
             method = PAYMENT_METHOD_ACH;
         } else {
             // hmmm problem
@@ -580,11 +586,11 @@ public class PaymentsGatewayTask extends PaymentTaskWithTimeout implements
             payloadData += "pg_password="
                     + ensureGetParameter(PARAMETER_PASSWORD) + "\n";
             String transType = "";
-
-            if (paymentInfo.getCreditCard() != null) {
+            PaymentInformationBL piBl = new PaymentInformationBL();
+            if (piBl.isCreditCard(paymentInfo.getInstrument())) {
                 transType += CC_CAPT;
 
-            } else if (paymentInfo.getAch() != null) {
+            } else if (piBl.isACH(paymentInfo.getInstrument())) {
                 transType += EFT_CAPT;
 
             } else {

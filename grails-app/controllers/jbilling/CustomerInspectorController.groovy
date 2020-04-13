@@ -22,37 +22,52 @@ package jbilling
 
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO
 import com.sapienter.jbilling.server.item.CurrencyBL
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue
+import com.sapienter.jbilling.server.order.OrderWS
 import com.sapienter.jbilling.server.order.db.OrderDAS
-import com.sapienter.jbilling.server.payment.db.PaymentDTO
-import com.sapienter.jbilling.server.user.ContactWS
-import com.sapienter.jbilling.server.user.contact.db.ContactTypeDAS
-import com.sapienter.jbilling.server.user.db.CompanyDTO
-import com.sapienter.jbilling.server.user.db.UserDTO
 import com.sapienter.jbilling.server.payment.blacklist.BlacklistBL
-import grails.plugins.springsecurity.Secured
+import com.sapienter.jbilling.server.payment.db.PaymentDTO
+import com.sapienter.jbilling.server.user.UserBL
+import com.sapienter.jbilling.server.user.db.CompanyDTO
+import com.sapienter.jbilling.server.user.db.CustomerNoteDTO
+import com.sapienter.jbilling.server.user.db.UserDAS
+import com.sapienter.jbilling.server.user.db.UserDTO
+import com.sapienter.jbilling.server.util.IWebServicesSessionBean
+import grails.plugin.springsecurity.annotation.Secured
 
-@Secured(["CUSTOMER_13"])
+@Secured(["isAuthenticated()"])
 class CustomerInspectorController {
-	
-	def webServicesSession
+
+    static pagination = [max: 10, offset: 0]
+	static scope = "prototype"
+	IWebServicesSessionBean webServicesSession
     def viewUtils
 
     def breadcrumbService
     def productService
 
-	def index = { 
+	def index () {
 		redirect action: 'inspect', params: params
 	}
 
-	def inspect = {
+	def inspect () {
+
+        params.max=params.max?:pagination.max
+        params.offset=params.offset?:pagination.offset
+
 		def user = params.id ? UserDTO.get(params.int('id')) : null
 
         if (!user) {
             flash.error = 'no.user.found'
-            flash.args = [ params.id ]
+            flash.args = [ params.id as String ]
             return // todo: show generic error page
         }
-
+        def customerNotes=CustomerNoteDTO.createCriteria().list(max: params.max,offset: params.offset){
+            and{
+                eq('customer.id',UserBL.getUserEntity(params.int('id'))?.getCustomer()?.getId())
+                order("creationTime","desc")
+            }
+        }
         def revenue =  webServicesSession.getTotalRevenueByUser(user.id)
         def subscriptions = webServicesSession.getUserSubscriptions(user.id)
 
@@ -64,13 +79,6 @@ class CustomerInspectorController {
         def paymentIds = webServicesSession.getLastPayments(user.id, 1)
         def payment = paymentIds ? PaymentDTO.get(paymentIds.first()) : null
 
-        // extra contacts and contact type descriptions
-        def contacts = user ? webServicesSession.getUserContactsWS(user.id) : null
-        for (ContactWS contact : contacts) {
-            def contactType = new ContactTypeDAS().find(contact.type)
-            contact.setContactTypeDescr(contactType?.getDescription(session['language_id'].toInteger()))
-        }
-
         // blacklist matches
         def blacklistMatches = BlacklistBL.getBlacklistMatches(user.id)
 
@@ -79,32 +87,75 @@ class CustomerInspectorController {
 
         // all customer prices and products
         def company = CompanyDTO.get(session['company_id'])
-        def itemTypes = company.itemTypes.sort{ it.id }
-        params.typeId = !itemTypes.isEmpty() ? itemTypes?.asList()?.first()?.id : null
 
-        def products = productService.getFilteredProducts(company, params)
+        def itemTypes = productService.getItemTypes(user.company.id, null)
 
+        //initialize pagination parameters
+        params.max = params?.max?.toInteger() ?: pagination.max
+        params.offset = params?.offset?.toInteger() ?: pagination.offset
+
+        def accountType = user?.customer?.accountType
+        //use customer's company to fetch products
+		def products = productService.getFilteredProductsForCustomer(company, null, params, null, false, true, user.company)
+        def infoTypes = accountType?.informationTypes?.sort { it.displayOrder }
+
+		List<MetaFieldValue> values =  new ArrayList<MetaFieldValue>()
+		values.addAll(user?.customer?.metaFields)
+		new UserBL().getCustomerEffectiveAitMetaFieldValues(values, user?.customer?.getAitTimelineMetaFieldsMap())
+		
+		// find all the subscription accounts and orders
+		def subscriptionAccounts = new ArrayList<Integer>()
+		def internalSubscriptions = new ArrayList<OrderWS>()
+		
+		UserDAS userDas = new UserDAS()
+		for(def child : user?.customer?.children) {
+			if(userDas.isSubscriptionAccount(child.baseUser.id)) {
+				subscriptionAccounts.add(child.baseUser.id)
+				
+				internalSubscriptions.addAll(webServicesSession.getUserSubscriptions(child.baseUser.id))
+			}
+		}
+		
         breadcrumbService.addBreadcrumb(controllerName, actionName, null, params.int('id'))
 
         [
                 user: user,
-                contacts: contacts,
                 blacklistMatches: blacklistMatches,
                 invoice: invoice,
                 payment: payment,
                 subscriptions: subscriptions,
                 company: company,
+				typeId: params.typeId,
                 itemTypes: itemTypes,
                 products: products,
-                currencies: currencies,
+                currencies: retrieveCurrencies(false),
                 cycle: cycle,
-                revenue: revenue
+                revenue: revenue,
+                accountInformationTypes: infoTypes,
+                customerNotes:customerNotes,
+                customerNotesTotal:customerNotes?.totalCount,
+                metaFields : values,
+				subscriptionAccounts : subscriptionAccounts,
+				internalSubscriptions : internalSubscriptions
         ]
     }
 
-    def getCurrencies() {
+    def subNotes (){
+        params.max = params?.max?.toInteger() ?: pagination.max
+        params.offset = params?.offset?.toInteger() ?: pagination.offset
+        def user = params.id ? UserDTO.get(params.int('id')) : null
+        def customerNotes=CustomerNoteDTO.createCriteria().list(max: params.max,offset: params.offset){
+            and{
+                eq('customer.id',UserBL.getUserEntity(params.int('id'))?.getCustomer()?.getId())
+                order("creationTime","desc")
+            }
+        }
+        render template: 'customerNotes', model: [customerNotes: customerNotes, customerNotesTotal: customerNotes?.totalCount, user:user]
+    }
+
+    def retrieveCurrencies(def inUse) {
         def currencies = new CurrencyBL().getCurrencies(session['language_id'].toInteger(), session['company_id'].toInteger())
-        return currencies.findAll { it.inUse }
+        return inUse ? currencies.findAll { it.inUse } : currencies;
     }
 
 }

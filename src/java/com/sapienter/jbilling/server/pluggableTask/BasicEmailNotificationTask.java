@@ -21,7 +21,9 @@ package com.sapienter.jbilling.server.pluggableTask;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 
 import javax.mail.Address;
@@ -31,11 +33,14 @@ import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 
+import com.sapienter.jbilling.server.customer.CustomerBL;
+import com.sapienter.jbilling.server.notification.NotificationMediumType;
 import org.apache.log4j.Logger;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.notification.MessageDTO;
 import com.sapienter.jbilling.server.notification.MessageSection;
@@ -58,31 +63,31 @@ public class BasicEmailNotificationTask extends PluggableTask
         implements NotificationTask {
 
     // pluggable task parameters names
-    public static final ParameterDescription PARAMETER_SMTP_SERVER = 
+    public static final ParameterDescription PARAMETER_SMTP_SERVER =
         new ParameterDescription("smtp_server", true, ParameterDescription.Type.STR);
-    public static final ParameterDescription PARAMETER_PORT = 
+    public static final ParameterDescription PARAMETER_PORT =
     	new ParameterDescription("port", true, ParameterDescription.Type.STR);
-    public static final ParameterDescription PARAMETER_USERNAME = 
-    	new ParameterDescription("username", true, ParameterDescription.Type.STR);
-    public static final ParameterDescription PARAMETER_PASSWORD = 
-    	new ParameterDescription("password", true, ParameterDescription.Type.STR);
-    public static final ParameterDescription PARAMETER_FROM = 
+    public static final ParameterDescription PARAMETER_USERNAME =
+    	new ParameterDescription("username", false, ParameterDescription.Type.STR);
+    public static final ParameterDescription PARAMETER_PASSWORD =
+    	new ParameterDescription("password", false, ParameterDescription.Type.STR);
+    public static final ParameterDescription PARAMETER_FROM =
         new ParameterDescription("from", false, ParameterDescription.Type.STR);
-    public static final ParameterDescription PARAMETER_FROM_NAME = 
+    public static final ParameterDescription PARAMETER_FROM_NAME =
     	new ParameterDescription("from_name", false, ParameterDescription.Type.STR);
-    public static final ParameterDescription PARAMETER_REPLYTO = 
+    public static final ParameterDescription PARAMETER_REPLYTO =
     	new ParameterDescription("reply_to", false, ParameterDescription.Type.STR);
-    public static final ParameterDescription PARAMETER_BCCTO = 
+    public static final ParameterDescription PARAMETER_BCCTO =
     	new ParameterDescription("bcc_to", false, ParameterDescription.Type.STR);
-    public static final ParameterDescription PARAMETER_HTML = 
+    public static final ParameterDescription PARAMETER_HTML =
     	new ParameterDescription("html", false, ParameterDescription.Type.STR);
-    public static final ParameterDescription PARAMETER_TLS = 
+    public static final ParameterDescription PARAMETER_TLS =
     	new ParameterDescription("tls", true, ParameterDescription.Type.STR);
-    public static final ParameterDescription PARAMETER_SSL_AUTH = 
+    public static final ParameterDescription PARAMETER_SSL_AUTH =
     	new ParameterDescription("ssl_auth", true, ParameterDescription.Type.STR);
-    
+
     //initializer for pluggable params
-    { 
+    {
     	descriptions.add(PARAMETER_BCCTO);
     	descriptions.add(PARAMETER_FROM);
     	descriptions.add(PARAMETER_FROM_NAME);
@@ -96,7 +101,7 @@ public class BasicEmailNotificationTask extends PluggableTask
     	descriptions.add(PARAMETER_USERNAME);
     }
 
-    private static final Logger LOG = Logger.getLogger(BasicEmailNotificationTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(BasicEmailNotificationTask.class));
 
     // local variables
     private JavaMailSenderImpl sender = new JavaMailSenderImpl();
@@ -108,7 +113,7 @@ public class BasicEmailNotificationTask extends PluggableTask
     private boolean doHTML;
     private boolean tls;
     private boolean sslAuth;
-    
+
     private void init() {
                 // set some parameters
         server = (String) parameters.get(PARAMETER_SMTP_SERVER.getName());
@@ -142,7 +147,7 @@ public class BasicEmailNotificationTask extends PluggableTask
         sslAuth = Boolean.parseBoolean((String) parameters.get(PARAMETER_SSL_AUTH.getName()));
     }
 
-    public void deliver(UserDTO user, MessageDTO message)
+    public boolean deliver(UserDTO user, MessageDTO message)
             throws TaskException {
 
         // do not process paper invoices. So far, all the rest are emails
@@ -150,7 +155,7 @@ public class BasicEmailNotificationTask extends PluggableTask
         // with paper invoices and others with emal invoices.
         if (message.getTypeId().compareTo(
                 MessageDTO.TYPE_INVOICE_PAPER) == 0) {
-            return;
+            return false;
         }
 
         // verify that we've got the right number of sections
@@ -167,46 +172,63 @@ public class BasicEmailNotificationTask extends PluggableTask
         sender.setUsername(username);
         sender.setPassword(password);
         sender.setPort(port);
-        if (username != null && username.length() > 0) {
-            sender.getJavaMailProperties().setProperty("mail.smtp.auth", "true");
-        }
+
         if (tls) {
             sender.getJavaMailProperties().setProperty("mail.smtp.starttls.enable", "true");
         }
         if (sslAuth) {
+            if (username == null && username.length() == 0) {
+                LOG.error("username should not be null when authentication is required.");
+                //throw new TaskException("username should not be null when authentication is required.");
+            } else {
+                sender.getJavaMailProperties().setProperty("mail.smtp.auth", "true");
+            }
             // required for SMTP servers that use SSL authentication, 
             // e.g., Gmail's SMTP servers
             sender.getJavaMailProperties().setProperty(
-                    "mail.smtp.socketFactory.class", 
+                    "mail.smtp.socketFactory.class",
                     "javax.net.ssl.SSLSocketFactory");
         }
 
         MimeMessage mimeMsg = sender.createMimeMessage();
-        MimeMessageHelper msg = null; 
-
+        MimeMessageHelper msg = null;
+        ContactBL contact = new ContactBL();
         // set the message's fields
         // the to address/es
         try {
             msg = new MimeMessageHelper(mimeMsg, doHTML || message.getAttachmentFile() != null);
-            ContactBL contact = new ContactBL();
-            List contacts = contact.getAll(user.getUserId());
-            List addresses = new ArrayList<InternetAddress>();
             boolean atLeastOne = false;
-            for (int f = 0; f < contacts.size(); f++) {
-                ContactDTOEx record = (ContactDTOEx) contacts.get(f);
-                String address = record.getEmail();
-                if (record.getInclude() != null &&
-                        record.getInclude().intValue() == 1 &&
-                        address != null && address.trim().length() > 0) {
-                    addresses.add(new InternetAddress(address, false));
-                    atLeastOne = true;
+            List addresses = new ArrayList<InternetAddress>();
+
+            if (null == user.getCustomer()) {
+                //non customer user
+                List contacts = contact.getAll(user.getUserId());
+
+                for (int f = 0; f < contacts.size(); f++) {
+                    ContactDTOEx record = (ContactDTOEx) contacts.get(f);
+                    String address = record.getEmail();
+                    if (record.getInclude() != null &&
+                            record.getInclude().intValue() == 1 &&
+                            address != null && address.trim().length() > 0) {
+                        addresses.add(new InternetAddress(address, false));
+                        atLeastOne = true;
+                    }
                 }
+            } else {
+                //for customer users search the email
+                //in the meta fields
+                ContactDTOEx contactDto = ContactBL.buildFromMetaField(user.getUserId(), new Date());
+                if(null != contactDto) {
+                	atLeastOne = contactDto.getEmail() !=null;
+                    addresses.add(new InternetAddress(contactDto.getEmail(), false));
+                }  
             }
+
             if (!atLeastOne) {
                 // not a huge deal, but no way I can send anything
                 LOG.info("User without email address " +
                         user.getUserId());
-                return;
+                return false;
             } else {
                 msg.setTo((InternetAddress[])addresses.toArray(new InternetAddress[addresses.size()]));
             }
@@ -291,8 +313,7 @@ public class BasicEmailNotificationTask extends PluggableTask
             }
             LOG.debug(
                     "Sending email to " + allEmails + " bcc " + bcc + " server=" + server +
-                    " port=" + port + " username=" + username + " password=" +
-                    password);
+                    " port=" + port + " username=" + username );
             sender.send(mimeMsg);
             //if there was an attachment, remove the file
             if (message.getAttachmentFile() != null) {
@@ -326,10 +347,17 @@ public class BasicEmailNotificationTask extends PluggableTask
             throw new TaskException("Exception sending the message" +
                     "." + e4.getMessage());
         }
+
+        return true;
     }
 
     public int getSections() {
         init();
         return doHTML ? 3 : 2;
+    }
+
+    @Override
+    public List<NotificationMediumType> mediumHandled() {
+        return Arrays.asList(NotificationMediumType.EMAIL);
     }
 }

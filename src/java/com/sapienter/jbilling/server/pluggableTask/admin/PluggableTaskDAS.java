@@ -23,6 +23,7 @@ import java.util.List;
 
 import org.hibernate.Query;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.util.db.AbstractDAS;
 import org.apache.log4j.Logger;
 import org.springmodules.cache.provider.CacheProviderFacade;
@@ -35,7 +36,7 @@ public class PluggableTaskDAS extends AbstractDAS<PluggableTaskDTO> {
     private CacheProviderFacade cache;
     private CachingModel cacheModel;
     private FlushingModel flushModel;
-    private static final Logger LOG = Logger.getLogger(PluggableTaskDAS.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PluggableTaskDAS.class));
 
 
     // QUERIES
@@ -105,7 +106,7 @@ public class PluggableTaskDAS extends AbstractDAS<PluggableTaskDTO> {
 
             ret = query.list();
             cache.putInCache("PluggableTaskDTO" +
-                entityId + "+" + categoryId, cacheModel, ret);
+                        entityId + "+" + categoryId, cacheModel, ret);
         }
         return ret;
     }

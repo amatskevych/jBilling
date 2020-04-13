@@ -23,9 +23,10 @@ import java.text.ParseException;
 
 import org.quartz.CronTrigger;
 import org.quartz.Scheduler;
-
+import org.quartz.impl.triggers.CronTriggerImpl;
 import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
+import org.quartz.impl.triggers.CronTriggerImpl;
 
 /**
  * Abstract task that contains all the plumbing necessary to construct a CronTrigger for
@@ -55,7 +56,7 @@ public abstract class AbstractCronTask extends ScheduledTask {
     protected static final String DEFAULT_CRON_EXPRESSION = "0 0 12 * * ?"; // 12:00 noon every day
 
     public CronTrigger getTrigger() throws PluggableTaskException {
-        CronTrigger trigger = new CronTrigger(getTaskName(), Scheduler.DEFAULT_GROUP);
+        CronTriggerImpl trigger = new CronTriggerImpl(getTaskName(), Scheduler.DEFAULT_GROUP);
         
         String expression = getCronExpression();
         try {

@@ -19,20 +19,24 @@
  */
 package com.sapienter.jbilling.server.process.task;
 
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.joda.time.DateMidnight;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 import org.quartz.Scheduler;
 import org.quartz.SimpleTrigger;
-
+import org.quartz.impl.triggers.SimpleTriggerImpl;
+import org.quartz.SimpleTrigger;
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
+import org.quartz.impl.triggers.SimpleTriggerImpl;
+import org.quartz.SimpleTrigger;
 
 /**
  * Abstract task that contains all the plumbing necessary to construct a SimpleTrigger for
@@ -59,9 +63,9 @@ import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
  * @since 02-02-2010
  */
 public abstract class AbstractSimpleScheduledTask extends ScheduledTask {
-    private static final Logger LOG = Logger.getLogger(AbstractSimpleScheduledTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(AbstractSimpleScheduledTask.class));
 
-    protected static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMdd-HHmm");
+    protected static final DateTimeFormatter DATE_FORMAT = DateTimeFormat.forPattern("yyyyMMdd-HHmm");
 
     protected static final ParameterDescription PARAM_START_TIME = 
     	new ParameterDescription("start_time", false, ParameterDescription.Type.STR);
@@ -86,12 +90,12 @@ public abstract class AbstractSimpleScheduledTask extends ScheduledTask {
     }
 
     public SimpleTrigger getTrigger() throws PluggableTaskException {
-        SimpleTrigger trigger = new SimpleTrigger(getTaskName(),
+        SimpleTriggerImpl trigger = new SimpleTriggerImpl(getTaskName(),
                                                   Scheduler.DEFAULT_GROUP,
                                                   getParameter(PARAM_START_TIME.getName(), DEFAULT_START_TIME),
                                                   getParameter(PARAM_END_TIME.getName(), DEFAULT_END_TIME),
                                                   getParameter(PARAM_REPEAT.getName(), DEFAULT_REPEAT),
-                                                  getParameter(PARAM_INTERVAL.getName(), DEFAULT_INTERVAL) * 3600 * 1000);
+                                                  Long.valueOf(getParameter(PARAM_INTERVAL.getName(), DEFAULT_INTERVAL)) * 3600L * 1000L);
 
         trigger.setMisfireInstruction(SimpleTrigger.MISFIRE_INSTRUCTION_RESCHEDULE_NEXT_WITH_EXISTING_COUNT);
 
@@ -130,8 +134,8 @@ public abstract class AbstractSimpleScheduledTask extends ScheduledTask {
         String value = parameters.get(key);
 
         try {
-            return StringUtils.isNotBlank(value) ? DATE_FORMAT.parse(value) : defaultValue;
-        } catch (ParseException e) {
+            return StringUtils.isNotBlank(value) ? DATE_FORMAT.parseDateTime(value).toDate() : defaultValue;
+        } catch (IllegalArgumentException e) {
             throw new PluggableTaskException(key + " could not be parsed as a date!", e);
         }
     }

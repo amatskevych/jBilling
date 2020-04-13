@@ -21,16 +21,16 @@
 package com.sapienter.jbilling.server.notification;
 
 import java.io.Serializable;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Vector;
+import java.util.*;
 
 import com.sapienter.jbilling.common.Constants;
 
+import javax.persistence.Column;
+
 public class MessageDTO implements Serializable {
+	
     // message type definitions (synch with DB)
     public static final Integer TYPE_INVOICE_EMAIL = new Integer(1);
-    public static final Integer TYPE_AGEING = new Integer(2); // take from 2 to 9
     public static final Integer TYPE_CLERK_PAYOUT = new Integer(10);
     public static final Integer TYPE_PAYOUT = new Integer(11);
     public static final Integer TYPE_INVOICE_PAPER = new Integer(12);
@@ -39,7 +39,16 @@ public class MessageDTO implements Serializable {
     public static final Integer TYPE_INVOICE_REMINDER = new Integer(18);
     public static final Integer TYPE_CREDIT_CARD = new Integer(19);
     public static final Integer TYPE_FORGETPASSWORD_EMAIL = new Integer(20);
-    
+    public static final Integer TYPE_CREDENTIALS_EMAIL = new Integer(21);
+    public static final Integer TYPE_PAYMENT_ENTERED = new Integer(22);    
+    public static final Integer TYPE_PAYMENT_REFUND = new Integer(23);
+    public static final Integer TYPE_BAL_BELOW_THRESHOLD_EMAIL = new Integer(24); //below threshold message
+
+    // below credit limitation 1
+    public static final Integer TYPE_BAL_BELOW_CREDIT_LIMIT_1 = new Integer(26);
+    // below credit limitation 2
+    public static final Integer TYPE_BAL_BELOW_CREDIT_LIMIT_2 = new Integer(27);
+
     // max length of a line (as defined in DB schema
     public static final Integer LINE_MAX = new Integer(1000);
     // most messages are emails. If they have an attachment the file name is here
@@ -55,7 +64,41 @@ public class MessageDTO implements Serializable {
     private HashMap parameters = null;
     // this is the message itself, after being loaded from the DB
     private List content = null;
-    
+
+    private Integer includeAttachment;
+    private String attachmentDesign;
+    private String attachmentType;
+
+    private Integer notifyAdmin = 0;
+    private Integer notifyPartner = 0;
+    private Integer notifyParent = 0;
+    private Integer notifyAllParents = 0;
+    private List<NotificationMediumType> mediumTypes;
+
+    public Integer getIncludeAttachment() {
+        return includeAttachment;
+    }
+
+    public void setIncludeAttachment(Integer includeAttachment) {
+        this.includeAttachment = includeAttachment;
+    }
+
+    public String getAttachmentType() {
+        return attachmentType;
+    }
+
+    public void setAttachmentType(String attachmentType) {
+        this.attachmentType = attachmentType;
+    }
+
+    public String getAttachmentDesign() {
+        return attachmentDesign;
+    }
+
+    public void setAttachmentDesign(String attachmentDesign) {
+        this.attachmentDesign = attachmentDesign;
+    }
+
     public MessageDTO() {
         parameters = new HashMap();
         content = new Vector();
@@ -89,14 +132,14 @@ public class MessageDTO implements Serializable {
     }
 
     /**
-     * @param string
+     * @param line
      */
     public void addSection(MessageSection line) {
         content.add(line);
     }
 
     /**
-     * @param hashtable
+     * @param value
      */
     public void addParameter(String name, Object value) {
         parameters.put(name, value);
@@ -170,5 +213,48 @@ public class MessageDTO implements Serializable {
     
     public void setContentSize(int i) {
         ((Vector) content).setSize(i);
+    }
+
+    public Integer getNotifyAdmin() {
+        return this.notifyAdmin;
+    }
+
+    public void setNotifyAdmin(Integer notifyAdmin) {
+        this.notifyAdmin = notifyAdmin;
+    }
+
+    public Integer getNotifyPartner() {
+        return this.notifyPartner;
+    }
+
+    public void setNotifyPartner(Integer notifyPartner) {
+        this.notifyPartner = notifyPartner;
+    }
+
+    public Integer getNotifyParent() {
+        return this.notifyParent;
+    }
+
+    public void setNotifyParent(Integer notifyParent) {
+        this.notifyParent = notifyParent;
+    }
+
+    public Integer getNotifyAllParents() {
+        return this.notifyAllParents;
+    }
+
+    public void setNotifyAllParents(Integer notifyAllParents) {
+        this.notifyAllParents = notifyAllParents;
+    }
+
+    public List<NotificationMediumType> getMediumTypes() {
+    	if (mediumTypes == null || mediumTypes.isEmpty()) {
+            mediumTypes = new ArrayList<NotificationMediumType>(Arrays.asList(NotificationMediumType.values()));
+        }
+        return mediumTypes;
+    }
+
+    public void setMediumTypes(List<NotificationMediumType> mediumTypes) {
+        this.mediumTypes = mediumTypes;
     }
 }

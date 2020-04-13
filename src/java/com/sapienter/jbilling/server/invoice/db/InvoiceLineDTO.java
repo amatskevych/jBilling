@@ -32,53 +32,55 @@ import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.Table;
 import javax.persistence.TableGenerator;
+
+import com.sapienter.jbilling.server.order.db.OrderDTO;
+import com.sapienter.jbilling.server.item.db.ItemDTO;
+
+import javax.persistence.Transient;
 import javax.persistence.Version;
 
-import com.sapienter.jbilling.server.item.db.ItemDTO;
-import javax.persistence.Transient;
 import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
 
+import com.sapienter.jbilling.server.item.db.ItemDTO;
+import com.sapienter.jbilling.server.order.db.OrderDTO;
+
+import com.sapienter.jbilling.server.util.Constants;
+
 @Entity
-@TableGenerator(
-        name = "invoice_line_GEN", 
-        table = "jbilling_seqs", 
-        pkColumnName = "name", 
-        valueColumnName = "next_id", 
-        pkColumnValue = "invoice_line", 
-        allocationSize = 100)
+@TableGenerator(name = "invoice_line_GEN", table = "jbilling_seqs", pkColumnName = "name", valueColumnName = "next_id", pkColumnValue = "invoice_line", allocationSize = 100)
 @Table(name = "invoice_line")
 @Cache(usage = CacheConcurrencyStrategy.NONSTRICT_READ_WRITE)
 public class InvoiceLineDTO implements Serializable {
 
-    private int id;
+    private int                id;
     private InvoiceLineTypeDTO invoiceLineType;
-    private ItemDTO item;
-    private InvoiceDTO invoice;
+    private ItemDTO            item;
+    private InvoiceDTO         invoice;
 
-    private BigDecimal amount;
-    private BigDecimal quantity;
-    private BigDecimal price;
+    private BigDecimal         amount;
+    private BigDecimal         quantity;
+    private BigDecimal         price;
 
-    private Integer deleted;
-    private String description;
-    private Integer sourceUserId;
-    private Integer isPercentage;
-    private int versionNum;
-    
-    private int orderId;
+    private Integer            deleted;
+    private String             description;
+    private Integer            sourceUserId;
+    private Integer            isPercentage;
+    private int                versionNum;
 
-    public InvoiceLineDTO() {
+    private OrderDTO           order;
+
+    public InvoiceLineDTO () {
     }
 
-    public InvoiceLineDTO(int id, BigDecimal amount, Integer deleted, Integer isPercentage) {
+    public InvoiceLineDTO (int id, BigDecimal amount, Integer deleted, Integer isPercentage) {
         this.id = id;
         this.amount = amount;
         this.deleted = deleted;
         this.isPercentage = isPercentage;
     }
-    
-    public InvoiceLineDTO(Integer id, String description, BigDecimal amount, BigDecimal price, BigDecimal quantity,
+
+    public InvoiceLineDTO (Integer id, String description, BigDecimal amount, BigDecimal price, BigDecimal quantity,
             Integer typeId, Integer deleted, Integer itemId, Integer sourceUserId, Integer isPercentage) {
         setId(id == null ? 0 : id);
         setDescription(description);
@@ -90,12 +92,11 @@ public class InvoiceLineDTO implements Serializable {
         setSourceUserId(sourceUserId);
         setIsPercentage(isPercentage);
         setInvoiceLineType(new InvoiceLineTypeDTO(typeId));
-        
+
     }
 
-    public InvoiceLineDTO(int id, InvoiceLineTypeDTO invoiceLineType,
-            ItemDTO item, InvoiceDTO invoice, BigDecimal amount, BigDecimal quantity,
-            BigDecimal price, Integer deleted, String description,
+    public InvoiceLineDTO (int id, InvoiceLineTypeDTO invoiceLineType, ItemDTO item, InvoiceDTO invoice,
+            BigDecimal amount, BigDecimal quantity, BigDecimal price, Integer deleted, String description,
             Integer sourceUserId, Integer isPercentage) {
         this.id = id;
         this.invoiceLineType = invoiceLineType;
@@ -110,9 +111,8 @@ public class InvoiceLineDTO implements Serializable {
         this.isPercentage = isPercentage;
     }
 
-    public InvoiceLineDTO(int id2, String description2, BigDecimal amount,
-            BigDecimal price, BigDecimal quantity2, Integer deleted, ItemDTO item,
-            Integer sourceUserId2, Integer isPercentage) {
+    public InvoiceLineDTO (int id2, String description2, BigDecimal amount, BigDecimal price, BigDecimal quantity2,
+            Integer deleted, ItemDTO item, Integer sourceUserId2, Integer isPercentage) {
         this.id = id2;
         this.description = description2;
         this.amount = amount;
@@ -122,75 +122,147 @@ public class InvoiceLineDTO implements Serializable {
         this.item = item;
         this.sourceUserId = sourceUserId2;
         this.isPercentage = isPercentage;
+    }
 
+    public static class Builder {
+
+        private String     description;
+        private BigDecimal amount   = BigDecimal.ZERO;
+        private BigDecimal quantity = BigDecimal.ZERO;
+        private BigDecimal price    = BigDecimal.ZERO;
+        private Integer    type;
+        private Integer    itemId;
+        private Integer    sourceUserId;
+        private OrderDTO   order;
+        private boolean isPercentage = false;
+        public Builder description (String description) {
+            this.description = description;
+            return this;
+        }
+
+        public Builder amount (BigDecimal amount) {
+            this.amount = amount;
+            return this;
+        }
+
+        public Builder quantity (BigDecimal quantity) {
+            this.quantity = quantity;
+            return this;
+        }
+
+        public Builder price (BigDecimal price) {
+            this.price = price;
+            return this;
+        }
+
+        public Builder type (Integer type) {
+            this.type = type;
+            return this;
+        }
+
+        public Builder itemId (Integer itemId) {
+            this.itemId = itemId;
+            return this;
+        }
+
+        public Builder sourceUserId (Integer sourceUserId) {
+            this.sourceUserId = sourceUserId;
+            return this;
+        }
+
+        public Builder order (OrderDTO order) {
+            this.order = order;
+            return this;
+        }
+        
+         public Builder isPercentage (boolean isPercentage) {
+            this.isPercentage = isPercentage;
+            return this;
+        }
+        
+        public InvoiceLineDTO build () {
+            InvoiceLineDTO newLine = new InvoiceLineDTO();
+            newLine.setDeleted(0);
+            newLine.setDescription(description);
+            newLine.setAmount(amount);
+            newLine.setQuantity(quantity);
+            newLine.setPrice(price);
+            newLine.setItem(itemId == null ? null : new ItemDTO(itemId));
+            newLine.setSourceUserId(sourceUserId);
+            newLine.setInvoiceLineType(new InvoiceLineTypeDTO(type));
+            newLine.setIsPercentage(isPercentage ? 1 :0);
+            if (order != null) {
+                newLine.setOrder(order);
+            }
+            return newLine;
+        }
     }
 
     @Id
     @GeneratedValue(strategy = GenerationType.TABLE, generator = "invoice_line_GEN")
     @Column(name = "id", unique = true, nullable = false)
-    public int getId() {
+    public int getId () {
         return this.id;
     }
 
-    public void setId(int id) {
+    public void setId (int id) {
         this.id = id;
     }
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "type_id")
-    public InvoiceLineTypeDTO getInvoiceLineType() {
+    public InvoiceLineTypeDTO getInvoiceLineType () {
         return this.invoiceLineType;
     }
 
-    public void setInvoiceLineType(InvoiceLineTypeDTO invoiceLineType) {
+    public void setInvoiceLineType (InvoiceLineTypeDTO invoiceLineType) {
         this.invoiceLineType = invoiceLineType;
     }
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "item_id")
-    public ItemDTO getItem() {
+    public ItemDTO getItem () {
         return this.item;
     }
 
-    public void setItem(ItemDTO item) {
+    public void setItem (ItemDTO item) {
         this.item = item;
     }
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id")
-    public InvoiceDTO getInvoice() {
+    public InvoiceDTO getInvoice () {
         return this.invoice;
     }
 
-    public void setInvoice(InvoiceDTO invoice) {
+    public void setInvoice (InvoiceDTO invoice) {
         this.invoice = invoice;
     }
 
     /**
-     * Returns the total amount for this line. Usually this would be
-     * the {@code price * quantity}
+     * Returns the total amount for this line. Usually this would be the {@code price * quantity}
      *
      * @return amount
      */
     @Column(name = "amount", nullable = false, precision = 17, scale = 17)
-    public BigDecimal getAmount() {
+    public BigDecimal getAmount () {
         return this.amount;
     }
 
-    public void setAmount(BigDecimal amount) {
+    public void setAmount (BigDecimal amount) {
         this.amount = amount;
     }
 
     @Column(name = "quantity")
-    public BigDecimal getQuantity() {
+    public BigDecimal getQuantity () {
         return this.quantity;
     }
 
-    public void setQuantity(BigDecimal quantity) {
+    public void setQuantity (BigDecimal quantity) {
         this.quantity = quantity;
     }
 
-    public void setQuantity(Integer quantity) {
+    public void setQuantity (Integer quantity) {
         setQuantity(new BigDecimal(quantity));
     }
 
@@ -200,85 +272,93 @@ public class InvoiceLineDTO implements Serializable {
      * @return unit price
      */
     @Column(name = "price", precision = 17, scale = 17)
-    public BigDecimal getPrice() {
+    public BigDecimal getPrice () {
         return this.price;
     }
 
-    public void setPrice(BigDecimal price) {
+    public void setPrice (BigDecimal price) {
         this.price = price;
     }
 
     @Column(name = "deleted", nullable = false)
-    public Integer getDeleted() {
+    public Integer getDeleted () {
         return this.deleted;
     }
 
-    public void setDeleted(Integer deleted) {
+    public void setDeleted (Integer deleted) {
         this.deleted = deleted;
     }
 
     @Column(name = "description", length = 1000)
-    public String getDescription() {
+    public String getDescription () {
         return this.description;
     }
 
-    public void setDescription(String description) {
+    public void setDescription (String description) {
         this.description = description;
     }
 
     @Column(name = "source_user_id")
-    public Integer getSourceUserId() {
+    public Integer getSourceUserId () {
         return this.sourceUserId;
     }
 
-    public void setSourceUserId(Integer sourceUserId) {
+    public void setSourceUserId (Integer sourceUserId) {
         this.sourceUserId = sourceUserId;
     }
 
     /**
-     * Indicates whether or not the item referenced by this line is
-     * a percentage item or not.
+     * Indicates whether or not the item referenced by this line is a percentage item or not.
      *
-     * 1 - Item is a percentage item
-     * 0 - Item is not a percentage item
+     * 1 - Item is a percentage item 0 - Item is not a percentage item
      *
      * @return 1 if item is percentage, 0 if not
      */
     @Column(name = "is_percentage", nullable = false)
-    public Integer getIsPercentage() {
+    public Integer getIsPercentage () {
         return this.isPercentage;
     }
 
-    public void setIsPercentage(Integer isPercentage) {
+    public void setIsPercentage (Integer isPercentage) {
         this.isPercentage = isPercentage;
     }
 
     @Version
     @Column(name = "OPTLOCK")
-    public int getVersionNum() {
+    public int getVersionNum () {
         return versionNum;
     }
 
-    public void setVersionNum(int versionNum) {
+    public void setVersionNum (int versionNum) {
         this.versionNum = versionNum;
     }
-    
-    @Transient
-    public int getOrderPosition() {
-        return getInvoiceLineType().getOrderPosition();
-    }
-    
-    @Transient
-    public int getTypeId() {
-        return getInvoiceLineType().getId();
-    }
-    
-    @Transient
-    public int getOrderId() {
-        return orderId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id")
+    public OrderDTO getOrder () {
+        return this.order;
     }
 
-    public void setOrderId(int orderId) {
-        this.orderId = orderId;
+    public void setOrder (OrderDTO order) {
+        this.order = order;
     }
+
+    @Transient
+    public boolean isReviewInvoiceLine() { return ( null != getInvoice() && getInvoice().isReviewInvoice()); }
+
+    @Transient
+    public int getOrderPosition () {
+        return (null != getInvoiceLineType()) ? getInvoiceLineType().getOrderPosition() : 0;
+    }
+
+    @Transient
+    public int getTypeId () {
+        return (null != getInvoiceLineType()) ? getInvoiceLineType().getId() : 0;
+    }
+
+    @Transient
+    public boolean dueInvoiceLine () {
+        return Constants.INVOICE_LINE_TYPE_DUE_INVOICE.equals(getTypeId());
+    }
+
 }

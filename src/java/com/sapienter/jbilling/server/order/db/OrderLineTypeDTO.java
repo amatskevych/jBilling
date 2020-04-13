@@ -20,6 +20,7 @@
 package com.sapienter.jbilling.server.order.db;
 
 
+import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -99,7 +100,6 @@ public class OrderLineTypeDTO extends AbstractDescription implements java.io.Ser
     public String getTitle(Integer languageId) {
         return getDescription(languageId, "description");
     }
-
 
 }
 

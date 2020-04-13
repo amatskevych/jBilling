@@ -19,8 +19,57 @@
  */
 package com.sapienter.jbilling.server.order.db;
 
+import java.util.List;
+
+import org.hibernate.Criteria;
+import org.hibernate.Query;
+import org.hibernate.criterion.Restrictions;
+
+import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.db.AbstractDAS;
 
-public class OrderPeriodDAS extends AbstractDAS<OrderPeriodDTO> {
+import java.util.List;
 
+public class OrderPeriodDAS extends AbstractDAS<OrderPeriodDTO> {
+	
+	public OrderPeriodDTO findOrderPeriod(Integer entityId, Integer value, Integer unitId) {
+		
+        final String hql = "select p from OrderPeriodDTO p where " +
+        		"p.company.id=:entityId and p.periodUnit.id=:unitId and p.value=:value";
+
+        Query query = getSession().createQuery(hql);
+        query.setParameter("entityId", entityId);
+        query.setParameter("unitId", unitId);
+        query.setParameter("value", value);
+
+        return (OrderPeriodDTO) query.uniqueResult();
+		
+	}
+
+
+    /**
+     * Returns any orderPeriod distinct to 'ONCE'
+     *
+     * @return a period
+     */
+    @SuppressWarnings("unchecked")
+    public OrderPeriodDTO findRecurringPeriod(Integer entityId) {
+        Criteria criteria = getSession().createCriteria(OrderPeriodDTO.class)
+                .add(Restrictions.ne("id", Constants.ORDER_PERIOD_ONCE))
+                .add(Restrictions.eq("company.id", entityId))
+                .setMaxResults(1);
+
+        return findFirst(criteria);
+    }
+
+    /**
+     * Returns list of order periods defined for company(entity)
+     *
+     * @param entityId - the entity id
+     */
+    public List<OrderPeriodDTO> getOrderPeriods(Integer entityId) {
+        Criteria criteria = getSession().createCriteria(OrderPeriodDTO.class);
+        criteria.add(Restrictions.eq("company.id", entityId));
+        return criteria.list();
+    }
 }

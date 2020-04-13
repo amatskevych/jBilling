@@ -20,8 +20,13 @@
 
 package com.sapienter.jbilling.server.invoice;
 
+import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.entity.InvoiceLineDTO;
+import com.sapienter.jbilling.server.metafields.MetaFieldValueWS;
+import com.sapienter.jbilling.server.process.BillingProcessWS;
 import com.sapienter.jbilling.server.security.WSSecured;
+
+import javax.validation.Valid;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -34,11 +39,14 @@ import java.util.Date;
  */
 public class InvoiceWS implements WSSecured, Serializable {
 
+    private static final long serialVersionUID = 20130704L;
+
     private Integer delegatedInvoiceId = null;
     private Integer payments[] = null;
     private Integer userId = null;
     private InvoiceLineDTO invoiceLines[] = null;
     private Integer orders[] = null;
+    private BillingProcessWS billingProcess;
 
     // original DTO
     private Integer id;
@@ -59,6 +67,8 @@ public class InvoiceWS implements WSSecured, Serializable {
     private String customerNotes;
     private String number;
     private Integer overdueStep;
+    @Valid
+    private MetaFieldValueWS[] metaFields;
 
     //additional fields for the new gui
     private String statusDescr;
@@ -120,7 +130,7 @@ public class InvoiceWS implements WSSecured, Serializable {
     }
 
     public BigDecimal getTotalAsDecimal() {
-        return total == null ? null : new BigDecimal(total);
+        return Util.string2decimal(total);
     }
 
     public void setTotal(String total) {
@@ -152,7 +162,7 @@ public class InvoiceWS implements WSSecured, Serializable {
     }
 
     public BigDecimal getBalanceAsDecimal() {
-        return balance == null ? null : new BigDecimal(balance);
+        return Util.string2decimal(balance);
     }
 
     public void setBalance(String balance) {
@@ -168,7 +178,7 @@ public class InvoiceWS implements WSSecured, Serializable {
     }
 
     public BigDecimal getCarriedBalanceAsDecimal() {
-        return carriedBalance == null ? null : new BigDecimal(carriedBalance);
+        return Util.string2decimal(carriedBalance);
     }
 
     public void setCarriedBalance(String carriedBalance) {
@@ -283,6 +293,22 @@ public class InvoiceWS implements WSSecured, Serializable {
         this.payments = payments;
     }
 
+    public MetaFieldValueWS[] getMetaFields() {
+        return metaFields;
+    }
+
+    public void setMetaFields(MetaFieldValueWS[] metaFields) {
+        this.metaFields = metaFields;
+    }
+
+    public BillingProcessWS getBillingProcess() {
+        return billingProcess;
+    }
+
+    public void setBillingProcess(BillingProcessWS billingProcess) {
+        this.billingProcess = billingProcess;
+    }
+
     /**
      * Unsupported, web-service security enforced using {@link #getOwningUserId()}
      * @return null
@@ -346,7 +372,11 @@ public class InvoiceWS implements WSSecured, Serializable {
         builder.append(total);
         builder.append(", userId=");
         builder.append(userId);
-        builder.append("]");
+        builder.append(", metaField=");
+        builder.append(Arrays.toString(metaFields));
+        builder.append(", billingProcess=");
+        builder.append(billingProcess);
+        builder.append(']');
         return builder.toString();
     }
 

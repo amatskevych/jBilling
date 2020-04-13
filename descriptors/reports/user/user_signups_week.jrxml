@@ -5,22 +5,24 @@
 	<property name="ireport.y" value="0"/>
 	<subDataset name="chart_dataset">
 		<parameter name="entityId" class="java.lang.Integer"/>
+		<parameter name="childEntities" class="java.util.List"/>
 		<parameter name="startDate" class="java.util.Date"/>
 		<parameter name="endDate" class="java.util.Date"/>
+		<!-- For Mysql use DATE_FORMAT(i.create_datetime, 'WW') -->
 		<queryString>
 			<![CDATA[select
                 count(u.id) as user_count,
                 to_char(u.create_datetime, 'WW') as week_of_year,
-                to_char(u.create_datetime, 'yyyy') as year
+                to_char(u.create_datetime, 'YYYY') as year
             from
                 base_user u
                 inner join user_role_map r on r.user_id = u.id
             where
-                u.entity_id = $P{entityId}
+                (u.entity_id = $P{entityId} or $X{IN,u.entity_id,childEntities})
                 and u.deleted = 0
-                and r.role_id = 5 -- is a customer
+                and r.role_id in (select id from role where role_type_id = 5 ) -- is a customer
                 and u.create_datetime >= $P{startDate}
-                and u.create_datetime <= $P{endDate}
+                and u.create_datetime < $P{endDate}
             group by week_of_year, year
             order by year, week_of_year]]>
 		</queryString>
@@ -29,22 +31,23 @@
 		<field name="year" class="java.lang.String"/>
 	</subDataset>
 	<parameter name="entityId" class="java.lang.Integer"/>
+	<parameter name="childEntities" class="java.util.List"/>
 	<parameter name="startDate" class="java.util.Date"/>
 	<parameter name="endDate" class="java.util.Date"/>
 	<queryString>
 		<![CDATA[select
             count(u.id) as user_count,
             to_char(u.create_datetime, 'WW') as week_of_year,
-            to_char(u.create_datetime, 'yyyy') as year
+            to_char(u.create_datetime, 'YYYY') as year
         from
             base_user u
             inner join user_role_map r on r.user_id = u.id
         where
-            u.entity_id = $P{entityId}
+            (u.entity_id = $P{entityId} or $X{IN,u.entity_id,childEntities})
             and u.deleted = 0
-            and r.role_id = 5 -- is a customer
+            and r.role_id  in (select id from role where role_type_id = 5 ) -- is a customer
             and u.create_datetime >= $P{startDate}
-            and u.create_datetime <= $P{endDate}
+            and u.create_datetime < $P{endDate}
         group by week_of_year, year
         order by year, week_of_year]]>
 	</queryString>
@@ -69,6 +72,9 @@
 						<datasetRun subDataset="chart_dataset">
 							<datasetParameter name="entityId">
 								<datasetParameterExpression><![CDATA[$P{entityId}]]></datasetParameterExpression>
+							</datasetParameter>
+							<datasetParameter name="childEntities">
+								<datasetParameterExpression><![CDATA[$P{childEntities}]]></datasetParameterExpression>
 							</datasetParameter>
 							<datasetParameter name="startDate">
 								<datasetParameterExpression><![CDATA[$P{startDate}]]></datasetParameterExpression>

@@ -19,23 +19,27 @@
  */
 package com.sapienter.jbilling.server.payment.tasks;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentResultDAS;
 import com.sapienter.jbilling.server.pluggableTask.PaymentTaskWithTimeout;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.util.Constants;
+
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.NameValuePair;
 import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.commons.httpclient.methods.StringRequestEntity;
 import org.apache.commons.httpclient.util.ParameterParser;
 import org.apache.log4j.Logger;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.text.SimpleDateFormat;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -48,7 +52,7 @@ import java.util.List;
  * @since 20-10-2009
  */
 public abstract class PaymentWorldPayBaseTask extends PaymentTaskWithTimeout {
-    private static final Logger LOG = Logger.getLogger(PaymentWorldPayBaseTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaymentWorldPayBaseTask.class));
 
     /**
      * Parameters for RBS WorldPay payment gateway requests
@@ -270,17 +274,24 @@ public abstract class PaymentWorldPayBaseTask extends PaymentTaskWithTimeout {
             StringBuffer sb = new StringBuffer();
             for (Iterator<NameValuePair> it = pairs.iterator(); it.hasNext();) {
                 NameValuePair pair = it.next();
-                sb.append(pair.getName())
-                  .append("=")
-                  .append(pair.getValue());
-
-                if (it.hasNext()) sb.append("&");
+                /* #12686 - masking credit card data */
+                if(pair.getName().equals(WorldPayParams.CreditCard.CARD_NUMBER)) {
+                    sb.append(pair.getName())
+                        .append("=")
+                        .append("******");
+                }
+                else {
+                    sb.append(pair.getName())
+                        .append("=")
+                        .append(pair.getValue());
+                }
+                if (it.hasNext()) sb.append('&');
             }
             return sb.toString();
         }        
     }    
 
-    public static final SimpleDateFormat EXPIRATION_DATE_FORMAT = new SimpleDateFormat("MM/yyyy");
+    public static final DateTimeFormatter EXPIRATION_DATE_FORMAT = DateTimeFormat.forPattern("MM/yyyy");
 
     /* required */
     public static final String PARAMETER_STORE_ID      = "STOREID";    // store id assigned by RBS World Pay
@@ -360,7 +371,8 @@ public abstract class PaymentWorldPayBaseTask extends PaymentTaskWithTimeout {
      * @return true if payment can be processed with this task, false if not
      */
     public static boolean isApplicable(PaymentDTOEx payment) {
-        if (payment.getCreditCard() == null && payment.getAch() == null) {
+    	PaymentInformationBL piBl = new PaymentInformationBL();
+        if (!piBl.isCreditCard(payment.getInstrument()) && !piBl.isACH(payment.getInstrument())) {
             LOG.warn("Can't process without a credit card or ach");
             return false;
         }        
@@ -397,16 +409,16 @@ public abstract class PaymentWorldPayBaseTask extends PaymentTaskWithTimeout {
      */
     protected Result doProcess(PaymentDTOEx payment, SvcType transaction, PaymentAuthorizationDTO auth)
             throws PluggableTaskException {
-
+    	PaymentInformationBL piBl = new PaymentInformationBL();
         if (!isApplicable(payment))
             return NOT_APPLICABLE;
 
-        if (payment.getCreditCard() == null) {
+        if (!piBl.isCreditCard(payment.getInstrument())) {
             LOG.error("Can't process without a credit card");
             throw new PluggableTaskException("Credit card not present in payment");
         }
 
-        if (payment.getAch() != null) {
+        if (piBl.isACH(payment.getInstrument())) {
             LOG.error("Can't process with a cheque");
             throw new PluggableTaskException("Can't process ACH charge");
         }

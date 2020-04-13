@@ -26,52 +26,54 @@ package com.sapienter.jbilling.server.user;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import javax.validation.Valid;
 import javax.validation.constraints.Digits;
 import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Pattern;
 import javax.validation.constraints.Size;
+import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 
-import com.sapienter.jbilling.server.util.Constants;
-import com.sapienter.jbilling.server.entity.AchDTO;
-import com.sapienter.jbilling.server.entity.CreditCardDTO;
-import com.sapienter.jbilling.server.order.db.OrderDAS;
-import com.sapienter.jbilling.server.order.db.OrderDTO;
+import com.sapienter.jbilling.common.Constants;
+import com.sapienter.jbilling.common.Util;
+import com.sapienter.jbilling.server.metafields.MetaFieldValueWS;
+import com.sapienter.jbilling.server.payment.PaymentInformationWS;
 import com.sapienter.jbilling.server.security.WSSecured;
-import com.sapienter.jbilling.server.user.db.CustomerDTO;
 import com.sapienter.jbilling.server.util.api.validation.CreateValidationGroup;
+import com.sapienter.jbilling.server.util.api.validation.EntitySignupValidationGroup;
 import com.sapienter.jbilling.server.util.api.validation.UpdateValidationGroup;
 
 /** @author Emil */
 public class UserWS implements WSSecured, Serializable {
 
-    @Min(value = 1, message = "validation.error.min,1", groups = UpdateValidationGroup.class)
+	@Min(value = 1, message = "validation.error.min,1", groups = UpdateValidationGroup.class)
     @Max(value = 0, message = "validation.error.max,0", groups = CreateValidationGroup.class)
     private int id;
     private Integer currencyId;
-    @Size(min = 5, max = 40, message = "validation.error.size,5,40", groups = CreateValidationGroup.class)
+    @Pattern(regexp=Constants.PASSWORD_PATTERN_4_UNIQUE_CLASSES, message="validation.error.password.size,8,128", groups = {CreateValidationGroup.class, EntitySignupValidationGroup.class })
     private String password;
+    private boolean createCredentials = false;
     private int deleted;
     private Date createDatetime;
     private Date lastStatusChange;
     private Date lastLogin;
+    private boolean accountExpired;
+    private Date accountDisabledDate;
     @NotNull(message="validation.error.notnull")
     @Size(min = 5, max = 50, message = "validation.error.size,5,50")
+    @Pattern(regexp=Constants.USERNAME_PATTERN, message="validation.error.invalid.username", groups = {CreateValidationGroup.class, EntitySignupValidationGroup.class })
     private String userName;
     private int failedAttempts;
     private Integer languageId;
 
-    @Valid
-    private CreditCardDTO creditCard = null;
-    @Valid
-    private AchDTO ach = null;
-
-    @NotNull(message = "validation.error.notnull")
     @Valid
     private ContactWS contact = null;
     private String role = null;
@@ -81,106 +83,72 @@ public class UserWS implements WSSecured, Serializable {
     private Integer statusId = null;
     private Integer subscriberStatusId = null;
     private Integer customerId = null;
+    @Digits(integer = 12, fraction = 0, message= "validation.error.invalid.agentid")
     private Integer partnerId = null;
     private Integer parentId = null;
     private Boolean isParent = null;
     private Boolean invoiceChild = null;
+    private Boolean useParentPricing = null;
     private Boolean excludeAgeing = null;
-    private Integer mainOrderId = null;
     private String[] blacklistMatches = null;
     private Boolean userIdBlacklisted = null;
     private Integer[] childIds = null;
     private String owingBalance = null;
-    private Integer balanceType = null;
     private String dynamicBalance = null;
-    @Digits(integer = 22, fraction = 10, message="validation.error.not.a.number")
+    @Digits(integer = 12, fraction = 10, message="validation.error.not.a.number")
     private String autoRecharge = null;
-    @Digits(integer = 22, fraction = 10, message="validation.error.not.a.number")
+    @Digits(integer = 12, fraction = 10, message="validation.error.not.a.number")
+    @Min(value = 0, message = "validation.error.not.a.positive.number")
     private String creditLimit = null;
-
+	private String creditLimitNotification1 = null;
+	private String creditLimitNotification2 = null;
     private String notes;
     private Integer automaticPaymentType;
     private String companyName;
+    private Boolean isAccountLocked;
 
     private Integer invoiceDeliveryMethodId;
     private Integer dueDateUnitId;
     private Integer dueDateValue;
     private Date nextInvoiceDate;
+
+    @Digits(integer = 12, fraction = 10, message="validation.error.not.a.number")
+    private String rechargeThreshold = "-1";
+    @Digits(integer = 12, fraction = 10, message="validation.error.not.a.number")
+    private String monthlyLimit;
+    private Integer entityId;
+
+    @Valid
+    private MetaFieldValueWS[] metaFields;
+
+    @Valid
+    private MainSubscriptionWS mainSubscription;
+    private CustomerNoteWS[] customerNotes;
+
+    private Integer accountTypeId;
+    private String invoiceDesign;
+
+    private Map<Integer, HashMap<Date, ArrayList<MetaFieldValueWS>>> accountInfoTypeFieldsMap = new HashMap<Integer, HashMap<Date, ArrayList<MetaFieldValueWS>>>();
+    private Map<Integer, ArrayList<Date>> timelineDatesMap = new HashMap<Integer, ArrayList<Date>>(0);
+    private Map<Integer, Date> effectiveDateMap = new HashMap<Integer, Date>(0);
+    private Map<Integer, ArrayList<Date>> removedDatesMap = new HashMap<Integer, ArrayList<Date>>(0);
+    
+    //user codes of other users linked to this customer
+    private String userCodeLink;
+    // payment instruments
+    private List<PaymentInformationWS> paymentInstruments = new ArrayList<PaymentInformationWS>();
     
     public UserWS() {
     }
 
-    public UserWS(UserDTOEx dto) {
-        id = dto.getId();
-        currencyId = dto.getCurrencyId();
-        password = dto.getPassword();
-        deleted = dto.getDeleted();
-        createDatetime = dto.getCreateDatetime();
-        lastStatusChange = dto.getLastStatusChange();
-        lastLogin = dto.getLastLogin();
-        userName = dto.getUserName();
-        failedAttempts = dto.getFailedAttempts();
-        languageId = dto.getLanguageId();
-        creditCard = dto.getCreditCard() == null ? null : dto.getCreditCard().getOldDTO();
-        ach = dto.getAch() == null ? null : dto.getAch().getOldDTO();
-        role = dto.getMainRoleStr();
-        mainRoleId = dto.getMainRoleId();
-        language = dto.getLanguageStr();
-        status = dto.getStatusStr();
-        role = dto.getMainRoleStr();
-        statusId = dto.getStatusId();
-        subscriberStatusId = dto.getSubscriptionStatusId();
-
-        if (dto.getCustomer() != null) {
-            customerId = dto.getCustomer().getId();
-            partnerId = (dto.getCustomer().getPartner() == null) ? null : dto.getCustomer().getPartner().getId();
-            parentId = (dto.getCustomer().getParent() == null) ? null : dto.getCustomer().getParent().getBaseUser().getId();
-            mainOrderId = dto.getCustomer().getCurrentOrderId();
-            isParent = dto.getCustomer().getIsParent() != null && dto.getCustomer().getIsParent().equals(1);
-            invoiceChild = dto.getCustomer().getInvoiceChild() != null && dto.getCustomer().getInvoiceChild().equals(1);
-            excludeAgeing = dto.getCustomer().getExcludeAging() == 1;
-
-            childIds = new Integer[dto.getCustomer().getChildren().size()];
-            int index = 0;
-            for (CustomerDTO customer : dto.getCustomer().getChildren()) {
-                childIds[index] = customer.getBaseUser().getId();
-                index++;
-            }
-
-            balanceType = dto.getCustomer().getBalanceType();
-
-            setDynamicBalance(dto.getCustomer().getDynamicBalance());
-            setCreditLimit(dto.getCustomer().getCreditLimit());
-            setAutoRecharge(dto.getCustomer().getAutoRecharge());
-
-            setNotes(dto.getCustomer().getNotes());
-            setAutomaticPaymentType(dto.getCustomer().getAutoPaymentType());
-
-            dueDateUnitId = dto.getCustomer().getDueDateUnitId();
-            dueDateValue = dto.getCustomer().getDueDateValue();
-        }
-
-        blacklistMatches = dto.getBlacklistMatches() != null ? dto.getBlacklistMatches().toArray(new String[dto.getBlacklistMatches().size()]) : null;
-        userIdBlacklisted = dto.getUserIdBlacklisted();
-
-        if (null != dto.getCompany()) {
-        	companyName= dto.getCompany().getDescription();
-        }
-        
-        setOwingBalance(dto.getBalance());
-        
-        OrderDTO orderDto= (OrderDTO) new OrderDAS().findEarliestActiveOrder(dto.getId());
-        if (null != orderDto) {
-        	if ( null != orderDto.getNextBillableDay()) {
-        		this.nextInvoiceDate= orderDto.getNextBillableDay();
-        	} else if ( null != orderDto.getActiveSince()) {
-        		this.nextInvoiceDate= orderDto.getActiveSince();
-        	} else if ( null != orderDto.getCreateDate()) {
-        		this.nextInvoiceDate= orderDto.getCreateDate();
-        	}
-        }        
+    public int getId() {
+        return id;
     }
 
+    public void setId(int id) {
+        this.id = id;
+    }
+    
 	public Integer getPartnerId() {
         return partnerId;
     }
@@ -189,28 +157,20 @@ public class UserWS implements WSSecured, Serializable {
         this.partnerId = partnerId;
     }
 
+    public String getUserCodeLink() {
+        return userCodeLink;
+    }
+
+    public void setUserCodeLink(String userCodeLink) {
+        this.userCodeLink = userCodeLink;
+    }
+
     public ContactWS getContact() {
         return contact;
     }
 
     public void setContact(ContactWS contact) {
         this.contact = contact;
-    }
-
-    public CreditCardDTO getCreditCard() {
-        return creditCard;
-    }
-
-    public void setCreditCard(CreditCardDTO creditCard) {
-        this.creditCard = creditCard;
-    }
-
-    public AchDTO getAch() {
-        return ach;
-    }
-
-    public void setAch(AchDTO ach) {
-        this.ach = ach;
     }
 
     public String getLanguage() {
@@ -293,6 +253,18 @@ public class UserWS implements WSSecured, Serializable {
         this.invoiceChild = invoiceChild;
     }
 
+    public Boolean getUseParentPricing() {
+        return useParentPricing;
+    }
+
+    public Boolean useParentPricing() {
+        return useParentPricing;
+    }
+
+    public void setUseParentPricing(Boolean useParentPricing) {
+        this.useParentPricing = useParentPricing;
+    }
+
     public Boolean getExcludeAgeing() {
         return excludeAgeing;
     }
@@ -349,6 +321,22 @@ public class UserWS implements WSSecured, Serializable {
         this.lastLogin = lastLogin;
     }
 
+    public boolean isAccountExpired() { 
+        return accountExpired; 
+    }
+
+    public void setAccountExpired(boolean accountExpired) { 
+        this.accountExpired = accountExpired; 
+    }
+
+    public Date getAccountDisabledDate() { 
+        return accountDisabledDate; 
+    }
+
+    public void setAccountDisabledDate(Date accountDisabledDate) { 
+        this.accountDisabledDate = accountDisabledDate; 
+    }
+
     public Date getLastStatusChange() {
         return lastStatusChange;
     }
@@ -381,14 +369,6 @@ public class UserWS implements WSSecured, Serializable {
         this.languageId = languageId;
     }
 
-    public Integer getMainOrderId() {
-        return mainOrderId;
-    }
-
-    public void setMainOrderId(Integer mainOrderId) {
-        this.mainOrderId = mainOrderId;
-    }
-
     public String[] getBlacklistMatches() {
         return blacklistMatches;
     }
@@ -418,7 +398,7 @@ public class UserWS implements WSSecured, Serializable {
     }
 
     public BigDecimal getOwingBalanceAsDecimal() {
-        return owingBalance == null ? null : new BigDecimal(owingBalance);
+        return Util.string2decimal(owingBalance);
     }
 
     public void setOwingBalance(String owingBalance) {
@@ -429,20 +409,12 @@ public class UserWS implements WSSecured, Serializable {
         this.owingBalance = (owingBalance != null ? owingBalance.toString() : null);
     }
 
-    public Integer getBalanceType() {
-        return balanceType;
-    }
-
-    public void setBalanceType(Integer balanceType) {
-        this.balanceType = balanceType;
-    }
-
     public String getCreditLimit() {
         return creditLimit;
     }
 
     public BigDecimal getCreditLimitAsDecimal() {
-         return creditLimit == null ? null : new BigDecimal(creditLimit);
+        return Util.string2decimal(creditLimit);
     }
 
     public void setCreditLimitAsDecimal(BigDecimal creditLimit) {
@@ -457,12 +429,44 @@ public class UserWS implements WSSecured, Serializable {
         this.creditLimit = (creditLimit != null ? creditLimit.toString() : null);
     }
 
-    public String getDynamicBalance() {
+	public String getCreditLimitNotification1() {
+		return creditLimitNotification1;
+	}
+
+	public void setCreditLimitNotification1(String creditLimitNotification1) {
+		this.creditLimitNotification1 = creditLimitNotification1;
+	}
+
+	public BigDecimal getCreditLimitNotification1AsDecimal() {
+		return Util.string2decimal(creditLimitNotification1);
+	}
+
+	public void setCreditLimitNotification1(BigDecimal creditLimitNotification1) {
+		this.creditLimitNotification1 = (null != creditLimitNotification1 ? creditLimitNotification1.toString() : null);
+	}
+
+	public String getCreditLimitNotification2() {
+		return creditLimitNotification2;
+	}
+
+	public void setCreditLimitNotification2(String creditLimitNotification2) {
+		this.creditLimitNotification2 = creditLimitNotification2;
+	}
+
+	public BigDecimal getCreditLimitNotification2AsDecimal() {
+		return Util.string2decimal(creditLimitNotification2);
+	}
+
+	public void setCreditLimitNotification2(BigDecimal creditLimitNotification2) {
+		this.creditLimitNotification2 = (null != creditLimitNotification2 ? creditLimitNotification2.toString() : null);
+	}
+
+	public String getDynamicBalance() {
         return dynamicBalance;
     }
 
     public BigDecimal getDynamicBalanceAsDecimal() {
-        return dynamicBalance == null ? null : new BigDecimal(dynamicBalance);
+        return Util.string2decimal(dynamicBalance);
     }
 
     public void setDynamicBalance(String dynamicBalance) {
@@ -478,7 +482,7 @@ public class UserWS implements WSSecured, Serializable {
     }
 
     public BigDecimal getAutoRechargeAsDecimal() {
-        return autoRecharge != null ? new BigDecimal(autoRecharge) : null;
+        return Util.string2decimal(autoRecharge);
     }
 
     public void setAutoRechargeAsDecimal(BigDecimal autoRecharge) {
@@ -510,12 +514,12 @@ public class UserWS implements WSSecured, Serializable {
     }
 
     public String getCompanyName() {
-		return companyName;
-	}
+        return companyName;
+    }
 
-	public void setCompanyName(String companyName) {
-		this.companyName = companyName;
-	}
+    public void setCompanyName(String companyName) {
+        this.companyName = companyName;
+    }
 
     public Integer getInvoiceDeliveryMethodId() {
         return invoiceDeliveryMethodId;
@@ -542,14 +546,126 @@ public class UserWS implements WSSecured, Serializable {
     }
 
     public Date getNextInvoiceDate() {
-		return nextInvoiceDate;
+        return nextInvoiceDate;
+    }
+
+    public void setNextInvoiceDate(Date nextInvoiceDate) {
+        this.nextInvoiceDate = nextInvoiceDate;
+    }
+
+    public MetaFieldValueWS[] getMetaFields() {
+        return metaFields;
+    }
+
+    public void setMetaFields(MetaFieldValueWS[] metaFields) {
+        this.metaFields = metaFields;
+    }
+
+    public MainSubscriptionWS getMainSubscription() {
+		return mainSubscription;
 	}
 
-	public void setNextInvoiceDate(Date nextInvoiceDate) {
-		this.nextInvoiceDate = nextInvoiceDate;
+	public void setMainSubscription(MainSubscriptionWS mainSubscription) {
+		this.mainSubscription = mainSubscription;
 	}
 
-	/**
+    public CustomerNoteWS[] getCustomerNotes() {
+        return customerNotes;
+    }
+
+    public void setCustomerNotes(CustomerNoteWS[] customerNotes) {
+        this.customerNotes = customerNotes;
+    }
+
+    public Integer getAccountTypeId() {
+        return accountTypeId;
+    }
+
+    public void setAccountTypeId(Integer accountTypeId) {
+        this.accountTypeId = accountTypeId;
+    }
+
+    public String getInvoiceDesign() {
+        return invoiceDesign;
+    }
+
+    public void setInvoiceDesign(String invoiceDesign) {
+        this.invoiceDesign = invoiceDesign;
+    }
+
+	public Map<Integer, ArrayList<Date>> getTimelineDatesMap() {
+		return timelineDatesMap;
+	}
+
+	public void setTimelineDatesMap(Map<Integer, ArrayList<Date>> timelineDatesMap) {
+		this.timelineDatesMap = timelineDatesMap;
+	}
+
+	public Map<Integer, Date> getEffectiveDateMap() {
+		return effectiveDateMap;
+	}
+
+	public void setEffectiveDateMap(Map<Integer, Date> effectiveDateMap) {
+		this.effectiveDateMap = effectiveDateMap;
+	}
+
+	public Map<Integer, ArrayList<Date>> getRemovedDatesMap() {
+		return removedDatesMap;
+	}
+
+	public void setRemovedDatesMap(Map<Integer, ArrayList<Date>> removedDatesMap) {
+		this.removedDatesMap = removedDatesMap;
+	}
+
+	public Map<Integer, HashMap<Date, ArrayList<MetaFieldValueWS>>> getAccountInfoTypeFieldsMap() {
+		return accountInfoTypeFieldsMap;
+	}
+	
+	public void setAccountInfoTypeFieldsMap(Map<Integer, HashMap<Date, ArrayList<MetaFieldValueWS>>> accountInfoTypeFieldsMap) {
+		this.accountInfoTypeFieldsMap = accountInfoTypeFieldsMap;
+	}
+	
+    public Boolean isAccountLocked() {
+        return isAccountLocked;
+    }
+
+    public void setIsAccountLocked(Boolean isAccountLocked) {
+        this.isAccountLocked = isAccountLocked;
+    }
+
+    public String getRechargeThreshold() {
+        return rechargeThreshold;
+    }
+
+    public BigDecimal getRechargeThresholdAsDecimal() {
+        return rechargeThreshold != null ? new BigDecimal(rechargeThreshold) : null;
+    }
+
+    public void setRechargeThreshold(String rechargeThreshold) {
+        this.rechargeThreshold = rechargeThreshold;
+    }
+
+    public void setRechargeThreshold(BigDecimal rechargeThreshold) {
+        this.rechargeThreshold = (rechargeThreshold != null ? rechargeThreshold.toString() : null);
+    }
+
+    public String getMonthlyLimit () {
+        return monthlyLimit;
+    }
+
+    public BigDecimal getMonthlyLimitAsDecimal () {
+        return monthlyLimit != null ? new BigDecimal(monthlyLimit) : null;
+    }
+
+    public void setMonthlyLimit (String monthlyLimit) {
+        this.monthlyLimit = monthlyLimit;
+    }
+
+    public void setMonthlyLimit (BigDecimal monthlyLimit) {
+        this.monthlyLimit = (monthlyLimit != null ? monthlyLimit.toString() : null);
+    }
+
+    /**
      * Unsupported, web-service security enforced using {@link #getOwningUserId()}
      *
      * @return null
@@ -562,17 +678,37 @@ public class UserWS implements WSSecured, Serializable {
         return getUserId();
     }
 
+    public Integer getEntityId() {
+		return entityId;
+	}
+
+	public void setEntityId(Integer entityId) {
+		this.entityId = entityId;
+	}
+
+	public List<PaymentInformationWS> getPaymentInstruments() {
+		return paymentInstruments;
+	}
+
+	public void setPaymentInstruments(List<PaymentInformationWS> paymentInstruments) {
+		this.paymentInstruments = paymentInstruments;
+	}
+
+    public boolean isCreateCredentials() {
+        return createCredentials;
+    }
+
+    public void setCreateCredentials(boolean createCredentials) {
+        this.createCredentials = createCredentials;
+    }
+
     @Override
     public String toString() {
         StringBuilder builder = new StringBuilder();
-        builder.append("UserWS [ach=");
-        builder.append(ach);
         builder.append(", autoRecharge=");
         builder.append(autoRecharge);
         builder.append(", automaticPaymentType=");
         builder.append(automaticPaymentType);
-        builder.append(", balanceType=");
-        builder.append(balanceType);
         builder.append(", blacklistMatches=");
         builder.append(Arrays.toString(blacklistMatches));
         builder.append(", childIds=");
@@ -583,8 +719,6 @@ public class UserWS implements WSSecured, Serializable {
         builder.append(contact);
         builder.append(", createDatetime=");
         builder.append(createDatetime);
-        builder.append(", creditCard=");
-        builder.append(creditCard);
         builder.append(", creditLimit=");
         builder.append(creditLimit);
         builder.append(", currencyId=");
@@ -619,8 +753,6 @@ public class UserWS implements WSSecured, Serializable {
         builder.append(lastLogin);
         builder.append(", lastStatusChange=");
         builder.append(lastStatusChange);
-        builder.append(", mainOrderId=");
-        builder.append(mainOrderId);
         builder.append(", mainRoleId=");
         builder.append(mainRoleId);
         builder.append(", nextInvoiceDate=");
@@ -633,8 +765,6 @@ public class UserWS implements WSSecured, Serializable {
         builder.append(parentId);
         builder.append(", partnerId=");
         builder.append(partnerId);
-        builder.append(", password=");
-        builder.append(password);
         builder.append(", role=");
         builder.append(role);
         builder.append(", status=");
@@ -647,9 +777,19 @@ public class UserWS implements WSSecured, Serializable {
         builder.append(userIdBlacklisted);
         builder.append(", userName=");
         builder.append(userName);
-        builder.append("]");
+        builder.append(", accountTypeId=");
+        builder.append(accountTypeId);
+        builder.append(", invoiceDesign=");
+        builder.append(invoiceDesign);
+        builder.append(", userCodeLink=");
+        builder.append(userCodeLink);
+        builder.append(", isAccountLocked=");
+        builder.append(isAccountLocked);
+        builder.append(", accountExpired=");
+        builder.append(accountExpired);
+        builder.append(", accountDisabledDate=");
+        builder.append(accountDisabledDate);
+        builder.append(']');
         return builder.toString();
     }
-   
-
 }

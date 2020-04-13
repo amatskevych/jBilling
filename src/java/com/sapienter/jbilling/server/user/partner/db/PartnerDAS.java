@@ -20,8 +20,37 @@
 
 package com.sapienter.jbilling.server.user.partner.db;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.util.db.AbstractDAS;
+import org.apache.log4j.Logger;
+import org.hibernate.Query;
 
-public class PartnerDAS extends AbstractDAS<Partner> {
+import java.util.List;
+
+public class PartnerDAS extends AbstractDAS<PartnerDTO> {
+
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PartnerDAS.class));
+
+    private static final String FIND_CHILD_LIST_SQL =
+            "SELECT u.id " +
+                    "FROM UserDTO u " +
+                    "WHERE u.deleted=0 and u.partner.parent.id = :parentID";
+    private static final String FIND_PARTNERS_BY_COMPANY =
+            "SELECT u.partner " +
+                    "FROM UserDTO u " +
+                    "WHERE u.deleted=0 " +
+                    "and u.company.id = :companyID";
+
+    public List<Integer> findChildList(Integer parentID) {
+        Query query = getSession().createQuery(FIND_CHILD_LIST_SQL);
+        query.setParameter("parentID", parentID);
+        return query.list();
+    }
+
+    public List<PartnerDTO> findPartnersByCompany(Integer entityID) {
+        Query query = getSession().createQuery(FIND_PARTNERS_BY_COMPANY)
+                .setParameter("companyID", entityID);
+        return query.list();
+    }
 
 }

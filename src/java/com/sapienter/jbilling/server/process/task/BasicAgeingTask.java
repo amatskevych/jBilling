@@ -20,48 +20,55 @@
 
 package com.sapienter.jbilling.server.process.task;
 
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
+
+import org.apache.commons.httpclient.HttpClient;
+import org.apache.commons.httpclient.NameValuePair;
+import org.apache.commons.httpclient.methods.PostMethod;
+import org.apache.commons.lang.time.DateUtils;
+import org.apache.log4j.Logger;
+import org.hibernate.ScrollableResults;
+import org.springframework.dao.EmptyResultDataAccessException;
+
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.invoice.InvoiceBL;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDAS;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
-import com.sapienter.jbilling.server.notification.INotificationSessionBean;
-import com.sapienter.jbilling.server.notification.MessageDTO;
-import com.sapienter.jbilling.server.notification.NotificationBL;
-import com.sapienter.jbilling.server.notification.NotificationNotFoundException;
 import com.sapienter.jbilling.server.order.OrderBL;
+import com.sapienter.jbilling.server.order.OrderStatusFlag;
 import com.sapienter.jbilling.server.order.db.OrderDAS;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
+import com.sapienter.jbilling.server.order.db.OrderStatusDAS;
 import com.sapienter.jbilling.server.pluggableTask.PluggableTask;
-import com.sapienter.jbilling.server.process.AgeingDTOEx;
-import com.sapienter.jbilling.server.process.db.AgeingEntityStepDAS;
 import com.sapienter.jbilling.server.process.db.AgeingEntityStepDTO;
 import com.sapienter.jbilling.server.process.event.NewUserStatusEvent;
 import com.sapienter.jbilling.server.system.event.EventManager;
-import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.user.UserDTOEx;
 import com.sapienter.jbilling.server.user.db.UserDAS;
 import com.sapienter.jbilling.server.user.db.UserDTO;
 import com.sapienter.jbilling.server.user.db.UserStatusDAS;
 import com.sapienter.jbilling.server.user.db.UserStatusDTO;
+import com.sapienter.jbilling.server.user.event.AgeingNotificationEvent;
 import com.sapienter.jbilling.server.util.Constants;
-import com.sapienter.jbilling.server.util.Context;
 import com.sapienter.jbilling.server.util.PreferenceBL;
 import com.sapienter.jbilling.server.util.audit.EventLogger;
+
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.NameValuePair;
 import org.apache.commons.httpclient.methods.PostMethod;
+import org.apache.commons.lang.time.DateUtils;
 import org.apache.log4j.Logger;
+import org.hibernate.ScrollableResults;
 import org.springframework.dao.EmptyResultDataAccessException;
 
-import javax.naming.NamingException;
-import javax.sql.rowset.CachedRowSet;
 import java.sql.SQLException;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.GregorianCalendar;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * BasicAgeingTask
@@ -71,110 +78,88 @@ import java.util.Set;
  */
 public class BasicAgeingTask extends PluggableTask implements IAgeingTask {
 
-    private static final Logger LOG = Logger.getLogger(BasicAgeingTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(BasicAgeingTask.class));
     private final EventLogger eLogger = EventLogger.getInstance();
 
-    private static Calendar calendar = GregorianCalendar.getInstance();
-    static {
-        calendar.clear();
-    }
-
-    private Map<Integer, Integer> gracePeriodCache = new HashMap<Integer, Integer>();
-
-    protected int getGracePeriod(Integer entityId) {
-        if (!gracePeriodCache.containsKey(entityId)) {
-            PreferenceBL preference = new PreferenceBL();
-            preference.set(entityId, Constants.PREFERENCE_GRACE_PERIOD);
-            gracePeriodCache.put(entityId, preference.getInt());
-        }
-
-        return gracePeriodCache.get(entityId);
+    /**
+     *  Get all users that are about to be aged
+     *
+     * @param entityId
+     * @param ageingDate
+     * @return all users eligible for ageing
+     */
+    public ScrollableResults findUsersToAge(Integer entityId, Date ageingDate) {
+        LOG.debug("Reviewing users for entity " + entityId + " ...");
+        return new UserDAS().findUserIdsWithUnpaidInvoicesForAgeing(entityId);
     }
 
     /**
-     * Review all users for the given day, and age those that have outstanding invoices over
+     * Review user for the given day, and age if it has an outstanding invoices over
      * the set number of days for an ageing step.
      *
      * @param steps ageing steps
      * @param today today's date
      * @param executorId executor id
      */
-    public void reviewAllUsers(Integer entityId, Set<AgeingEntityStepDTO> steps, Date today, Integer executorId) {
-        LOG.debug("Reviewing users for entity " + entityId + " ...");
+    public List<InvoiceDTO> reviewUser(Integer entityId, Set<AgeingEntityStepDTO> steps, Integer userId, Date today, Integer executorId) {
+        LOG.debug("Reviewing user for ageing " + userId + " ...");
 
-        // go over all the users already in the ageing system
-        for (UserDTO user : new UserDAS().findAgeing(entityId)) {
-            ageUser(steps, user, today, executorId);
+        UserDAS userDas = new UserDAS();
+        UserDTO user = userDas.find(userId);
+
+        InvoiceDAS invoiceDas = new InvoiceDAS();
+        LOG.debug("Reviewing invoices for user " + user.getId());
+
+        List<InvoiceDTO> userOverdueInvoices = new ArrayList<InvoiceDTO>();
+        for (InvoiceDTO invoice : invoiceDas.findProccesableByUser(user)) {
+        	if (!invoice.getDueDate().after(today)) {
+	            AgeingEntityStepDTO ageingEntityStepDTO = ageUser(steps, user, invoice, today, executorId);
+	            if (ageingEntityStepDTO != null) {
+	                userOverdueInvoices.add(invoice);
+	            }
+        	}
         }
-
-        // go over the active users with payable invoices
-        try {
-            UserDAS userDas = new UserDAS();
-            InvoiceDAS invoiceDas = new InvoiceDAS();
-
-            CachedRowSet users = new UserBL().findActiveWithOpenInvoices(entityId);
-
-            while (users.next()) {
-                Integer userId = users.getInt(1);
-                UserDTO user = userDas.find(userId);
-                int gracePeriod = getGracePeriod(entityId);
-
-                LOG.debug("Reviewing invoices for user " + user.getId()
-                          + " using a grace period of " + gracePeriod + " days.");
-
-                for (InvoiceDTO invoice : invoiceDas.findProccesableByUser(user)) {
-                    if (isInvoiceOverdue(invoice, user, gracePeriod, today)) {
-                        ageUser(steps, user, today, executorId);
-                        break;
-                    }
-                }
-            }
-
-        } catch (SQLException e) {
-            LOG.error("Failed to fetch users with payable invoices.", e);
-
-        } catch (NamingException e) {
-            LOG.error("Exception fetching users with payable invoices.", e);
-        }
+        return userOverdueInvoices;
     }
 
     /**
-     * Moves a user one step forward in the ageing process (move from active -> suspended etc.). The
-     * user will only be moved if they have spent long enough in their present status.
+     * Moves a user one step forward in the ageing process.The
+     * user will only be moved if enough days have passed from their overdue invoice due date
+     * Return the next ageing step
      *
      * @param steps ageing steps
      * @param user user to age
      * @param today today's date
      * @return the resulting ageing step for the user after ageing
      */
-    public AgeingEntityStepDTO ageUser(Set<AgeingEntityStepDTO> steps, UserDTO user, Date today, Integer executorId) {
-        LOG.debug("Ageing user " + user.getId());
-
-        Integer currentStatusId = user.getStatus().getId();
+    public AgeingEntityStepDTO ageUser(Set<AgeingEntityStepDTO> steps, UserDTO user, InvoiceDTO unpaidInvoice, Date today, Integer executorId) {
+        if (!InvoiceBL.isInvoiceBalanceEnoughToAge(unpaidInvoice, user.getEntity().getId())) {
+            LOG.debug("Wants to age user: " + user.getId() + " but invoice balance is not enough to age: " + unpaidInvoice.getId());
+            return null;
+        }
+    	
+        LOG.debug("Ageing user " + user.getId() + " for unpaid invoice: " + unpaidInvoice.getId());
         UserStatusDTO nextStatus = null;
         AgeingEntityStepDTO ageingStep = null;
 
-        if (currentStatusId.equals(UserDTOEx.STATUS_ACTIVE)) {
-            // send welcome message (initial step after active).
-            nextStatus = getNextAgeingStep(steps, UserDTOEx.STATUS_ACTIVE);
+        List<AgeingEntityStepDTO> ageingSteps = new LinkedList<AgeingEntityStepDTO>(steps);
+        Date todayTruncated = Util.truncateDate(today);
 
-        } else {
-            // user already in the ageing process
-            ageingStep = new AgeingEntityStepDAS().findStep(user.getEntity().getId(), currentStatusId);
+        for (AgeingEntityStepDTO step : ageingSteps) {
+            // run this step
 
-            if (ageingStep != null) {
-                // determine the next ageing step
-                if (isAgeingRequired(user, ageingStep, today)) {
-                    nextStatus = getNextAgeingStep(steps, currentStatusId);
-                    LOG.debug("User " + user.getId() + " needs to be aged to '" + getStatusDescription(nextStatus) + "'");
+            if (isAgeingRequired(user, unpaidInvoice, step.getDays(), todayTruncated)) {
+                // possible multiple runs at a day, check status
+                if (!isUserAlreadyPassAgeingStep(user.getStatus(), step, ageingSteps)) {
+                    ageingStep = step;
+                    nextStatus = step.getUserStatus();
+                    LOG.debug("User: " + user.getId() + " needs to be aged to '" + getStatusDescription(nextStatus) + "'");
+
+                    //only 1 step per day
+                    break;
                 }
-
-            } else {
-                // User is in a non-existent ageing status... Either the status was removed or
-                // the data is bad. As a workaround, just move to the next status.
-                nextStatus =  getNextAgeingStep(steps, currentStatusId);
-                LOG.warn("User " + user.getId() + " is in an invalid ageing step. Moving to '" + getStatusDescription(nextStatus) + "'");
             }
+        
         }
 
         // set status
@@ -182,7 +167,7 @@ public class BasicAgeingTask extends PluggableTask implements IAgeingTask {
             setUserStatus(user, nextStatus, today, null);
 
         } else {
-            LOG.debug("Next status is null, no further ageing steps are available.");
+            LOG.debug("Next status of user " + user.getId() + "  is null, no further ageing steps are available.");
             eLogger.warning(user.getEntity().getId(),
                             user.getUserId(),
                             user.getUserId(),
@@ -195,55 +180,25 @@ public class BasicAgeingTask extends PluggableTask implements IAgeingTask {
     }
 
     /**
-     * Returns true if the given invoice is overdue.
-     *
-     * @param invoice invoice to check
-     * @param user user owning the invoice
-     * @param gracePeriod company wide grace period
-     * @param today today's date
-     * @return true if invoice is overdue, false if not
-     */
-    public boolean isInvoiceOverdue(InvoiceDTO invoice, UserDTO user, Integer gracePeriod, Date today) {
-        calendar.clear();
-        calendar.setTime(invoice.getDueDate());
-        calendar.add(Calendar.DATE, gracePeriod);
-
-        if (calendar.getTime().before(today)) {
-            LOG.debug("Invoice is overdue (due date " + invoice.getDueDate() + " + "
-                      + gracePeriod + " days grace, is before today " + today + ")");
-            return true;
-        }
-
-        LOG.debug("Invoice is NOT overdue (due date " + invoice.getDueDate() + " + "
-                  + gracePeriod + " days grace is after today " + today + ")");
-        return false;
-    }
-
-    /**
      * Returns true if the user requires ageing.
      *
      * @param user user being reviewed
-     * @param currentStep current ageing step of the user
+     * @param overdueInvoice overdue invoice initiating the ageing
+     * @param stepDays current ageing step days of the user
      * @param today today's date
      * @return true if user requires ageing, false if not
      */
-    public boolean isAgeingRequired(UserDTO user, AgeingEntityStepDTO currentStep, Date today) {
-        Date lastStatusChange = user.getLastStatusChange() != null
-                                ? user.getLastStatusChange()
-                                : user.getCreateDatetime();
+    public boolean isAgeingRequired(UserDTO user, InvoiceDTO overdueInvoice, Integer stepDays, Date today) {
 
-        calendar.clear();
-        calendar.setTime(lastStatusChange);
-        calendar.add(Calendar.DATE, currentStep.getDays());
+        Date invoiceDueDate = Util.truncateDate(overdueInvoice.getDueDate());
+        Date statusExpirationDate = DateUtils.addDays(invoiceDueDate, stepDays);
 
-        if (calendar.getTime().equals(today) || calendar.getTime().before(today)) {
-            LOG.debug("User status has expired (last change " + lastStatusChange + " + "
-                      + currentStep.getDays() + " days is before today " + today + ")");
+        if (statusExpirationDate.equals(today) || statusExpirationDate.before(today)) {
+            LOG.debug("User %s status has expired (last change %s plus %s days is before today %s)", user.getId(), invoiceDueDate, stepDays, today);
             return true;
         }
 
-        LOG.debug("User does not need to be aged (last change " + lastStatusChange + " + "
-                  + currentStep.getDays() + " days is after today " + today + ")");
+        LOG.debug("User %s does not need to be aged (last change %s plus %s days is after today %s)", user.getId(), invoiceDueDate, stepDays, today);
         return false;
     }
 
@@ -255,19 +210,19 @@ public class BasicAgeingTask extends PluggableTask implements IAgeingTask {
      * @param excludedInvoiceId invoice id to ignore when determining if the user CAN be made active
      * @param executorId executor id
      */
-    public void removeUser(UserDTO user, Integer executorId, Integer excludedInvoiceId) {
+    public void removeUser(UserDTO user, Integer excludedInvoiceId, Integer executorId) {
         Date now = new Date();
 
         // validate that the user actually needs a status change
-        if (user.getStatus().getId() != UserDTOEx.STATUS_ACTIVE) {
-            LOG.debug("User " + user.getId() + " is already active, no need to remove from ageing.");
+        if (UserDTOEx.STATUS_ACTIVE.equals(user.getStatus().getId())) {
+            LOG.debug("User %s is already active, no need to remove from ageing.", user.getId());
             return;
         }
 
         // validate that the user does not still have overdue invoices
         try {
             if (new InvoiceBL().isUserWithOverdueInvoices(user.getUserId(), now, excludedInvoiceId)) {
-                LOG.debug("User " + user.getId() + " still has overdue invoices, cannot remove from ageing.");
+                LOG.debug("User %s still has overdue invoices, cannot remove from ageing.", user.getId());
                 return;
             }
         } catch (SQLException e) {
@@ -276,7 +231,7 @@ public class BasicAgeingTask extends PluggableTask implements IAgeingTask {
         }
 
         // make the status change.
-        LOG.debug("Removing user " + user.getUserId() + " from ageing (making active).");
+        LOG.debug("Removing user %s from ageing (making active).", user.getUserId());
         UserStatusDTO status = new UserStatusDAS().find(UserDTOEx.STATUS_ACTIVE);
         setUserStatus(user, status, now, null);
     }
@@ -297,13 +252,13 @@ public class BasicAgeingTask extends PluggableTask implements IAgeingTask {
      * @param today today's date
      * @param executorId executor id
      */
-    public void setUserStatus(UserDTO user, UserStatusDTO status, Date today, Integer executorId) {
+    public boolean setUserStatus(UserDTO user, UserStatusDTO status, Date today, Integer executorId) {
         // only set status if the new "aged" status is different from the users current status
         if (status.getId() == user.getStatus().getId()) {
-            return;
+            return false;
         }
 
-        LOG.debug("Setting user " + user.getId() + " status to '" + getStatusDescription(status) + "'");
+        AgeingEntityStepDTO nextAgeingStep = status.getAgeingEntityStep();
 
         if (executorId != null) {
             // this came from the gui
@@ -326,61 +281,59 @@ public class BasicAgeingTask extends PluggableTask implements IAgeingTask {
         }
 
         // make the change
-        boolean couldLogin = user.getStatus().getCanLogin() == 1;
         UserStatusDTO oldStatus = user.getStatus();
 
         user.setUserStatus(status);
         user.setLastStatusChange(today);
 
-        // status changed to deleted, remove user
-        if (status.getId() == UserDTOEx.STATUS_DELETED) {
-            LOG.debug("Deleting user " + user.getId());
-            new UserBL(user.getId()).delete(executorId);
-            return;
-        }
-
-        // status changed from active to suspended
-        // suspend customer orders
-        if (couldLogin && status.getCanLogin() == 0) {
-            LOG.debug("User " + user.getId() + " cannot log-in to the system. Suspending active orders.");
-            OrderBL orderBL = new OrderBL();
-            List<OrderDTO> orders = new OrderDAS().findByUser_Status(user.getId(), Constants.ORDER_STATUS_ACTIVE);
-
-            for (OrderDTO order : orders) {
-                orderBL.set(order);
-                orderBL.setStatus(executorId, Constants.ORDER_STATUS_SUSPENDED_AGEING);
-            }
-        }
-
-        // status changed from suspended to active
-        // re-active suspended customer orders
-        if (!couldLogin && status.getCanLogin() == 1) {
-            LOG.debug("User " + user.getId() + " can now log-in to the system. Activating previously suspended orders.");
-            OrderBL orderBL = new OrderBL();
-            List<OrderDTO> orders = new OrderDAS().findByUser_Status(user.getId(), Constants.ORDER_STATUS_SUSPENDED_AGEING);
-
-            for (OrderDTO order : orders) {
-                orderBL.set(order);
-                orderBL.setStatus(executorId, Constants.ORDER_STATUS_ACTIVE);
-            }
-        }
-
         // perform callbacks and notifications
         performAgeingCallback(user, oldStatus, status);
         sendAgeingNotification(user, oldStatus, status);
 
+        // status changed from active to suspended
+        // suspend customer orders
+        if (nextAgeingStep != null && nextAgeingStep.getSuspend() == 1) {
+            LOG.debug("Suspending orders for user " + user.getUserId());;
+
+            OrderBL orderBL = new OrderBL();
+            ScrollableResults orders = new OrderDAS().findByUser_Status(user.getId(), OrderStatusFlag.INVOICE);
+
+            while (orders.next()) {
+                OrderDTO order = (OrderDTO) orders.get()[0];
+                orderBL.set(order);
+                orderBL.setStatus(executorId, new OrderStatusDAS().getDefaultOrderStatusId(OrderStatusFlag.SUSPENDED_AGEING, order.getUser().getCompany().getId()));
+            }
+
+            orders.close();
+        } else {
+            // status changed from suspended to active
+            // re-active suspended customer orders
+            if (nextAgeingStep == null && status.getId() == UserDTOEx.STATUS_ACTIVE
+                    && oldStatus.getAgeingEntityStep() != null && oldStatus.getAgeingEntityStep().getSuspend() == 1) {
+                LOG.debug("Activating orders for user " + user.getUserId());
+                // user out of ageing, activate suspended orders
+                OrderBL orderBL = new OrderBL();
+                ScrollableResults orders = new OrderDAS().findByUser_Status(user.getId(), OrderStatusFlag.SUSPENDED_AGEING);
+
+                while (orders.next()) {
+                    OrderDTO order = (OrderDTO) orders.get()[0];
+                    orderBL.set(order);
+                    orderBL.setStatus(executorId, new OrderStatusDAS().getDefaultOrderStatusId(OrderStatusFlag.INVOICE, order.getUser().getCompany().getId()));
+                }
+
+                orders.close();
+            }
+        }
         // emit NewUserStatusEvent
         NewUserStatusEvent event = new NewUserStatusEvent(user.getCompany().getId(), user.getId(), oldStatus.getId(), status.getId());
         EventManager.process(event);
+        return true;
     }
-
 
     protected boolean performAgeingCallback(UserDTO user, UserStatusDTO oldStatus, UserStatusDTO newStatus) {
         String url = null;
         try {
-            PreferenceBL pref = new PreferenceBL();
-            pref.set(user.getEntity().getId(), Constants.PREFERENCE_URL_CALLBACK);
-            url = pref.getString();
+            url = PreferenceBL.getPreferenceValue(user.getEntity().getId(), Constants.PREFERENCE_URL_CALLBACK);
 
         } catch (EmptyResultDataAccessException e) {
             /* ignore, no callback preference configured */
@@ -388,7 +341,7 @@ public class BasicAgeingTask extends PluggableTask implements IAgeingTask {
 
         if (url != null && url.length() > 0) {
             try {
-                LOG.debug("Performing ageing HTTP callback for URL: " + url);
+                LOG.debug("Performing ageing HTTP callback for URL: %s", url);
 
                 // cook the parameters to be sent
                 NameValuePair[] data = new NameValuePair[6];
@@ -415,39 +368,40 @@ public class BasicAgeingTask extends PluggableTask implements IAgeingTask {
     }
 
     protected boolean sendAgeingNotification(UserDTO user, UserStatusDTO oldStatus, UserStatusDTO newStatus) {
-        try {
-            MessageDTO message = new NotificationBL().getAgeingMessage(user.getEntity().getId(),
-                                                               user.getLanguage().getId(),
-                                                               newStatus.getId(),
-                                                               user.getId());
 
-            INotificationSessionBean notification = (INotificationSessionBean) Context.getBean(Context.Name.NOTIFICATION_SESSION);
-            notification.notify(user, message);
+        AgeingEntityStepDTO nextStep = newStatus.getAgeingEntityStep();
 
-        } catch (NotificationNotFoundException e) {
-            LOG.warn("Failed to send ageing notification. Entity " + user.getEntity().getId()
-                     + " does not have an ageing message configured for status '" + getStatusDescription(newStatus) + "'.");
-            return false;
-        }
-        return true;
-    }
+        if (nextStep == null || nextStep.getSendNotification() == 1) {
+            LOG.debug("Sending notification to user " + user.getUserId() + " during ageing/reactivating");
+            // process the ageing notification event to find and send the notification message for the ageing step
+            try {
+                EventManager.process(new AgeingNotificationEvent(user.getEntity().getId(),
+                        user.getLanguage().getId(),
+                        (nextStep != null && newStatus != null) ? newStatus.getId() : null,
+                        user.getId()));
 
-    /**
-     * Get the status for the next step in the ageing process, based on the users
-     * current status.
-     *
-     * @param steps configured ageing steps
-     * @param currentStatusId the current user status
-     */
-    public UserStatusDTO getNextAgeingStep(Set<AgeingEntityStepDTO> steps, Integer currentStatusId) {
-        for (AgeingEntityStepDTO step : steps) {
-            Integer stepStatusId = step.getUserStatus().getId();
-            if (stepStatusId.compareTo(currentStatusId) > 0) {
-                return step.getUserStatus();
+            } catch (Exception exception) {
+                LOG.warn("Cannot send notification on ageing: " + user.getId());
             }
         }
 
-        return null;
+        return true;
+    }
+
+    private boolean isUserAlreadyPassAgeingStep(UserStatusDTO userStatus, AgeingEntityStepDTO step, List<AgeingEntityStepDTO> orderedSteps) {
+
+        AgeingEntityStepDTO currentStep = userStatus.getAgeingEntityStep();
+        if (step == null && currentStep == null) {
+            return true; // same status
+        } else if (currentStep == null) { // now user is active and does not take part in ageing process
+            return false;
+        } else if (step == null) {
+            return false; //now user ageing, but should be active
+        } else {
+            int currentIndex = orderedSteps.indexOf(currentStep);
+            int nextIndex = orderedSteps.indexOf(step);
+            return nextIndex <= currentIndex;
+        }
     }
 
     /**
@@ -458,7 +412,8 @@ public class BasicAgeingTask extends PluggableTask implements IAgeingTask {
      */
     private String getStatusDescription(UserStatusDTO status) {
         if (status != null) {
-            return status.getDescription();
+            AgeingEntityStepDTO step = status.getAgeingEntityStep();
+            return step != null ? step.getDescription() : null;
         }
         return null;
     }

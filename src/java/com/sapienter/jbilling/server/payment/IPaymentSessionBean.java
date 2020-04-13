@@ -29,6 +29,7 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.Date;
+import java.util.List;
 
 /**
  *
@@ -75,10 +76,10 @@ public interface IPaymentSessionBean {
      * processor and updates the invoice if successfull.
      * 
      * @param dto
-     * @param invoice
+     * @param invoiceId
      * @throws SessionInternalError
      */
-    public Integer processAndUpdateInvoice(PaymentDTOEx dto, InvoiceDTO invoice)
+    public Integer processAndUpdateInvoice(PaymentDTOEx dto, Integer invoiceId, Integer executorUserId)
             throws SessionInternalError;
     
     /**
@@ -90,7 +91,7 @@ public interface IPaymentSessionBean {
      * @throws SessionInternalError
      */
     public Integer processAndUpdateInvoice(PaymentDTOEx dto, Integer invoiceId,
-            Integer entityId) throws SessionInternalError;
+            Integer entityId, Integer executorUserId) throws SessionInternalError;
 
     /**
      * This is called from the client to apply an existing payment to 
@@ -117,7 +118,7 @@ public interface IPaymentSessionBean {
      * Id does suport invoiceId = null because it is possible to get a payment
      * that is not paying a specific invoice, a deposit for prepaid models.
      */
-    public Integer applyPayment(PaymentDTOEx payment, Integer invoiceId)  
+    public Integer applyPayment(PaymentDTOEx payment, Integer invoiceId, Integer executorUserId)  
             throws SessionInternalError;
     
     public PaymentDTOEx getPayment(Integer id, Integer languageId) 
@@ -126,12 +127,18 @@ public interface IPaymentSessionBean {
     public boolean isMethodAccepted(Integer entityId, Integer paymentMethodId) 
             throws SessionInternalError;
     
-    public Integer processPayout(PaymentDTOEx payment, Date start, Date end, 
-            Integer partnerId, Boolean process) throws SessionInternalError;
-
     public Boolean processPaypalPayment(Integer invoiceId, String entityEmail,
             BigDecimal amount, String currency, Integer paramUserId, 
             String userEmail) throws SessionInternalError;
+
+    /**
+     *  Do a payment retry based on whether the user status allows payment retries
+     *  Tries to automatically pay all unpaid invoices
+     *
+     * @param userId
+     * @throws SessionInternalError
+     */
+    public void doPaymentRetry(Integer userId, List<InvoiceDTO> overdueInvoices) throws SessionInternalError;
     
     /** 
      * Clients with the right priviliges can update payments with result
@@ -153,4 +160,12 @@ public interface IPaymentSessionBean {
      */
     public int processCsvBlacklist(String filePath, boolean replace, 
             Integer entityId) throws CsvProcessor.ParseException;
+
+    /**
+     * Saves legacy payment information on jBilling related tables.
+     *
+     * @param paymentDTOEx The instance of payment information.
+     * @throws SessionInternalError
+     */
+    public Integer saveLegacyPayment(PaymentDTOEx paymentDTOEx) throws SessionInternalError;
 }

@@ -44,6 +44,10 @@ class FilterSet implements Serializable {
     String name
     Integer userId
 
+    static constraints = {
+        name(blank: false, unique: true)
+    }
+
     public String toString ( ) {
         return "FilterSet{id=${id}, name=${name}, userId=${userId}, filters=${filters?.size()}}"
     }

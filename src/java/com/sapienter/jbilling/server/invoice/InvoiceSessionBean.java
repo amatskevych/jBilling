@@ -20,17 +20,16 @@
 
 package com.sapienter.jbilling.server.invoice;
 
-import java.sql.SQLException;
 import java.util.Date;
-import java.util.Iterator;
 import java.util.ResourceBundle;
 
+import com.sapienter.jbilling.server.user.db.UserDTO;
 import org.apache.log4j.Logger;
 
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.dao.EmptyResultDataAccessException;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDAS;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
@@ -40,14 +39,9 @@ import com.sapienter.jbilling.server.order.db.OrderProcessDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentInvoiceMapDTO;
 import com.sapienter.jbilling.server.pluggableTask.PaperInvoiceNotificationTask;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskBL;
-import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.process.BillingProcessBL;
 import com.sapienter.jbilling.server.user.UserBL;
-import com.sapienter.jbilling.server.user.db.CompanyDAS;
-import com.sapienter.jbilling.server.user.db.CompanyDTO;
 import com.sapienter.jbilling.server.util.Constants;
-import com.sapienter.jbilling.server.util.Context;
-import com.sapienter.jbilling.server.util.PreferenceBL;
 import java.util.Set;
 
 /**
@@ -60,8 +54,8 @@ import java.util.Set;
 @Transactional( propagation = Propagation.REQUIRED )
 public class InvoiceSessionBean implements IInvoiceSessionBean {
 
-    private static final Logger LOG = Logger.getLogger(
-            InvoiceSessionBean.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(
+            InvoiceSessionBean.class));
 
     public InvoiceDTO getInvoice(Integer invoiceId) throws SessionInternalError {
         InvoiceDTO dto =  new InvoiceDAS().findNow(invoiceId);
@@ -69,15 +63,16 @@ public class InvoiceSessionBean implements IInvoiceSessionBean {
         return dto;
     }
 
-    public void create(Integer entityId, Integer userId,
-            NewInvoiceDTO newInvoice)
+    public InvoiceDTO create(Integer entityId, Integer userId,
+            NewInvoiceContext newInvoice)
             throws SessionInternalError {
         try {
             InvoiceBL invoice = new InvoiceBL();
             UserBL user = new UserBL();
-            if (user.getEntityId(userId).equals(entityId)) {
-                invoice.create(userId, newInvoice, null);
+            if (user.getEntityId(userId).equals(entityId) || user.getParentId(entityId).equals(user.getEntityId(userId))) {
+                invoice.create(userId, newInvoice, null, null);
                 invoice.createLines(newInvoice);
+	            return invoice.getDTO();
             } else {
                 throw new SessionInternalError("User " + userId + " doesn't " +
                         "belong to entity " + entityId);
@@ -97,7 +92,7 @@ public class InvoiceSessionBean implements IInvoiceSessionBean {
             String ret = bundle.getString("invoice.file.name") + '-' +
                     invoice.getEntity().getPublicNumber().replaceAll(
                     "[\\\\~!@#\\$%\\^&\\*\\(\\)\\+`=\\]\\[';/\\.,<>\\?:\"{}\\|]", "_");
-            LOG.debug("name = " + ret);
+            LOG.debug("name = %s", ret);
             return ret;
         } catch (Exception e) {
             throw new SessionInternalError(e);
@@ -140,20 +135,19 @@ public class InvoiceSessionBean implements IInvoiceSessionBean {
             if (invoiceId == null) {
                 return null;
             }
-            NotificationBL notification = new NotificationBL();
-            InvoiceBL invoiceBl = new InvoiceBL(invoiceId);
-            Integer entityId = invoiceBl.getEntity().getBaseUser().
-                    getEntity().getId();
+
+            NotificationBL notificationBL = new NotificationBL();
+            InvoiceBL invoiceBL = new InvoiceBL(invoiceId);
+            UserDTO user = invoiceBL.getEntity().getBaseUser();
+            Integer entityId = user.getEntity().getId();
+
             // the language doesn't matter when getting a paper invoice
-            MessageDTO message = notification.getInvoicePaperMessage(
-                    entityId, null, invoiceBl.getEntity().getBaseUser().
-                    getLanguageIdField(), invoiceBl.getEntity());
-            PaperInvoiceNotificationTask task =
-                    new PaperInvoiceNotificationTask();
+            MessageDTO message = notificationBL.getInvoicePaperMessage(entityId, null, user.getLanguageIdField(), invoiceBL.getEntity());
+            PaperInvoiceNotificationTask task = new PaperInvoiceNotificationTask();
             PluggableTaskBL taskBL = new PluggableTaskBL();
             taskBL.set(entityId, Constants.PLUGGABLE_TASK_T_PAPER_INVOICE);
             task.initializeParamters(taskBL.getDTO());
-            return task.getPDF(invoiceBl.getEntity().getBaseUser(), message);
+            return task.getPDF(user, message);
         } catch (Exception e) {
             throw new SessionInternalError(e);
         }
@@ -233,7 +227,9 @@ public class InvoiceSessionBean implements IInvoiceSessionBean {
 
     public Set<InvoiceDTO> getAllInvoices(Integer userId) {
         Set<InvoiceDTO>  ret = new UserBL(userId).getEntity().getInvoices();
-        ret.iterator().next().getDueDate(); // touch
+        if (ret.size() > 0 ) {
+            ret.iterator().next().getDueDate(); // touch
+        }
         return ret;
     }
 }    

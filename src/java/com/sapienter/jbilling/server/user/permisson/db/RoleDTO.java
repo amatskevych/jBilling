@@ -20,33 +20,18 @@
 package com.sapienter.jbilling.server.user.permisson.db;
 
 
-import java.io.Serializable;
-import java.util.HashSet;
-import java.util.Set;
-
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.JoinTable;
-import javax.persistence.ManyToMany;
-import javax.persistence.Table;
-import javax.persistence.TableGenerator;
-import javax.persistence.Transient;
-
 import com.sapienter.jbilling.client.authentication.InitializingGrantedAuthority;
-import org.hibernate.annotations.Cache;
-import org.hibernate.annotations.CacheConcurrencyStrategy;
-import org.hibernate.annotations.OrderBy;
-
+import com.sapienter.jbilling.server.user.db.CompanyDTO;
 import com.sapienter.jbilling.server.user.db.UserDTO;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.db.AbstractDescription;
-import org.springframework.security.core.GrantedAuthority;
+import org.hibernate.annotations.OrderBy;
+
+import javax.persistence.*;
+
+import java.io.Serializable;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "role")
@@ -64,8 +49,9 @@ public class RoleDTO extends AbstractDescription implements Serializable, Initia
     public static final Integer AUTHORITY_LANGUAGE_ID = 1; // authority values in english
 
     private int id;
+    private CompanyDTO company;
+    private Integer roleTypeId;
     private Set<UserDTO> baseUsers = new HashSet<UserDTO>(0);
-    private Set<PermissionDTO> permissions = new HashSet<PermissionDTO>(0);
 
     private String authority;
 
@@ -76,10 +62,11 @@ public class RoleDTO extends AbstractDescription implements Serializable, Initia
         this.id = id;
     }
 
-    public RoleDTO(int id, Set<UserDTO> baseUsers, Set<PermissionDTO> permissions) {
+    public RoleDTO(int id, CompanyDTO company, int roleTypeId, Set<UserDTO> baseUsers) {
         this.id = id;
+        this.company = company;
+        this.roleTypeId = roleTypeId;
         this.baseUsers = baseUsers;
-        this.permissions = permissions;
     }
 
     @Id
@@ -92,8 +79,27 @@ public class RoleDTO extends AbstractDescription implements Serializable, Initia
     public void setId(int id) {
         this.id = id;
     }
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "entity_id")
+    public CompanyDTO getCompany() {
+		return company;
+	}
 
-    @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+	public void setCompany(CompanyDTO company) {
+		this.company = company;
+	}
+
+	@Column(name = "role_type_id", length = 10)
+	public Integer getRoleTypeId() {
+		return roleTypeId;
+	}
+	
+	public void setRoleTypeId(Integer roleTypeId) {
+		this.roleTypeId = roleTypeId;
+	}
+
+	@ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JoinTable(name = "user_role_map",
                joinColumns = {@JoinColumn(name = "role_id", updatable = false)},
                inverseJoinColumns = {@JoinColumn(name = "user_id", updatable = false)}
@@ -104,20 +110,6 @@ public class RoleDTO extends AbstractDescription implements Serializable, Initia
 
     public void setBaseUsers(Set<UserDTO> baseUsers) {
         this.baseUsers = baseUsers;
-    }
-
-    @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    @JoinTable(name = "permission_role_map",
-               joinColumns = {@JoinColumn(name = "role_id", updatable = false)},
-               inverseJoinColumns = {@JoinColumn(name = "permission_id", updatable = false)}
-    )
-    @OrderBy(clause = "permission_id")
-    public Set<PermissionDTO> getPermissions() {
-        return this.permissions;
-    }
-
-    public void setPermissions(Set<PermissionDTO> permissions) {
-        this.permissions = permissions;
     }
 
     @Transient
@@ -135,7 +127,7 @@ public class RoleDTO extends AbstractDescription implements Serializable, Initia
      */
     public void initializeAuthority() {
         String title = getTitle(AUTHORITY_LANGUAGE_ID);
-        if (title != null)
+        if (title != null && !title.equals(""))
             authority = ROLE_AUTHORITY_PREFIX + title.toUpperCase().trim().replaceAll(" ", "_");
     }
 
@@ -158,6 +150,7 @@ public class RoleDTO extends AbstractDescription implements Serializable, Initia
     public String toString() {
         return getAuthority();
     }
+
 }
 
 

@@ -20,20 +20,16 @@
 
 package com.sapienter.jbilling.server.process;
 
-import com.sapienter.jbilling.common.SessionInternalError;
+import com.sapienter.jbilling.common.FormatLogger;
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.joda.time.DateMidnight;
-
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.Reader;
-import java.text.DateFormat;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
@@ -47,9 +43,9 @@ import java.util.List;
  * @since 29/04/11
  */
 public class BusinessDays {
-    private static final Logger LOG = Logger.getLogger(BusinessDays.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(BusinessDays.class));
 
-    private static final DateFormat DEFAULT_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
+    private static final DateTimeFormatter DEFAULT_DATE_FORMAT = DateTimeFormat.forPattern("yyyy-MM-dd");
 
     private List<Date> holidays = new ArrayList<Date>();
     private Calendar start = GregorianCalendar.getInstance();
@@ -66,7 +62,7 @@ public class BusinessDays {
         loadHolidayFile(holidayFile);
     }
 
-    public BusinessDays(File holidayFile, DateFormat dateformat) {
+    public BusinessDays(File holidayFile, DateTimeFormatter dateformat) {
         loadHolidayFile(holidayFile, dateformat);
     }
 
@@ -89,7 +85,7 @@ public class BusinessDays {
      * @param file files to load
      * @param dateFormat date format of dates
      */
-    public void loadHolidayFile(File file, DateFormat dateFormat) {
+    public void loadHolidayFile(File file, DateTimeFormatter dateFormat) {
         holidays.clear();
 
         if (file != null && file.exists()) {
@@ -102,9 +98,9 @@ public class BusinessDays {
                 while ((line = in.readLine()) != null) {
                     if (StringUtils.isNotBlank(line)) {
                         try {
-                            Date holiday = dateFormat.parse(line);
+                            Date holiday = dateFormat.parseDateTime(line).toDate();
                             holidays.add(holiday);
-                        } catch (ParseException e) {
+                        } catch (IllegalArgumentException e) {
                             LOG.warn("Invalid holiday date, or wrong date format - ignoring entry '" + line + "'");
                         }
                     }

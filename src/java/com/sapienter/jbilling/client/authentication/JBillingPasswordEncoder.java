@@ -1,67 +1,124 @@
 /*
- jBilling - The Enterprise Open Source Billing System
- Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
-
- This file is part of jbilling.
-
- jbilling is free software: you can redistribute it and/or modify
- it under the terms of the GNU Affero General Public License as published by
- the Free Software Foundation, either version 3 of the License, or
- (at your option) any later version.
-
- jbilling is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU Affero General Public License for more details.
-
- You should have received a copy of the GNU Affero General Public License
- along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+ * JBILLING CONFIDENTIAL
+ * _____________________
+ *
+ * [2003] - [2012] Enterprise jBilling Software Ltd.
+ * All Rights Reserved.
+ *
+ * NOTICE:  All information contained herein is, and remains
+ * the property of Enterprise jBilling Software.
+ * The intellectual and technical concepts contained
+ * herein are proprietary to Enterprise jBilling Software
+ * and are protected by trade secret or copyright law.
+ * Dissemination of this information or reproduction of this material
+ * is strictly forbidden.
  */
 
 package com.sapienter.jbilling.client.authentication;
 
-import com.sapienter.jbilling.common.Constants;
-import com.sapienter.jbilling.common.JBCrypto;
 import org.springframework.dao.DataAccessException;
 import org.springframework.security.authentication.encoding.PasswordEncoder;
+
+import com.sapienter.jbilling.server.util.Constants;
+import com.sapienter.jbilling.server.security.JBCrypto;
+import com.sapienter.jbilling.common.Util;
 
 /**
  * Implementation of the Spring Security {@link PasswordEncoder} using jBilling's own
  * cryptology algorithm.
  *
- * @author Brian Cowdery
- * @since 07-10-2010
+ * @author Bryan Cowdery
+ * @author Khurram M Cheema
+ * @author Vladimir Carevski
+ *
+ * @since 17-06-2014
+ * @version 4.0
  */
 public class JBillingPasswordEncoder implements PasswordEncoder {
 
-    public JBillingPasswordEncoder() {
-    }
+	private AuthenticationUserService userService;
 
-    /**
-     * Encodes a password using jBillings own cryptology algorithm. This implementation does
-     * not support the use of a salt source. Given salt values will be ignored and will not
-     * change the outcome of the encoded password.
-     *
-     * @param password password to encode
-     * @param saltSource not supported
-     * @return encoded password
-     * @throws DataAccessException
-     */
-    public String encodePassword(String password, Object saltSource) throws DataAccessException {
-        JBCrypto cipher = JBCrypto.getPasswordCrypto(Constants.TYPE_ROOT);
-        return cipher.encrypt(password);
-    }
+	public JBillingPasswordEncoder() {
+	}
 
-    /**
-     * Returns true if the 2 given encoded passwords match.
-     *
-     * @param encPass encoded password from stored user
-     * @param rawPass plain-text password from authentication form
-     * @param saltSource not supported
-     * @return true if passwords match, false if not
-     * @throws DataAccessException
-     */
-    public boolean isPasswordValid(String encPass, String rawPass, Object saltSource) throws DataAccessException {        
-        return encPass.equals(encodePassword(rawPass, saltSource));
-    }
+	/**
+	 * Encodes a password using jBillings own cryptology algorithm. This implementation may
+	 * use of a random secure salt value according to configurations of used algorithm.
+	 * Given companyUserDetails values will be used to calculated right digesting algorithm.
+	 *
+	 * @param password password to encode
+	 * @param companyUserDetails company user details
+	 * @return encoded password
+	 * @throws DataAccessException
+	 */
+	public String encodePassword(String password, Object companyUserDetails) throws DataAccessException {
+		Integer encoderId = getPasswordEncoderId(companyUserDetails);
+		return JBCrypto.encodePassword(encoderId, password);
+	}
+
+	/**
+	 * Returns true if the 2 given encoded passwords match.
+	 *
+	 * @param encPass encoded password from stored user
+	 * @param rawPass plain-text password from authentication form
+	 * @param companyUserDetails company user details
+	 * @return true if passwords match, false if not
+	 * @throws DataAccessException
+	 */
+	public boolean isPasswordValid(String encPass, String rawPass, Object companyUserDetails) throws DataAccessException {
+		Boolean match = false;
+
+		Integer configPassEncoderId = Integer.parseInt(Util.getSysProp(Constants.PASSWORD_ENCRYPTION_SCHEME));
+
+		if (null != companyUserDetails && companyUserDetails instanceof CompanyUserDetails) {
+
+			String userName = ((CompanyUserDetails) companyUserDetails).getPlainUsername();
+			Integer entityId = ((CompanyUserDetails) companyUserDetails).getCompanyId();
+
+			if (!userService.isEncryptionSchemeSame(entityId, userName, configPassEncoderId)) {
+
+				// encryption scheme for the user is change from what is mentioned in
+				// jbilling.properties so we need to update encrypted password and hash method
+				Integer userPassEncoderId = userService.getEncryptionSchemeOfUser(entityId, userName);
+
+				//check for password validity
+				match = JBCrypto.passwordsMatch(userPassEncoderId, encPass, rawPass);
+
+				//only update if the customer is providing the correct password
+				//if we update when user is providing wrong password we would
+				//effectively reset the password to something valid
+				if (null != match && match.booleanValue()) {
+					//create new encrypted password
+					String newPassword = JBCrypto.encodePassword(configPassEncoderId, rawPass);
+					//saving changes to the base_user table
+					userService.saveUser(userName, entityId, newPassword, configPassEncoderId);
+				}
+			} else {
+
+				//both the encryption schemes are the same so no need for new encryption
+				match = JBCrypto.passwordsMatch(configPassEncoderId, encPass, rawPass);
+			}
+		}
+		return match;
+	}
+
+	/**
+	 * Returns the configured password encoding scheme.
+	 *
+	 * @param salt - used to pass company user details
+	 * @return configured password encoder
+	 */
+	private Integer getPasswordEncoderId(Object salt) {
+		Integer mainRoleId = null;
+		if (null != salt && salt instanceof CompanyUserDetails) {
+			CompanyUserDetails companyUserDetails = (CompanyUserDetails) salt;
+			mainRoleId = companyUserDetails.getMainRoleId();
+		}
+		return JBCrypto.getPasswordEncoderId(mainRoleId);
+	}
+
+
+	public void setUserService(AuthenticationUserService userService) {
+		this.userService = userService;
+	}
 }

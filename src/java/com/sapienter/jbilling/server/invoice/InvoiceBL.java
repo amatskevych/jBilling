@@ -22,7 +22,6 @@ package com.sapienter.jbilling.server.invoice;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.sql.SQLException;
 import java.util.Collection;
 import java.util.Collections;
@@ -32,16 +31,28 @@ import java.util.Iterator;
 import java.util.Locale;
 import java.util.ResourceBundle;
 import java.util.List;
+import java.util.Set;
 
+import com.sapienter.jbilling.server.metafields.MetaFieldBL;
+import com.sapienter.jbilling.server.process.BillingProcessBL;
+import com.sapienter.jbilling.server.process.BillingProcessWS;
+import com.sapienter.jbilling.server.user.ContactDTOEx;
+import com.sapienter.jbilling.server.user.db.CustomerDTO;
+import com.sapienter.jbilling.server.user.db.UserDTO;
+import com.sapienter.jbilling.server.util.db.PreferenceDAS;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 
 import javax.sql.rowset.CachedRowSet;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDAS;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
 import com.sapienter.jbilling.server.invoice.db.InvoiceLineDAS;
 import com.sapienter.jbilling.server.invoice.db.InvoiceLineDTO;
+import com.sapienter.jbilling.server.invoice.db.InvoiceStatusDAS;
 import com.sapienter.jbilling.server.item.CurrencyBL;
 import com.sapienter.jbilling.server.item.ItemBL;
 import com.sapienter.jbilling.server.list.ResultList;
@@ -50,33 +61,44 @@ import com.sapienter.jbilling.server.notification.MessageDTO;
 import com.sapienter.jbilling.server.notification.NotificationBL;
 import com.sapienter.jbilling.server.notification.NotificationNotFoundException;
 import com.sapienter.jbilling.server.order.OrderBL;
+import com.sapienter.jbilling.server.order.db.OrderChangeDTO;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
+import com.sapienter.jbilling.server.order.db.OrderLineDTO;
 import com.sapienter.jbilling.server.order.db.OrderProcessDAS;
 import com.sapienter.jbilling.server.order.db.OrderProcessDTO;
+import com.sapienter.jbilling.server.order.db.OrderStatusDAS;
+import com.sapienter.jbilling.server.order.OrderStatusFlag;
 import com.sapienter.jbilling.server.payment.PaymentBL;
 import com.sapienter.jbilling.server.payment.db.PaymentInvoiceMapDAS;
 import com.sapienter.jbilling.server.payment.db.PaymentInvoiceMapDTO;
 import com.sapienter.jbilling.server.process.db.BillingProcessDTO;
+import com.sapienter.jbilling.server.process.event.BeforeInvoiceDeleteEvent;
+import com.sapienter.jbilling.server.process.event.InvoiceDeletedEvent;
 import com.sapienter.jbilling.server.system.event.EventManager;
 import com.sapienter.jbilling.server.user.ContactBL;
 import com.sapienter.jbilling.server.user.EntityBL;
 import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.user.db.CompanyDAS;
 import com.sapienter.jbilling.server.user.db.CompanyDTO;
+import com.sapienter.jbilling.server.user.db.UserDAS;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.Context;
 import com.sapienter.jbilling.server.util.PreferenceBL;
-import com.sapienter.jbilling.server.util.Util;
 import com.sapienter.jbilling.server.util.audit.EventLogger;
-import java.util.ArrayList;
+
 import org.springframework.dao.EmptyResultDataAccessException;
+
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
 
     private InvoiceDAS invoiceDas = null;
     private InvoiceDTO invoice = null;
-    private static final Logger LOG = Logger.getLogger(InvoiceBL.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(InvoiceBL.class));
     private EventLogger eLogger = null;
+
+    private static final Object NUMBER_LOCK = new Object();
 
     public InvoiceBL(Integer invoiceId) {
         init();
@@ -114,16 +136,14 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
     }
 
     /**
-     * 
+     *
      * @param userId
      * @param newInvoice
      * @param process
      *            It can be null.
      */
-    public void create(Integer userId, NewInvoiceDTO newInvoice,
-            BillingProcessDTO process) {
+    public void create(Integer userId, NewInvoiceContext newInvoice, BillingProcessDTO process, Integer executorUserId) {
         // find out the entity id
-        PreferenceBL pref = new PreferenceBL();
         UserBL user = null;
         Integer entityId;
         if (process != null) {
@@ -137,32 +157,61 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         // verify if this entity is using the 'continuous invoice date'
         // preference
         try {
-            pref.set(entityId, Constants.PREFERENCE_CONTINUOUS_DATE);
-            Date lastDate = com.sapienter.jbilling.common.Util.parseDate(pref.getString());
-            if (lastDate.after(newInvoice.getBillingDate())) {
-                newInvoice.setBillingDate(lastDate);
-            } else {
-                // update the lastest date only if this is not a review
-                if (newInvoice.getIsReview() == null || newInvoice.getIsReview().intValue() == 0) {
-                    pref.createUpdateForEntity(entityId,
-                                               Constants.PREFERENCE_CONTINUOUS_DATE,
-                                               com.sapienter.jbilling.common.Util.parseDate(newInvoice.getBillingDate()));
+            String preferenceContinuousDateValue = 
+            	PreferenceBL.getPreferenceValue(entityId, Constants.PREFERENCE_CONTINUOUS_DATE);
+
+            if (StringUtils.isNotBlank(preferenceContinuousDateValue)) {
+                Date lastDate = com.sapienter.jbilling.common.Util.parseDate(preferenceContinuousDateValue);
+                LOG.debug("Last date invoiced: %s", lastDate);
+
+                if (lastDate.after(newInvoice.getBillingDate())) {
+                    LOG.debug("Due date is before the last recorded date. Moving due date forward for continuous invoice dates.");
+                    newInvoice.setBillingDate(lastDate);
+
+                } else {
+                    // update the lastest date only if this is not a review
+                    if (newInvoice.getIsReview() == null || newInvoice.getIsReview() == 0) {
+                        new PreferenceBL().createUpdateForEntity(entityId,
+                                                   Constants.PREFERENCE_CONTINUOUS_DATE,
+                                                   com.sapienter.jbilling.common.Util.parseDate(newInvoice.getBillingDate()));
+                    }
                 }
             }
         } catch (EmptyResultDataAccessException e) {
-        // not interested, ignore
+            // not interested, ignore
         }
 
         // in any case, ensure that the due date is => that invoice date
         if (newInvoice.getDueDate().before(newInvoice.getBillingDate())) {
+            LOG.debug("Due date before billing date, moving date up to billing date.");
             newInvoice.setDueDate(newInvoice.getBillingDate());
         }
-        // ensure that there are only two decimals in the invoice
+
+        // ensure that there are only so many decimals in the invoice
+        Integer decimals = null;
+        try {
+        	decimals = PreferenceBL.getPreferenceValueAsInteger(
+        			entityId, Constants.PREFERENCE_INVOICE_DECIMALS);
+        	if (decimals == null) {
+        		decimals = Constants.BIGDECIMAL_SCALE;
+        	}
+        } catch (EmptyResultDataAccessException e) {
+            // not interested, ignore
+        	decimals = Constants.BIGDECIMAL_SCALE;
+        }
+
+       	LOG.debug("Rounding %s to %d decimals.", newInvoice.getTotal(), decimals);
         if (newInvoice.getTotal() != null) {
-            newInvoice.setTotal(newInvoice.getTotal().setScale(Constants.BIGDECIMAL_SCALE, Constants.BIGDECIMAL_ROUND));
+            newInvoice.setTotal(newInvoice.getTotal().setScale(decimals.intValue(), Constants.BIGDECIMAL_ROUND));
         }
         if (newInvoice.getBalance() != null) {
-            newInvoice.setBalance(newInvoice.getBalance().setScale(Constants.BIGDECIMAL_SCALE, Constants.BIGDECIMAL_ROUND));
+            newInvoice.setBalance(newInvoice.getBalance().setScale(decimals.intValue(), Constants.BIGDECIMAL_ROUND));
+        }
+
+        // some API calls only accept ID's and do not pass meta-fields
+        // update and validate meta-fields if they've been populated
+        if (newInvoice.getMetaFields() != null && !newInvoice.getMetaFields().isEmpty()) {
+            newInvoice.updateMetaFieldsWithValidation(entityId, null, newInvoice);
         }
 
         // create the invoice row
@@ -175,79 +224,64 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
             }
         }
 
-        // add the customer notes if it applies
-        try {
-            pref.set(entityId, Constants.PREFERENCE_SHOW_NOTE_IN_INVOICE);
-        } catch (EmptyResultDataAccessException e) {
-            // use the default then
+
+        invoice.setPublicNumber( String.valueOf( generateInvoiceNumber(newInvoice, entityId) ) );
+
+        // set the invoice's contact info with the current user's contact
+        ContactBL contactBL = new ContactBL();
+        ContactDTOEx contact = ContactBL.buildFromMetaField(userId, newInvoice.getBillingDate());
+        if ( null != contact)
+        	contactBL.createForInvoice(contact, invoice.getId());
+
+        // add a log row for convenience
+        if ( null != executorUserId ) {
+            eLogger.audit(executorUserId, userId, Constants.TABLE_INVOICE,
+                    invoice.getId(), EventLogger.MODULE_INVOICE_MAINTENANCE,
+                    EventLogger.ROW_CREATED, null, null, null);
+        } else {
+            eLogger.auditBySystem(entityId, userId, Constants.TABLE_INVOICE,
+                    invoice.getId(), EventLogger.MODULE_INVOICE_MAINTENANCE,
+                    EventLogger.ROW_CREATED, null, null, null);
         }
 
-        if (pref.getInt() == 1) {
-            if (user == null) {
-                user = new UserBL(userId);
-            }
-            if (user.getEntity().getCustomer() != null && user.getEntity().getCustomer().getNotes() != null) {
-                // append the notes if there's some text already there
-                newInvoice.setCustomerNotes((newInvoice.getCustomerNotes() == null) ? user.getEntity().getCustomer().getNotes()
-                        : newInvoice.getCustomerNotes() + " " + user.getEntity().getCustomer().getNotes());
-            }
-        }
-        // notes might come from the customer, the orders, or both
-        if (newInvoice.getCustomerNotes() != null && newInvoice.getCustomerNotes().length() > 0) {
-            invoice.setCustomerNotes(newInvoice.getCustomerNotes());
-        }
+    }
+
+    private String generateInvoiceNumber(NewInvoiceContext newInvoice, Integer entityId) {
 
         // calculate/compose the number
-        String numberStr = null;
-        if (newInvoice.getIsReview() != null && newInvoice.getIsReview().intValue() == 1) {
+        String numberStr = "";
+        if ( newInvoice.isReviewInvoice() ) {
             // invoices for review will be seen by the entity employees
             // so the entity locale will be used
             EntityBL entity = new EntityBL(entityId);
             ResourceBundle bundle = ResourceBundle.getBundle(
                     "entityNotifications", entity.getLocale());
             numberStr = bundle.getString("invoice.review.number");
-        } else if (newInvoice.getPublicNumber() == null || newInvoice.getPublicNumber().length() == 0) {
-            String prefix;
+        } else if ( StringUtils.isEmpty(newInvoice.getPublicNumber()) ) {
+            String prefix= "";
             try {
-                pref.set(entityId, Constants.PREFERENCE_INVOICE_PREFIX);
-                prefix = pref.getString();
-                if (prefix == null) {
+                prefix = PreferenceBL.getPreferenceValue(entityId, Constants.PREFERENCE_INVOICE_PREFIX);
+                if (StringUtils.isEmpty(prefix)) {
                     prefix = "";
                 }
             } catch (EmptyResultDataAccessException e) {
-                prefix = "";
-            }
-            int number;
-            try {
-                pref.set(entityId, Constants.PREFERENCE_INVOICE_NUMBER);
-                number = pref.getInt();
-            } catch (EmptyResultDataAccessException e1) {
-                number = 1;
+                //
             }
 
-            numberStr = prefix + number;
-            // update for the next time
-            number++;
-            pref.createUpdateForEntity(entityId, Constants.PREFERENCE_INVOICE_NUMBER, number);
+            //get and update number
+            numberStr = prefix + getAndUpdateInvoiceNumberPreference(entityId);
+
         } else { // for upload of legacy invoices
             numberStr = newInvoice.getPublicNumber();
         }
-
-        invoice.setPublicNumber(numberStr);
-
-        // set the invoice's contact info with the current user's primary
-        ContactBL contact = new ContactBL();
-        contact.set(userId);
-        contact.createForInvoice(contact.getDTO(), invoice.getId());
-
-        // add a log row for convenience
-        eLogger.auditBySystem(entityId, userId, Constants.TABLE_INVOICE, 
-                invoice.getId(), EventLogger.MODULE_INVOICE_MAINTENANCE,
-                EventLogger.ROW_CREATED, null, null, null);
-
+        return numberStr;
     }
 
-    public void createLines(NewInvoiceDTO newInvoice) {
+    private Integer getAndUpdateInvoiceNumberPreference(Integer entityId) {
+        return new PreferenceDAS().getPreferenceAndIncrement(entityId, Constants.PREFERENCE_INVOICE_NUMBER);
+    }
+
+    public void createLines(NewInvoiceContext newInvoice) {
         Collection invoiceLines = invoice.getInvoiceLines();
 
         // Now create all the invoice lines, from the lines in the DTO
@@ -260,24 +294,14 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
 
         while (dueInvoiceLines.hasNext()) {
             InvoiceLineDTO lineToAdd = (InvoiceLineDTO) dueInvoiceLines.next();
-            // define if the line is a percentage or not
-            lineToAdd.setIsPercentage(new Integer(0));
-            if (lineToAdd.getItem() != null) {
-                try {
-                    ItemBL item = new ItemBL(lineToAdd.getItem());
-                    if (item.getEntity().getPercentage() != null) {
-                        lineToAdd.setIsPercentage(new Integer(1));
-                    }
-                } catch (SessionInternalError e) {
-                    LOG.error("Could not find item to create invoice line " + lineToAdd.getItem().getId());
-                }
-            }
+            
             // create the database row
             InvoiceLineDTO newLine = invoiceLineDas.create(lineToAdd.getDescription(), lineToAdd.getAmount(), lineToAdd.getQuantity(), lineToAdd.getPrice(),
                     lineToAdd.getTypeId(), lineToAdd.getItem(), lineToAdd.getSourceUserId(), lineToAdd.getIsPercentage());
 
             // update the invoice-lines relationship
             newLine.setInvoice(invoice);
+            newLine.setOrder(lineToAdd.getOrder());
             invoiceLines.add(newLine);
         }
         getHome().save(invoice);
@@ -290,7 +314,18 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
      */
     public void delete(Integer executorId) throws SessionInternalError {
         if (invoice == null) {
-            throw new SessionInternalError("An invoice has to be set before " + "delete");
+            throw new SessionInternalError("An invoice has to be set before delete");
+        }
+        
+        //delete the reseller invoices and orders of this invoice
+        EventManager.process(new InvoiceDeletedEvent(invoice));
+        
+        //prevent a delegated Invoice from being deleted
+        if (invoice.getDelegatedInvoiceId() != null && invoice.getDelegatedInvoiceId().intValue() > 0 ) {
+            SessionInternalError sie= new SessionInternalError("A carried forward Invoice cannot be deleted");
+            sie.setErrorMessages(new String[] {
+                    "InvoiceDTO,invoice,invoice.error.fkconstraint," + invoice.getId()});
+            throw sie;
         }
         // start by updating purchase_order.next_billable_day if applicatble
         // for each of the orders included in this invoice
@@ -298,9 +333,9 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
             OrderDTO order = orderProcess.getPurchaseOrder();
             if (order.getNextBillableDay() == null) {
                 // the next billable day doesn't need updating
-                if (order.getStatusId().equals(Constants.ORDER_STATUS_FINISHED)) {
+                if (order.getOrderStatus().getOrderStatusFlag().equals(OrderStatusFlag.FINISHED)) {
                     OrderBL orderBL = new OrderBL(order);
-                    orderBL.setStatus(null, Constants.ORDER_STATUS_ACTIVE);
+                    orderBL.setStatus(null, new OrderStatusDAS().getDefaultOrderStatusId(OrderStatusFlag.INVOICE, order.getUser().getCompany().getId()));//Constants.DEFAULT_ORDER_INVOICE_STATUS_ID
                 }
                 continue;
             }
@@ -308,9 +343,18 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
             // next billable day
             if (order.getNextBillableDay().equals(orderProcess.getPeriodEnd())) {
                 order.setNextBillableDay(orderProcess.getPeriodStart());
-                if (order.getStatusId().equals(Constants.ORDER_STATUS_FINISHED)) {
+
+                for (OrderLineDTO line: order.getLines()) {
+                    for (OrderChangeDTO change: line.getOrderChanges()) {
+                        if ((change.getNextBillableDate() != null) && change.getNextBillableDate().equals(orderProcess.getPeriodEnd())) {
+                            change.setNextBillableDate(orderProcess.getPeriodStart());
+                        }
+                    } 
+                }
+
+                if (order.getOrderStatus().getOrderStatusFlag().equals(OrderStatusFlag.FINISHED)) {
                     OrderBL orderBL = new OrderBL(order);
-                    orderBL.setStatus(null, Constants.ORDER_STATUS_ACTIVE);
+                    orderBL.setStatus(null, new OrderStatusDAS().getDefaultOrderStatusId(OrderStatusFlag.INVOICE, order.getUser().getCompany().getId()));//Constants.DEFAULT_ORDER_INVOICE_STATUS_ID
                 }
             }
 
@@ -349,7 +393,7 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
 
         // log that this was deleted, otherwise there will be no trace
         if (executorId != null) {
-            eLogger.audit(executorId, invoice.getBaseUser().getId(), 
+            eLogger.audit(executorId, invoice.getBaseUser().getId(),
                     Constants.TABLE_INVOICE, invoice.getId(),
                     EventLogger.MODULE_INVOICE_MAINTENANCE,
                     EventLogger.ROW_DELETED, null, null, null);
@@ -359,12 +403,25 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         // PAYMENT_INVOICE
         new PaymentInvoiceMapDAS().deleteAllWithInvoice(invoice);
 
+        Set<InvoiceDTO> invoices= invoice.getInvoices();
+        if (invoices.size() > 0 ) {
+            for (InvoiceDTO delegate: invoices) {
+                //set status to unpaid as against carried
+                delegate.setInvoiceStatus(new InvoiceStatusDAS().find(Constants.INVOICE_STATUS_UNPAID));
+                //remove delegated invoice link
+                delegate.setInvoice(null);
+                getHome().save(delegate);
+            }
+        }
+
         // now delete the invoice itself
+        EventManager.process(new BeforeInvoiceDeleteEvent(invoice));
         getHome().delete(invoice);
         getHome().flush();
+        
     }
 
-    public void update(NewInvoiceDTO addition) {
+    public void update(Integer entityId, NewInvoiceContext addition) {
         // add the lines to the invoice first
         createLines(addition);
         // update the inoice record considering the new lines
@@ -374,9 +431,16 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         BigDecimal balance = invoice.getBalance();
         balance = balance.add(addition.getTotal());
         invoice.setBalance(balance);
-//?        if (invoice.getBalance().floatValue() <= 0.001F) {
-        if (invoice.getBalance().compareTo(BigDecimal.ZERO) == 0) {
+
+        //set to process = 0 only if balance is minimum balance to ignore
+        if (!isInvoiceBalanceEnoughToAge(invoice, entityId)) {
             invoice.setToProcess(new Integer(0));
+        }else {
+			invoice.setToProcess(Integer.valueOf(1));
+		}
+
+        if (addition.getMetaFields() != null && !addition.getMetaFields().isEmpty()) {
+            invoice.updateMetaFieldsWithValidation(entityId, null, addition);
         }
     }
 
@@ -415,10 +479,10 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         // find out the user from the order
         Integer userId;
         OrderBL order = new OrderBL(orderId);
-        if (order.getEntity().getUser().getCustomer().getParent() == null) {
-            userId = order.getEntity().getUser().getUserId();
+        if (order.getDTO().getUser().getCustomer().getParent() == null) {
+            userId = order.getDTO().getUser().getUserId();
         } else {
-            userId = order.getEntity().getUser().getCustomer().getParent().getBaseUser().getUserId();
+            userId = order.getDTO().getUser().getCustomer().getParent().getBaseUser().getUserId();
         }
         cachedResults.setInt(1, userId.intValue());
         execute();
@@ -448,6 +512,12 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         execute();
         conn.close();
         return cachedResults;
+    }
+
+    public List<InvoiceDTO> getListInvoicesPaged(Integer entityId, Integer userId, Integer limit, Integer offset) {
+
+        List<InvoiceDTO> result = new InvoiceDAS().findInvoicesByUserPaged(userId, limit, offset);
+        return result;
     }
 
     public CachedRowSet getInvoicesByProcessId(Integer processId)
@@ -570,24 +640,24 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         return retValue;
     }
 
-    public Integer getLastByUserAndItemType(Integer userId, Integer itemTypeId) 
+    public Integer getLastByUserAndItemType(Integer userId, Integer itemTypeId)
             throws SQLException {
 
         Integer retValue = null;
         if (userId == null) {
             return null;
-        }            
+        }
         prepareStatement(InvoiceSQL.lastIdbyUserAndItemType);
         cachedResults.setInt(1, userId.intValue());
         cachedResults.setInt(2, itemTypeId.intValue());
-        
+
         execute();
         if (cachedResults.next()) {
             int value = cachedResults.getInt(1);
             if (!cachedResults.wasNull()) {
                 retValue = new Integer(value);
             }
-        } 
+        }
         cachedResults.close();
         conn.close();
         return retValue;
@@ -596,7 +666,7 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
     public Boolean isUserWithOverdueInvoices(Integer userId, Date today,
             Integer excludeInvoiceId) throws SQLException {
 
-        Boolean retValue;
+        Boolean retValue= Boolean.FALSE;
         prepareStatement(InvoiceSQL.getOverdueForAgeing);
         cachedResults.setDate(1, new java.sql.Date(today.getTime()));
         cachedResults.setInt(2, userId.intValue());
@@ -608,14 +678,19 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         }
 
         execute();
-        if (cachedResults.next()) {
-            retValue = new Boolean(true);
-            LOG.debug("user with invoice:" + cachedResults.getInt(1));
-        } else {
-            retValue = new Boolean(false);
+        UserDTO user= new UserDAS().find(userId);
+        InvoiceDAS invoiceDAS= new InvoiceDAS();
+        while (cachedResults.next()) {
+            int invoiceId = cachedResults.getInt(1);
+            if (isInvoiceBalanceEnoughToAge(invoiceDAS.find(invoiceId), user.getEntity().getId())) {
+            	retValue= Boolean.TRUE;
+            	LOG.debug("user with invoice:" + cachedResults.getInt(1));
+            	break;
+            }
         }
+        
         conn.close();
-        LOG.debug("user with overdue: " + retValue);
+        LOG.debug("user with overdue: %s", retValue);
         return retValue;
     }
 
@@ -624,7 +699,7 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         return result.toArray(new Integer[result.size()]);
     }
 
-    public Integer[] getUserInvoicesByDate(Integer userId, Date since, 
+    public Integer[] getUserInvoicesByDate(Integer userId, Date since,
             Date until) {
         // add a day to include the until date
         GregorianCalendar cal = new GregorianCalendar();
@@ -657,12 +732,12 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         for (int f = 0; f < retValue.length; f++) {
             retValue[f] = InvoiceBL.getWS((InvoiceDTO) dtos.get(f));
         }
-        LOG.debug("converstion " + retValue.length);
+        LOG.debug("converstion %d", retValue.length);
 
         return retValue;
     }
 
-    
+
 
     public void sendReminders(Date today) throws SQLException,
             SessionInternalError {
@@ -671,23 +746,26 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         for (Iterator it = new CompanyDAS().findEntities().iterator(); it.hasNext();) {
             CompanyDTO thisEntity = (CompanyDTO) it.next();
             Integer entityId = thisEntity.getId();
-            PreferenceBL pref = new PreferenceBL();
+            int preferenceUseInvoiceReminders = 0;
             try {
-                pref.set(entityId, Constants.PREFERENCE_USE_INVOICE_REMINDERS);
+                preferenceUseInvoiceReminders = 
+                	PreferenceBL.getPreferenceValueAsIntegerOrZero(entityId, Constants.PREFERENCE_USE_INVOICE_REMINDERS);
             } catch (EmptyResultDataAccessException e1) {
             // let it use the defaults
             }
-            if (pref.getInt() == 1) {
+            if (preferenceUseInvoiceReminders == 1) {
                 prepareStatement(InvoiceSQL.toRemind);
 
                 cachedResults.setDate(1, new java.sql.Date(today.getTime()));
                 cal.setTime(today);
-                pref.set(entityId, Constants.PREFERENCE_FIRST_REMINDER);
-                cal.add(GregorianCalendar.DAY_OF_MONTH, -pref.getInt());
+                int preferenceFirstReminder = 
+                	PreferenceBL.getPreferenceValueAsIntegerOrZero(entityId, Constants.PREFERENCE_FIRST_REMINDER);
+                cal.add(GregorianCalendar.DAY_OF_MONTH, (preferenceFirstReminder != 0 ? -preferenceFirstReminder : preferenceFirstReminder));
                 cachedResults.setDate(2, new java.sql.Date(cal.getTimeInMillis()));
                 cal.setTime(today);
-                pref.set(entityId, Constants.PREFERENCE_NEXT_REMINDER);
-                cal.add(GregorianCalendar.DAY_OF_MONTH, -pref.getInt());
+                int preferenceNextReminder = 
+                	PreferenceBL.getPreferenceValueAsIntegerOrZero(entityId, Constants.PREFERENCE_NEXT_REMINDER);
+                cal.add(GregorianCalendar.DAY_OF_MONTH, (preferenceNextReminder != 0 ? -preferenceNextReminder : preferenceNextReminder));
                 cachedResults.setDate(3, new java.sql.Date(cal.getTimeInMillis()));
 
                 cachedResults.setInt(4, entityId.intValue());
@@ -701,13 +779,13 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
                     int days = Math.round(mils / 1000 / 60 / 60 / 24);
 
                     try {
-                        MessageDTO message = notif.getInvoiceRemainderMessage(
+                        MessageDTO message = notif.getInvoiceReminderMessage(
                                 entityId, invoice.getBaseUser().getUserId(),
                                 new Integer(days), invoice.getDueDate(),
                                 invoice.getPublicNumber(), invoice.getTotal(),
                                 invoice.getCreateDatetime(), invoice.getCurrency().getId());
 
-                        INotificationSessionBean notificationSess = 
+                        INotificationSessionBean notificationSess =
                                 (INotificationSessionBean) Context.getBean(
                                 Context.Name.NOTIFICATION_SESSION);
 
@@ -715,7 +793,7 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
 
                         invoice.setLastReminder(today);
                     } catch (NotificationNotFoundException e) {
-                        LOG.warn("There are invoice to send reminders, but " + "the notification message is missing for " + "entity " + entityId);
+                        LOG.warn("There are invoice to send reminders, but the notification message is missing for entity %d", entityId);
                     }
                 }
             }
@@ -759,7 +837,7 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         Integer delegatedInvoiceId = i.getInvoice() == null ? null : i.getInvoice().getId();
         Integer userId = i.getBaseUser().getId();
         Integer payments[] = new Integer[i.getPaymentMap().size()];
-        com.sapienter.jbilling.server.entity.InvoiceLineDTO invoiceLines[] = 
+        com.sapienter.jbilling.server.entity.InvoiceLineDTO invoiceLines[] =
                 new com.sapienter.jbilling.server.entity.InvoiceLineDTO[i.getInvoiceLines().size()];
         Integer orders[] = new Integer[i.getOrderProcesses().size()];
 
@@ -773,10 +851,12 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
             orders[f++] = orderP.getPurchaseOrder().getId();
         }
         f = 0;
-        for (InvoiceLineDTO line : i.getInvoiceLines()) {
-            invoiceLines[f++] = new com.sapienter.jbilling.server.entity.InvoiceLineDTO(line.getId(), 
-                    line.getDescription(), line.getAmount(), line.getPrice(), line.getQuantity(), 
-                    line.getDeleted(), line.getItem() == null ? null : line.getItem().getId(), 
+        List<InvoiceLineDTO> ordInvoiceLines = new ArrayList<InvoiceLineDTO>(i.getInvoiceLines());
+        Collections.sort(ordInvoiceLines, new InvoiceLineComparator());
+        for (InvoiceLineDTO line : ordInvoiceLines) {
+            invoiceLines[f++] = new com.sapienter.jbilling.server.entity.InvoiceLineDTO(line.getId(),
+                    line.getDescription(), line.getAmount(), line.getPrice(), line.getQuantity(),
+                    line.getDeleted(), line.getItem() == null ? null : line.getItem().getId(),
                     line.getSourceUserId(), line.getIsPercentage());
         }
 
@@ -786,11 +866,16 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         retValue.setInvoiceLines(invoiceLines);
         retValue.setOrders(orders);
 
+        retValue.setMetaFields(MetaFieldBL.convertMetaFieldsToWS(
+                new UserBL().getEntityId(userId), i));
+
+        retValue.setBillingProcess(i.getBillingProcess() != null ? BillingProcessBL.getWS(i.getBillingProcess()) : null);
+
         return retValue;
     }
 
     public InvoiceDTO getDTOEx(Integer languageId, boolean forDisplay) {
-        
+
         if (!forDisplay) {
             return invoice;
         }
@@ -800,15 +885,15 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         List<InvoiceLineDTO> orderdLines = new ArrayList<InvoiceLineDTO>(invoiceDTO.getInvoiceLines());
         Collections.sort(orderdLines, new InvoiceLineComparator());
         invoiceDTO.setInvoiceLines(orderdLines);
-        
+
         UserBL userBl = new UserBL(invoice.getBaseUser());
         Locale locale = userBl.getLocale();
         ResourceBundle bundle = ResourceBundle.getBundle("entityNotifications", locale);
 
-        // now add headres and footers if this invoices has subaccount
+        // now add headers and footers if this invoices has sub-account
         // lines
         if (invoiceDTO.hasSubAccounts()) {
-            addHeadersFooters(orderdLines, bundle);
+            addHeadersFooters(orderdLines, bundle, invoice.getBaseUser().getCustomer().getId());
         }
         // add a grand total final line
         InvoiceLineDTO total = new InvoiceLineDTO();
@@ -831,79 +916,87 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
 
     /**
      * Will add lines with headers and footers to make an invoice with
-     * subaccounts more readable. The lines have to be already sorted.
-     * 
+     * sub-accounts more readable. The lines have to be already sorted.
+     *
      * @param lines
+     * @param parentId
+     * @return
      */
-    private void addHeadersFooters(List<InvoiceLineDTO> lines, ResourceBundle bundle) {
+    private void addHeadersFooters(List<InvoiceLineDTO> lines, ResourceBundle bundle, Integer parentId) {
         Integer nowProcessing = new Integer(-1);
         BigDecimal total = null;
         int totalLines = lines.size();
         int subaccountNumber = 0;
-
-        LOG.debug("adding headers & footers." + totalLines);
+        CustomerDTO subAccountCustomer;
+        LOG.debug("adding headers & footers.%d", totalLines);
 
         for (int idx = 0; idx < totalLines; idx++) {
             InvoiceLineDTO line = (InvoiceLineDTO) lines.get(idx);
-            
-            if (line.getTypeId() == Constants.INVOICE_LINE_TYPE_SUB_ACCOUNT && !line.getSourceUserId().equals(nowProcessing)) {
-                // line break
-                nowProcessing = line.getSourceUserId();
-                subaccountNumber++;
-                // put the total first
-                if (total != null) { // it could be the first subaccount
-                    InvoiceLineDTO totalLine = new InvoiceLineDTO();
-                    totalLine.setDescription(bundle.getString("invoice.line.subAccount.footer"));
-                    totalLine.setAmount(total);
-                    lines.add(idx, totalLine);
-                    idx++;
-                    totalLines++;
-                }
-                total = BigDecimal.ZERO;
 
-                // now the header anouncing a new subaccout
-                InvoiceLineDTO headerLine = new InvoiceLineDTO();
-                try {
-                    ContactBL contact = new ContactBL();
-                    contact.set(nowProcessing);
-                    StringBuffer text = new StringBuffer();
-                    text.append(subaccountNumber + " - ");
-                    text.append(bundle.getString("invoice.line.subAccount.header1"));
-                    text.append(" " + bundle.getString("invoice.line.subAccount.header2") + " " + nowProcessing);
-                    if (contact.getEntity().getFirstName() != null) {
-                        text.append(" " + contact.getEntity().getFirstName());
+            if ( null != line.getSourceUserId() ) {
+            	// to check an invoiceLine belongs to a sub-account user
+                // compare invoiceLine.customer.parent with invoice.customer
+                subAccountCustomer = UserBL.getUserEntity(line.getSourceUserId()).getCustomer();
+                if ( null != subAccountCustomer.getParent() && (subAccountCustomer.getParent().getId() == parentId) && (!line.getSourceUserId().equals(nowProcessing))){
+                    // line break
+                    nowProcessing = line.getSourceUserId();
+                    subaccountNumber++;
+                    // put the total first
+                    if (total != null) { // it could be the first sub-account
+                        InvoiceLineDTO totalLine = new InvoiceLineDTO();
+                        totalLine.setDescription(bundle.getString("invoice.line.subAccount.footer"));
+                        totalLine.setAmount(total);
+                        lines.add(idx, totalLine);
+                        idx++;
+                        totalLines++;               
                     }
-                    if (contact.getEntity().getLastName() != null) {
-                        text.append(" " + contact.getEntity().getLastName());
-                    }
-                    headerLine.setDescription(text.toString());
-                    lines.add(idx, headerLine);
-                    idx++;
-                    totalLines++;
-                } catch (Exception e) {
-                    LOG.error("Exception", e);
-                    return;
-                }
-            }
+                    total = BigDecimal.ZERO;
 
-            // update the total
-            if (total != null) {
-                // there had been at least one sub-account processed
-                if (line.getTypeId() ==
-                        Constants.INVOICE_LINE_TYPE_SUB_ACCOUNT) {
-                    total = total.add(line.getAmount());
-                } else {
-                    // this is the last total to display, from now on the
-                    // lines are not of subaccounts
-                    InvoiceLineDTO totalLine = new InvoiceLineDTO();
-                    totalLine.setDescription(bundle.getString("invoice.line.subAccount.footer"));
-                    totalLine.setAmount(total);
-                    lines.add(idx, totalLine);
-                    total = null; // to avoid repeating
+                    // now the header announcing a new sub-accout
+                    InvoiceLineDTO headerLine = new InvoiceLineDTO();
+                    try {
+                        ContactBL contact = new ContactBL();
+                        contact.set(nowProcessing);
+                        StringBuffer text = new StringBuffer();
+                        text.append(subaccountNumber + " - ");
+                        text.append(bundle.getString("invoice.line.subAccount.header1"));
+                        text.append(" " + bundle.getString("invoice.line.subAccount.header2") + " " + nowProcessing);
+                        if ( null != contact.getEntity() ) {
+    	                    if (contact.getEntity().getFirstName() != null) {
+    	                        text.append(" " + contact.getEntity().getFirstName());
+    	                    }
+    	                    if (contact.getEntity().getLastName() != null) {
+    	                        text.append(" " + contact.getEntity().getLastName());
+    	                    }
+                        }
+                        headerLine.setDescription(text.toString());
+                        lines.add(idx, headerLine);
+                        idx++;
+                        totalLines++;
+                    } catch (Exception e) {
+                        LOG.error("Exception", e);
+                        return;
+                    }
+                }
+
+                // update the total
+                if (total != null) {
+                    // there had been at least one sub-account processed
+                    if (null != subAccountCustomer.getParent() && (subAccountCustomer.getParent().getId()==parentId)) {
+                        total = total.add(line.getAmount());
+                    } else {
+                        // this is the last total to display, from now on the
+                        // lines are not of sub-accounts
+                        InvoiceLineDTO totalLine = new InvoiceLineDTO();
+                        totalLine.setDescription(bundle.getString("invoice.line.subAccount.footer"));
+                        totalLine.setAmount(total);
+                        lines.add(idx, totalLine);
+                        total = null; // to avoid repeating
+                    }
                 }
             }
         }
-        // if there are no lines after the last subaccount, we need
+        // if there are no lines after the last sub-account, we need
         // a total for it
         if (total != null) { // only if it wasn't added before
             InvoiceLineDTO totalLine = new InvoiceLineDTO();
@@ -912,9 +1005,142 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
             lines.add(totalLine);
         }
 
-        LOG.debug("done " + lines.size());
+        LOG.debug("done %d", lines.size());
     }
 
+    /***
+     * Will return InvoiceDTO with headers
+     * if invoice for sub-account users
+     *
+     * @return
+     */
+    public InvoiceDTO getInvoiceDTOWithHeaderLines() {
+        InvoiceDTO invoiceDTO = new InvoiceDTO(invoice);
+        List<InvoiceLineDTO> invoiceLines = new ArrayList<InvoiceLineDTO>(invoiceDTO.getInvoiceLines());
+
+        // now add headers if this invoices has sub-account lines
+        if (invoiceDTO.hasSubAccounts()) {
+            invoiceDTO.setInvoiceLines(addHeaders(invoiceLines, invoice.getBaseUser().getId()));
+        } else {
+            //if there are no sub account than just sort the lines
+            Collections.sort(invoiceLines, new InvoiceLineComparator());
+            invoiceDTO.setInvoiceLines(invoiceLines);
+        }
+
+        return invoiceDTO;
+    }
+
+    /**
+     * Will add lines with headers to make an invoice with
+     * subaccounts more readable.
+     *
+     * @param lines
+     * @param parentUserId
+     * @return
+     */
+    public static List<InvoiceLineDTO> addHeaders(List<InvoiceLineDTO> lines, Integer parentUserId) {
+        Integer nowProcessing = Integer.valueOf(-1);
+        Integer parentCustomerId = UserBL.getUserEntity(parentUserId).getCustomer().getId();
+
+        LOG.debug("adding headers for sub-account users, total invoice lines : %d", lines.size());
+
+        Map<Integer, List<InvoiceLineDTO>> accountLineGroups = new HashMap<Integer, List<InvoiceLineDTO>>();
+        Map<Integer, InvoiceLineDTO> accountLineHeaders = new HashMap<Integer, InvoiceLineDTO>();
+
+        for (int idx = 0; idx < lines.size(); idx++) {
+            InvoiceLineDTO line = lines.get(idx);
+
+            // to check an invoiceLine belongs to a sub-account user
+            // compare invoiceLine.customer.parent with invoice.customer
+            if ( null != line.getSourceUserId() ) {
+
+                nowProcessing = line.getSourceUserId();
+
+            	UserDTO subAccount = UserBL.getUserEntity( nowProcessing );
+            	if (subAccount != null){
+	            	CustomerDTO subAccountCustomer = subAccount.getCustomer();
+		            if (null != subAccountCustomer.getParent() &&
+		                    subAccountCustomer.getParent().getId() == parentCustomerId &&
+		                    !accountLineHeaders.containsKey(nowProcessing)) {
+		                InvoiceLineDTO headerLine = createHeaderLine(nowProcessing);
+		                if(null == headerLine){
+		                    LOG.debug("Could not create a header line for invoice line %d source user id $d", line.getId(), nowProcessing);
+		                } else {
+		                    accountLineHeaders.put(nowProcessing, headerLine);
+		                }
+		            }
+            	}
+
+                //groups the lines based on a account
+                List<InvoiceLineDTO> group = accountLineGroups.get(nowProcessing);
+                if(null == group){
+                    group = new ArrayList<InvoiceLineDTO>();
+                    accountLineGroups.put(nowProcessing, group);
+                }
+                group.add(line);
+            }
+        }
+
+        //first add the parent invoice lines
+        List<InvoiceLineDTO> result = new ArrayList<InvoiceLineDTO>();
+        List<InvoiceLineDTO> parentLines = accountLineGroups.get(parentUserId);
+        if(null != parentLines && !parentLines.isEmpty()){
+            accountLineGroups.remove(parentUserId);
+            Collections.sort(parentLines, new InvoiceLineComparator());
+            result.addAll(parentLines);
+        }
+
+        //now add subaccount invoice lines
+        for(Map.Entry<Integer, List<InvoiceLineDTO>> entry : accountLineGroups.entrySet()){
+            Integer userId = entry.getKey();
+            InvoiceLineDTO headerLine = accountLineHeaders.get(userId);
+            if(null != headerLine){
+                result.add(headerLine);
+            }
+
+            List<InvoiceLineDTO> subAccountLines = entry.getValue();
+            if(null != subAccountLines && !subAccountLines.isEmpty()){
+                Collections.sort(subAccountLines, new InvoiceLineComparator());
+                result.addAll(subAccountLines);
+            }
+        }
+
+
+        LOG.debug("Now, total line size : %d", result.size());
+        return result;
+    }
+
+    private static InvoiceLineDTO createHeaderLine(Integer sourceUserId) {
+        // now the header announcing a new sub-account
+        InvoiceLineDTO headerLine = new InvoiceLineDTO();
+        try {
+            ContactDTOEx contact = ContactBL.buildFromMetaField(sourceUserId, new Date());
+            //get user's name
+            StringBuilder name = new StringBuilder("");
+            if ( null != contact ) {
+	            if (!StringUtils.isEmpty(contact.getFirstName()) || !StringUtils.isEmpty(contact.getLastName())) {
+	                if (contact.getFirstName() != null) {
+	                    name.append(contact.getFirstName());
+	                }
+	                if (contact.getLastName() != null) {
+	                    name.append(" " + contact.getLastName());
+	                }
+                } else if(!StringUtils.isEmpty(contact.getOrganizationName())){
+	                name.append(contact.getOrganizationName());
+                }
+            }
+            if (name.toString().equals("")) {
+                name.append(new UserDAS().find(sourceUserId).getUserName());
+            }
+            headerLine.setDescription(name.toString());
+            headerLine.setSourceUserId(sourceUserId);
+        } catch (Exception e) {
+            LOG.error("Exception", e);
+            return null;
+        }
+        return headerLine;
+    }
+    
     public InvoiceDTO getDTO() {
         return invoice;
 
@@ -943,6 +1169,29 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
             throw new EmptyResultDataAccessException("No previous invoice found", 1);
         }
     }
+    
+    public static boolean isInvoiceBalanceEnoughToAge (InvoiceDTO invoice, Integer entityId) {
+        //check if balance below minimum balance to ignore ageing
+        BigDecimal minBalanceToIgnore = BigDecimal.ZERO;
+        try {
+        	if (null == entityId && null != invoice.getBaseUser()) {
+        		entityId= invoice.getBaseUser().getEntity().getId();
+        	}
+        	
+            minBalanceToIgnore = 
+            	PreferenceBL.getPreferenceValueAsDecimalOrZero(entityId, Constants.PREFERENCE_MINIMUM_BALANCE_TO_IGNORE_AGEING);
+            
+            LOG.debug("Mininmum balance to ignore ageing preference set to " + minBalanceToIgnore);
+        } catch (EmptyResultDataAccessException e) {
+            LOG.debug("Preference minimum balance to ignore ageing not set.");
+        }
+    
+        LOG.debug("Checking balance " + invoice.getBalance()
+                + " against " + minBalanceToIgnore+ " for invoiceId : " + invoice.getId());
+        
+        //Return 'true' if balance above min to ignore preference value or zeor if preference not set 
+        return (invoice.getBalance().compareTo(minBalanceToIgnore) > 0);
+    }
 
     /*
     public static InvoiceWS getWS(InvoiceDTO dto) {
@@ -966,7 +1215,7 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
         ret.setToProcess(dto.getToProcess());
         ret.setTotal(dto.getTotal());
         ret.setUserId(dto.getUserId());
-        
+
         Integer payments[] = new Integer[dto.getPaymentMap().size()];
         Integer orders[] = new Integer[dto.getOrders().size()];
 
@@ -981,18 +1230,18 @@ public class InvoiceBL extends ResultList implements Serializable, InvoiceSQL {
             orders[f] = order.getId();
         }
         ret.setOrders(orders);
-        
-        com.sapienter.jbilling.server.entity.InvoiceLineDTO lines[] = 
+
+        com.sapienter.jbilling.server.entity.InvoiceLineDTO lines[] =
                 new com.sapienter.jbilling.server.entity.InvoiceLineDTO[dto.getInvoiceLines().size()];
-        
+
         f=0;
         for (InvoiceLineDTO line : dto.getInvoiceLines()) {
-            lines[f++] = new com.sapienter.jbilling.server.entity.InvoiceLineDTO(line.getId(), 
-                    line.getDescription(), line.getAmount(), line.getPrice(), line.getQuantity(), 
-                    line.getDeleted(), line.getItem() == null ? null : line.getItem().getId(), 
+            lines[f++] = new com.sapienter.jbilling.server.entity.InvoiceLineDTO(line.getId(),
+                    line.getDescription(), line.getAmount(), line.getPrice(), line.getQuantity(),
+                    line.getDeleted(), line.getItem() == null ? null : line.getItem().getId(),
                     line.getSourceUserId(), line.getIsPercentage());
         }
-        
+
         return ret;
     }
      * */

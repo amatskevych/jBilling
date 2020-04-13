@@ -21,9 +21,8 @@
 package com.sapienter.jbilling.client.authentication;
 
 import com.sapienter.jbilling.server.user.db.UserDTO;
-import org.codehaus.groovy.grails.plugins.springsecurity.GrailsUser;
 import org.springframework.security.core.GrantedAuthority;
-
+import grails.plugin.springsecurity.userdetails.GrailsUser;
 import java.util.Collection;
 import java.util.Locale;
 
@@ -140,7 +139,7 @@ public class CompanyUserDetails extends GrailsUser {
         return languageId;
     }
 
-    @Override
+   @Override
     public String toString() {
         final StringBuilder sb = new StringBuilder();
         sb.append("CompanyUserDetails");

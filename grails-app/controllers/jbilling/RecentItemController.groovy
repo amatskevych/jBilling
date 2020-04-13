@@ -20,7 +20,7 @@
 
 package jbilling
 
-import grails.plugins.springsecurity.Secured
+import grails.plugin.springsecurity.annotation.Secured
 
 /**
  * RecentItemController
@@ -30,10 +30,10 @@ import grails.plugins.springsecurity.Secured
  */
 @Secured(["isAuthenticated()"])
 class RecentItemController {
-
+	static scope = "prototype"
     def recentItemService
 
-    def index = {
+    def index () {
         render template: "/layouts/includes/recent"
     }
 

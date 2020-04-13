@@ -40,7 +40,6 @@ public interface INotificationSessionBean {
     /**
      * Sends an email with the invoice to a customer.
      * This is used to manually send an email invoice from the GUI
-     * @param userId
      * @param invoiceId
      * @return
     */
@@ -49,13 +48,15 @@ public interface INotificationSessionBean {
     /**
      * Sends an email with the invoice to a customer.
      * This is used to manually send an email invoice from the GUI
-     * @param userId
-     * @param invoiceId
+     * @param paymentId
      * @return
     */
     public Boolean emailPayment(Integer paymentId) throws SessionInternalError;
 
     public void notify(Integer userId, MessageDTO message) 
+            throws SessionInternalError;
+
+    public void asyncNotify(Integer userId, MessageDTO message)
             throws SessionInternalError;
     
    /**

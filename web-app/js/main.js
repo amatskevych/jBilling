@@ -1,19 +1,19 @@
 /*
  * jBilling - The Enterprise Open Source Billing System
  * Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
- *
+ * 
  * This file is part of jbilling.
- *
+ * 
  * jbilling is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *
+ * 
  * jbilling is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Affero General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU Affero General Public License
  * along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -35,6 +35,7 @@ function initPopups()
 		popupHolderClass:'popup-hover'
 	});
     initDropdown();
+    closeActivePopups();
 }
 if (window.addEventListener)
 	window.addEventListener("load", initPopups, false);
@@ -118,7 +119,7 @@ function initPopup(_popup) {
 }
 
 function initDropdown() {
-    $('.dropdown').each(function() {
+    jQuery('.dropdown').each(function() {
         var open = $(this).find('a.open');
         var drop = $(this).find('.drop');
 
@@ -170,3 +171,73 @@ if (window.addEventListener)
 	window.addEventListener("load", initScript, false);
 else if (window.attachEvent)
 	window.attachEvent("onload", initScript);
+
+function closeActivePopups(){
+    //this will close active pop ups after clicking any where else on the window
+    $('.open').parent('div').click(function(e) {
+        e.stopPropagation();
+    });
+
+    $(function(){
+        $(document).click(function(){
+            $('.open').parent('div').removeClass('active');
+        });
+    });
+}
+
+String.prototype.format = function() {
+    var formatted = this;
+    for( var arg in arguments ) {
+        formatted = formatted.replace("{" + arg + "}", arguments[arg]);
+    }
+    return formatted;
+};
+
+function addDataTooltip() {
+	//           Replace title with data-tooltip-open, data-content, data-customtooltip for tool tips.
+	$('.toolTipElement').each(function(index, obj) {
+		var selectWithTooltipElment = $(obj);
+		selectWithTooltipElment.attr("data-tooltip-open", "true");
+		selectWithTooltipElment.attr("data-content", "true");
+		selectWithTooltipElment.attr("data-customtooltip", selectWithTooltipElment.attr("title"));
+		selectWithTooltipElment.removeAttr("title");
+	});
+	// Add custom tool tips
+	$("[data-tooltip-open=true]").tooltip({
+		items: "[data-content=true]",
+		content: function(){ return $(this).data('customtooltip') },
+		position: {
+			my: "center bottom-20",
+			at: "center top",
+			using: function(position, feedback) {
+				$(this).css(position);
+				$("<div>")
+					.addClass("arrow")
+					.addClass(feedback.vertical)
+					.addClass(feedback.horizontal)
+					.appendTo(this);
+			}
+		}
+	});
+}
+
+$(document).ajaxError(function(event, request, settings, thrownError) {
+
+    if($("#error-messages")){
+        $("#error-messages").css("display","block");
+        $("#error-messages ul").css("display","block");
+        $("#error-messages ul").html("<li>" + thrownError + "</li>");
+    }
+    else{
+        window.location.href = "/jbilling/errors/handleErrors?ajaxError=true&errorThrown=" + thrownError;
+    }
+
+});
+
+$(document).ajaxStart(function(){
+    var errorMessages = $("#error-messages");
+    if(errorMessages.length){
+        errorMessages.css("display","none");
+    }
+});
+

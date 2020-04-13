@@ -20,10 +20,16 @@
 
 package com.sapienter.jbilling.server.util;
 
-import com.sapienter.jbilling.server.util.db.CurrencyDTO;
+import com.sapienter.jbilling.server.util.api.validation.CreateValidationGroup;
+import org.apache.commons.lang.StringUtils;
+import org.hibernate.validator.constraints.NotEmpty;
 
+import javax.validation.constraints.Digits;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.util.Date;
 
 /**
  * CurrencyWS
@@ -34,31 +40,30 @@ import java.math.BigDecimal;
 public class CurrencyWS implements Serializable {
 
     private Integer id;
+
+    @NotEmpty(message = "validation.error.notnull", groups = CreateValidationGroup.class)
     private String description;
+    @NotNull(message = "validation.error.notnull")
+    @Size(min = 1, max = 10, message = "validation.error.size,1,10")
     private String symbol;
+    @NotNull(message = "validation.error.notnull")
+    @Size(min = 1, max = 3, message = "validation.error.size,1,3")
     private String code;
+    @NotNull(message = "validation.error.notnull")
+    @Size(min = 2, max = 2, message = "validation.error.size.exact,2")
     private String countryCode;
     private Boolean inUse;
+
+    @Digits(integer = 10, fraction = 4, message = "validation.error.invalid.number.or.fraction")
     private String rate;
+    @NotNull(message = "validation.error.notnull")
+    @Digits(integer = 10, fraction = 4, message = "validation.error.invalid.number.or.fraction")
     private String sysRate;
+    private Date fromDate;
 
     private boolean defaultCurrency;
 
     public CurrencyWS() {
-    }
-
-    public CurrencyWS(CurrencyDTO dto, boolean defaultCurrency) {
-        this.id = dto.getId();
-        this.description = dto.getDescription();
-        this.symbol = dto.getSymbol();
-        this.code = dto.getCode();
-        this.countryCode = dto.getCountryCode();
-        this.inUse = dto.getInUse();
-
-        setRate(dto.getRate());
-        setSysRate(dto.getSysRate());
-
-        this.defaultCurrency = defaultCurrency;
     }
 
     public Integer getId() {
@@ -114,11 +119,15 @@ public class CurrencyWS implements Serializable {
     }
 
     public BigDecimal getRateAsDecimal() {
-        return rate != null ? new BigDecimal(rate) : null;
+        return com.sapienter.jbilling.common.Util.string2decimal(rate);
     }
 
     public void setRate(String rate) {
-        this.rate = rate;
+        if(!StringUtils.isEmpty(rate)) {
+            this.rate = rate;
+        } else {
+            this.rate = null;
+        }
     }
 
     public void setRate(BigDecimal rate) {
@@ -134,7 +143,7 @@ public class CurrencyWS implements Serializable {
     }
 
     public BigDecimal getSysRateAsDecimal() {
-        return sysRate != null ? new BigDecimal(sysRate) : null;
+        return com.sapienter.jbilling.common.Util.string2decimal(sysRate);
     }
 
     public void setSysRate(String sysRate) {
@@ -161,6 +170,14 @@ public class CurrencyWS implements Serializable {
         this.defaultCurrency = defaultCurrency;
     }
 
+    public Date getFromDate() {
+        return fromDate;
+    }
+
+    public void setFromDate(Date fromDate) {
+        this.fromDate = fromDate;
+    }
+
     @Override
     public String toString() {
         return "CurrencyWS{"
@@ -172,6 +189,7 @@ public class CurrencyWS implements Serializable {
                + ", rate='" + rate + '\''
                + ", systemRate='" + sysRate + '\''
                + ", isDefaultCurrency=" + defaultCurrency
+               + ", fromDate=" + fromDate
                + '}';
     }
 }

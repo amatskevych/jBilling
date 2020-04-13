@@ -25,6 +25,7 @@ includeTargets << new File("${basedir}/scripts/Jar.groovy")
 
 imageDir = "${basedir}/image"
 sourcePackageName = "${targetDir}/${releaseName}-src.zip"
+packageName = "${targetDir}/${releaseName}.zip"
 
 target(cleanPackages: "Remove old packages from the target directory.") {
     delete(dir: targetDir, includes: "${grailsAppName}-*.zip")
@@ -103,28 +104,30 @@ target(updateImage: "Updates the jbilling image with the current release artifac
     copy(todir: "${jbillingHome}/resources/logos") {
         fileset(dir: "${resourcesDir}/logos")
     }
-
-    // copy mediation descriptors and sample asterisk files
-    copy(todir: "${jbillingHome}/resources/mediation", overwrite: true) {
-        fileset(dir: "${resourcesDir}/mediation", includes: "asterisk.xml")
-        fileset(dir: "${resourcesDir}/mediation", includes: "asterisk-sample*.csv")
-        fileset(dir: "${resourcesDir}/mediation", includes: "jbilling_cdr.*")
-        fileset(dir: "${resourcesDir}/mediation", includes: "mediation.dtd")
-    }
-
-    // copy jbilling.jar
+	
+	// copy invoices
+	delete(dir: "${jbillingHome}/resources/invoices", includes: "**/*")
+	copy(todir: "${jbillingHome}/resources/invoices") {
+		fileset(dir: "${resourcesDir}/invoices")
+	}
+	
+    // copy client api artifacts
     delete(file: "${jbillingHome}/resources/api")
     mkdir(dir: "${jbillingHome}/resources/api")
-    copy(file: "${targetDir}/${grailsAppName}.jar", todir: "${jbillingHome}/resources/api")
+    copy(file: "${targetDir}/${grailsAppName}-${grailsAppVersion}.jar", todir: "${jbillingHome}/resources/api")
+    // copy(file: "${descriptorsDir}/spring/jbilling-remote-beans.xml", todir: "${jbillingHome}/resources/api")
+
+    // copy plug-in spring xml configuration files
+    delete(file: "${jbillingHome}/resources/spring")
+    mkdir(dir: "${jbillingHome}/resources/spring")
+    copy(todir: "${jbillingHome}/resources/spring") {
+        fileset(dir: "${descriptorsDir}/spring", excludes: "jbilling-remote-beans.xml")
+    }
 
     // copy configuration files
     // don't copy DataSource, the reference tomcat install uses HSQLDB
-    copy(file: "${javaDir}/jbilling.properties.sample", tofile: "${jbillingHome}/jbilling.properties", overwrite: true)
+    copy(file: "${javaDir}/jbilling.properties", tofile: "${jbillingHome}/jbilling.properties", overwrite: true)
     copy(file: "${configDir}/Config.groovy", tofile: "${jbillingHome}/${grailsAppName}-Config.groovy", overwrite: true)
-
-    // copy log4j configuration
-    mkdir(dir: "${imageDir}/bin/grails-app/conf")
-    copy(file: "${configDir}/log4j.xml", todir: "${imageDir}/bin/grails-app/conf", overwrite: true)
 
     // copy jbilling.war
     delete(file: "${imageDir}/webapps/${grailsAppName}.war")
@@ -133,8 +136,6 @@ target(updateImage: "Updates the jbilling image with the current release artifac
 
 
 target(packageTomcat: "Builds and packages the binary jbilling tomcat release.") {
-    updateImage()
-
     // clear tomcat logs, temp and work directories
     delete(dir: "${imageDir}/logs")
     mkdir(dir: "${imageDir}/logs")
@@ -168,6 +169,7 @@ target(packagePublicRelease: "Builds the public binary jbilling tomcat release, 
         default:
             println "Building release packages ..."
             cleanPackages()
+            updateImage()
             packageSource()
             packageTomcat()
     }

@@ -20,14 +20,13 @@
 
 package com.sapienter.jbilling.server.util;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.invoice.InvoiceBL;
 import com.sapienter.jbilling.server.item.CurrencyBL;
 import com.sapienter.jbilling.server.payment.blacklist.BlacklistBL;
-import com.sapienter.jbilling.server.user.AchBL;
 import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.user.UserDTOEx;
-import com.sapienter.jbilling.server.user.db.AchDTO;
 import com.sapienter.jbilling.server.user.db.UserDAS;
 import com.sapienter.jbilling.server.user.db.UserDTO;
 import com.sapienter.jbilling.server.user.partner.PartnerBL;
@@ -37,6 +36,8 @@ import com.sapienter.jbilling.server.util.db.LanguageDTO;
 import org.apache.log4j.Logger;
 
 import javax.naming.NamingException;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -53,7 +54,7 @@ import java.util.Locale;
  */
 public class DTOFactory {
 
-    private static final Logger LOG = Logger.getLogger(DTOFactory.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(DTOFactory.class));
 
     /**
      * The constructor is private, do it doesn't get instantiated. All the
@@ -110,8 +111,8 @@ public class DTOFactory {
             // the main role is the smallest of them, so they have to be ordered
             // in the
             // db in ascending order (small = important);
-            if (role.getId() < mainRole) {
-                mainRole = role.getId();
+            if (role.getRoleTypeId() < mainRole) {
+                mainRole = role.getRoleTypeId();
                 roleStr = role.getTitle(user.getLanguageIdField());
             }
         }
@@ -142,13 +143,8 @@ public class DTOFactory {
                 user.getLanguageIdField()));
 
         // add a credit card if available
-        if (!user.getCreditCards().isEmpty()) {
-            dto.setCreditCard(user.getCreditCards().iterator().next());
-        }
-
-        if (!user.getAchs().isEmpty()) {
-            AchBL ach = new AchBL(((AchDTO)user.getAchs().toArray()[0]).getId());
-            dto.setAch(ach.getDTO());
+        if (!user.getPaymentInstruments().isEmpty()) {
+            dto.setPaymentInstruments(user.getPaymentInstruments());
         }
 
         // if this is a customer, add its dto
@@ -170,6 +166,8 @@ public class DTOFactory {
         } catch (Exception e) {
             dto.setLocale(new Locale("en"));
         }
+        
+        dto.setCompany(user.getCompany());
 
         // if the blacklist plug-in enabled, add the list of blacklist
         // entries that match this user and set whether their id is blacklisted
@@ -181,7 +179,20 @@ public class DTOFactory {
         }
 
         // set the balance
-        dto.setBalance(new UserBL().getBalance(dto.getId()));
+        dto.setBalance(UserBL.getBalance(dto.getId()));
+        dto.setPaymentInstruments(user.getPaymentInstruments());
+        dto.setAccountLockedTime(user.getAccountLockedTime());
+
+        // User Account Expired value population
+        try {
+            UserBL userBL = new UserBL(user);
+            if(userBL.validateAccountExpired(user.getAccountDisabledDate())) {
+                dto.setAccountExpired(true);
+                dto.setAccountDisabledDate(user.getAccountDisabledDate());
+            }
+        } catch (Exception e) {
+            LOG.error("Exception occurred " + e.getMessage());
+        }
 
         return dto;
     }

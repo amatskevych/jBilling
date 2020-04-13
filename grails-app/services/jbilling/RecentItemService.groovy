@@ -37,8 +37,12 @@ class RecentItemService implements InitializingBean, Serializable {
     public static final Integer MAX_ITEMS = 5
 
     static scope = "session"
-    
+
     def void afterPropertiesSet() {
+        load()
+    }
+
+    def void load() {
         if (session['user_id'])
             session[SESSION_RECENT_ITEMS] = getRecentItems()
     }
@@ -49,8 +53,9 @@ class RecentItemService implements InitializingBean, Serializable {
      * @return list of recently viewed items.
      */
     def Object getRecentItems() {
+		def userId =  session["user_id"]
         return RecentItem.withCriteria {
-            eq("userId", session["user_id"])
+            eq("userId", userId)
             order("id", "asc")
         }
     }
@@ -78,22 +83,21 @@ class RecentItemService implements InitializingBean, Serializable {
      */
     def void addRecentItem(RecentItem item) {
         def items = getRecentItems()
-        def lastItem = !items.isEmpty() ? items.getAt(-1) : null
-        
+        def lastItem = items ? items.last() : null
+		
         // add item only if it is different from the last item added
         try {
-            if (!lastItem || !lastItem.equals(item)) {
-                item.userId = session['user_id']
+        	item.userId = session['user_id']
+			if ( !(item == lastItem) ) {
+			
                 item.save()
-
                 items << item
 
                 if (items.size() > MAX_ITEMS) {
-                    def remove = items.subList(5, items.size())
+                    def remove = items.subList(0, items.size() - MAX_ITEMS)
                     remove.each{ it.delete(flush: true) }
                     remove.clear()
                 }
-
                 session[SESSION_RECENT_ITEMS] = items
             }
 

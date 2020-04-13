@@ -1,21 +1,22 @@
 %{--
-  jBilling - The Enterprise Open Source Billing System
-  Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
+     jBilling - The Enterprise Open Source Billing System
+   Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
 
-  This file is part of jbilling.
-
-  jbilling is free software: you can redistribute it and/or modify
-  it under the terms of the GNU Affero General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  jbilling is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU Affero General Public License for more details.
-
-  You should have received a copy of the GNU Affero General Public License
-  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+   This file is part of jbilling.
+   
+   jbilling is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+   
+   jbilling is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+   
+   You should have received a copy of the GNU Affero General Public License
+   along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+ 
   --}%
 
 <%@ page contentType="text/html;charset=UTF-8" %>
@@ -35,7 +36,8 @@
     <g:form id="save-type-form" name="notes-form" url="[action: 'save']">
 
     <div class="box">
-        <fieldset>
+        <div class="sub-box">
+          <fieldset>
             <div class="form-columns">
                 <g:hiddenField name="id" value="${contactType?.id}"/>
 
@@ -49,11 +51,12 @@
                     <g:applyLayout name="form/input">
                         <content tag="label">${language.description}</content>
                         <content tag="label.for">language.${language.id}</content>
-                        <g:textField class="field" name="language.${language.id}" value="${contactType?.getDescription(language.id)}"/>
+                        <g:textField class="field" name="language.${language.id}" value="${contactType?.getDescription(language.id)?.content}"/>
                     </g:applyLayout>
                 </g:each>
             </div>
-        </fieldset>
+          </fieldset>
+        </div>
     </div>
 
     </g:form>

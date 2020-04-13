@@ -19,7 +19,10 @@
  */
 package com.sapienter.jbilling.server.user.tasks;
 
+import com.sapienter.jbilling.common.CommonConstants;
 import com.sapienter.jbilling.common.Constants;
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.metafields.MetaFieldValueWS;
 import com.sapienter.jbilling.server.payment.IPaymentSessionBean;
 import com.sapienter.jbilling.server.payment.PaymentBL;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
@@ -29,15 +32,21 @@ import com.sapienter.jbilling.server.pluggableTask.TaskException;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.system.event.Event;
 import com.sapienter.jbilling.server.system.event.task.IInternalEventsTask;
+import com.sapienter.jbilling.server.user.ContactWS;
 import com.sapienter.jbilling.server.user.UserBL;
+import com.sapienter.jbilling.server.user.UserDTOEx;
+import com.sapienter.jbilling.server.user.UserWS;
 import com.sapienter.jbilling.server.user.db.CustomerDTO;
 import com.sapienter.jbilling.server.user.db.UserDTO;
 import com.sapienter.jbilling.server.user.event.DynamicBalanceChangeEvent;
 import com.sapienter.jbilling.server.util.PreferenceBL;
+
+import org.apache.commons.lang.time.DateUtils;
 import org.apache.log4j.Logger;
 import org.springframework.dao.EmptyResultDataAccessException;
 
 import java.math.BigDecimal;
+import java.util.Calendar;
 import java.util.Date;
 
 /**
@@ -55,7 +64,7 @@ import java.util.Date;
  */
 public class AutoRechargeTask extends PluggableTask implements IInternalEventsTask {
 
-    private static final Logger LOG = Logger.getLogger(AutoRechargeTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(AutoRechargeTask.class));
 
     @SuppressWarnings("unchecked")
     private static final Class<Event>[] events = new Class[]{
@@ -74,6 +83,14 @@ public class AutoRechargeTask extends PluggableTask implements IInternalEventsTa
         DynamicBalanceChangeEvent balanceEvent = (DynamicBalanceChangeEvent) event;
         UserDTO user = new UserBL(balanceEvent.getUserId()).getDto();
         CustomerDTO customer = user.getCustomer();
+        // get the parent customer that pays, if it exists
+        if (customer != null) {
+            while (customer.getParent() != null
+                    && (customer.getInvoiceChild() == null || customer.getInvoiceChild() == 0)) {
+                customer = customer.getParent(); // go up one level
+                user = customer.getBaseUser();
+            }
+        }
 
         LOG.debug("Processing " + event);
 
@@ -101,9 +118,25 @@ public class AutoRechargeTask extends PluggableTask implements IInternalEventsTa
 
             // can't use the managed bean, a new transaction will cause the CustomerDTO to get an
             // optimistic lock: this transaction and the new payment one both changing the same customer.dynamic_balance
-            IPaymentSessionBean paymentSession = new PaymentSessionBean(); 
+            IPaymentSessionBean paymentSession = new PaymentSessionBean();
 
-            Integer result = paymentSession.processAndUpdateInvoice(payment, null, balanceEvent.getEntityId());
+            BigDecimal currMthlyAmnt= customer.getCurrentMonthlyAmount();
+
+            if (customer.getCurrentMonthlyAmount() == null) {
+                customer.setCurrentMonthlyAmount(customer.getAutoRecharge());
+            } else {
+                customer.setCurrentMonthlyAmount(customer.getCurrentMonthlyAmount().add(customer.getAutoRecharge()));
+            }
+
+            Integer result = paymentSession.processAndUpdateInvoice(payment,
+                                                                    null,
+                                                                    balanceEvent.getEntityId(),
+                                                                    user.getUserId());
+
+            if(result.equals(CommonConstants.PAYMENT_RESULT_FAILED) || result.equals(CommonConstants.PAYMENT_RESULT_PROCESSOR_UNAVAILABLE)) {
+		        //if payment failed, revert back to original value
+                customer.setCurrentMonthlyAmount(currMthlyAmnt);
+	        }
 
             LOG.debug("Payment created with result: " + result);
         } else {
@@ -126,34 +159,53 @@ public class AutoRechargeTask extends PluggableTask implements IInternalEventsTa
             return false;
         }
 
-        BigDecimal threshold = getAutoRechargeThreshold(user.getEntity().getId());
-        if (threshold != null && threshold.compareTo(newBalance) > 0) {
-            if (!Constants.BALANCE_PRE_PAID.equals(customer.getBalanceType())) {
-                LOG.debug("User " + user.getId() + " does not hold a pre-paid balance, cannot make automatic payment!");
+        BigDecimal threshold = getAutoRechargeThreshold(user);
+        if (threshold == null ) {             
+        	LOG.debug("Company or customer does not have a recharge preference.");
+        	return false;
+        }
+
+        LOG.debug("Threshold = " + threshold + ", New Balance=" + newBalance);
+
+        //check monthly limit
+        if(customer.getMonthlyLimit() != null && customer.getMonthlyLimit().compareTo(BigDecimal.ZERO) > 0){
+            if(customer.getCurrentMonth() == null || !DateUtils.truncatedEquals(new Date(), customer.getCurrentMonth(), Calendar.MONTH)){
+                customer.setCurrentMonth(new Date());
+                customer.setCurrentMonthlyAmount(BigDecimal.ZERO);
+            }
+            if (customer.getCurrentMonthlyAmount().add(customer.getAutoRecharge()).compareTo(customer.getMonthlyLimit()) > 0){
                 return false;
             }
+        }
+        LOG.debug("Customer Recharge Amt: " + customer.getAutoRecharge()+"Credit Limit: " + customer.getCreditLimit());
+        if (threshold.compareTo(newBalance.add(customer.getCreditLimit())) > 0) {
         } else {
-            LOG.debug("Company does not have a recharge preference, or this customer balance not reached the threshold");
+            LOG.debug("threshold not reached yet.");
             return false;
         }
         return true;
     }
 
     /**
-     * Returns the set auto-recharge threshold for the given entity id, or null
-     * if the company does not have a configured threshold.
+     * Returns the set auto-recharge threshold for the given user, or null
+     * if the user or company does not have a configured threshold.
      *
-     * @param entityId entity id
+     * @param user UserDTO
      * @return auto-recharge threshold or null if not set
      */
-    private BigDecimal getAutoRechargeThreshold(Integer entityId) {
-        PreferenceBL preference = new PreferenceBL();
+    private BigDecimal getAutoRechargeThreshold(UserDTO user) {
+
+        if(user.getCustomer().getRechargeThreshold() != null &&
+                user.getCustomer().getRechargeThreshold().compareTo(BigDecimal.ZERO) >= 0){
+            return user.getCustomer().getRechargeThreshold();
+        }
+
         try {
-            preference.set(entityId, Constants.PREFERENCE_AUTO_RECHARGE_THRESHOLD);
-        } catch (EmptyResultDataAccessException e) {            
+            return PreferenceBL.getPreferenceValueAsDecimal(
+                            user.getEntity().getId(), Constants.PREFERENCE_AUTO_RECHARGE_THRESHOLD);
+        } catch (EmptyResultDataAccessException e) {
             return null; // no threshold set
         }
-        return new BigDecimal(preference.getFloat());
     }
-    
+
 }

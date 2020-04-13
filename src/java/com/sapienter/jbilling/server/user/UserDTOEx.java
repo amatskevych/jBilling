@@ -26,20 +26,20 @@ import java.util.Locale;
 import java.util.List;
 
 import com.sapienter.jbilling.common.Constants;
-import com.sapienter.jbilling.common.PermissionIdComparator;
-import com.sapienter.jbilling.common.PermissionTypeIdComparator;
-import com.sapienter.jbilling.server.user.db.AchDTO;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue;
+import com.sapienter.jbilling.server.payment.PaymentInformationWS;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.user.db.CompanyDAS;
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
 import com.sapienter.jbilling.server.user.db.CustomerDTO;
 import com.sapienter.jbilling.server.user.db.UserDTO;
-import com.sapienter.jbilling.server.user.permisson.db.PermissionDTO;
-import com.sapienter.jbilling.server.user.permisson.db.PermissionTypeDTO;
+
 import com.sapienter.jbilling.server.util.db.CurrencyDAS;
 import com.sapienter.jbilling.server.util.db.CurrencyDTO;
 import com.sapienter.jbilling.server.util.db.LanguageDAS;
+
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Map;
 
 /**
  * @author emilc
@@ -50,8 +50,6 @@ public final class UserDTOEx extends UserDTO {
     
     // user status in synch with db table user_status
     public static final Integer STATUS_ACTIVE = new Integer(1); // this HAS to be the very first status
-    public static final Integer STATUS_SUSPENDED = new Integer(5); 
-    public static final Integer STATUS_DELETED = new Integer(8); // this HAS to be the last status
     
     // subscriber status in synch with db table subscriber_status
     public static final Integer SUBSCRIBER_ACTIVE = new Integer(1); 
@@ -62,8 +60,6 @@ public final class UserDTOEx extends UserDTO {
     public static final Integer SUBSCRIBER_NONSUBSCRIBED = new Integer(6);
     public static final Integer SUBSCRIBER_DISCONTINUED = new Integer(7);
 
-    private List<PermissionDTO> allPermissions = null;
-    private List<PermissionDTO> permissionsTypeId = null; // same as before but sorted by type
     private List<Integer> roles = null;
     private Integer mainRoleId = null;
     private String mainRoleStr = null;
@@ -72,8 +68,6 @@ public final class UserDTOEx extends UserDTO {
     private String statusStr = null;
     private Integer subscriptionStatusId = null;
     private String subscriptionStatusStr = null;
-    private CreditCardDTO creditCard = null; 
-    private AchDTO ach = null;
     private Integer lastInvoiceId = null;
     private String currencySymbol = null;
     private String currencyName = null;
@@ -82,6 +76,10 @@ public final class UserDTOEx extends UserDTO {
     private Boolean userIdBlacklisted = null;
     private BigDecimal balance = null; // calculated in real-time. Not a DB field
 
+    private Map<Integer, ArrayList<Date>> timelineDatesMap = null;
+    private Map<Integer, Date> effectiveDateMap = null;
+    private Map<Integer, ArrayList<Date>> removedDatesMap = null;
+    private boolean createCredentials = false;
 
     /**
      * Constructor for UserDTOEx.
@@ -108,8 +106,6 @@ public final class UserDTOEx extends UserDTO {
         setFailedAttempts((failedAttempts == null) ? 0 : failedAttempts);
         // the entity id
         setEntityId(entityId);
-        // the permissions are defaulted to nothing
-        allPermissions = new ArrayList();
         roles = new ArrayList<Integer>();
         if (roleId != null) {
             // we ask for at least one role for this user
@@ -128,7 +124,6 @@ public final class UserDTOEx extends UserDTO {
         setUserName(dto.getUserName());
         setFailedAttempts(dto.getFailedAttempts());
         setCurrency(dto.getCurrencyId() == null ? null : new CurrencyDTO(dto.getCurrencyId()));
-        creditCard = dto.getCreditCard() == null ? null : new CreditCardDTO(dto.getCreditCard());
         mainRoleStr = dto.getRole();
         mainRoleId = dto.getMainRoleId();
         languageStr = dto.getLanguage();
@@ -138,14 +133,38 @@ public final class UserDTOEx extends UserDTO {
         statusId = dto.getStatusId();
         subscriptionStatusId = dto.getSubscriberStatusId();
         setEntityId(entityId);
+
+        if(Boolean.TRUE.equals( dto.isAccountLocked() ) ){
+            setAccountLockedTime(new Date());
+        } else {
+            setAccountLockedTime(null);
+        }
+        setAccountExpired(dto.isAccountExpired());
+        setAccountDisabledDate(dto.isAccountExpired() ? new Date() : null);
         
         roles = new ArrayList<Integer>();
         roles.add(mainRoleId);
         
         if (mainRoleId.equals(Constants.TYPE_CUSTOMER)) {
-            CustomerDTO customer = new CustomerDTO(dto);
+            CustomerDTO customer = new CustomerDTO(entityId, dto);
             setCustomer(customer);
         }
+        
+        // timelines dates map and effective date map
+        setTimelineDatesMap(dto.getTimelineDatesMap());
+        setEffectiveDateMap(dto.getEffectiveDateMap());
+        setRemovedDatesMap(dto.getRemovedDatesMap());
+        
+        if(dto.getPaymentInstruments() != null) {
+        	List<PaymentInformationDTO> paymentInstruments = new ArrayList<PaymentInformationDTO>(0);
+            if(dto.getPaymentInstruments().size() > 0) {
+        	for(PaymentInformationWS paymentInformation : dto.getPaymentInstruments()) {
+                paymentInstruments.add(new PaymentInformationDTO(paymentInformation, entityId));
+        	}
+            }
+            setPaymentInstruments(paymentInstruments);
+        }
+        setCreateCredentials(dto.isCreateCredentials());
     }
     
     public UserDTOEx() {
@@ -156,57 +175,16 @@ public final class UserDTOEx extends UserDTO {
        super(user); 
     }
 
-    public List<PermissionDTO> getAllPermissions() {
-        return this.allPermissions;
-    }
-    // this expects the List to be sorted already
-    public void setAllPermissions(List<PermissionDTO> permissions) {
-        this.allPermissions = permissions;
-    }
-    
-    public boolean isGranted(Integer permissionId) {
-        PermissionDTO permission = new PermissionDTO(permissionId);
-        if (Collections.binarySearch(allPermissions, permission,
-                new PermissionIdComparator()) >= 0) {
-            return true;
-        } else {
-            return false;
-        }
-    }
-    
-    /**
-     * Verifies that a permision for the given type/foreign_id has been
-     * granted. This is defenetly an expensive 
-     * @param typeId
-     * @param foreignId
-     * @return
-     */
-    public boolean isGranted(Integer typeId, Integer foreignId) {
-        if (permissionsTypeId == null) {
-            permissionsTypeId = new ArrayList<PermissionDTO>();
-            permissionsTypeId.addAll(allPermissions);
-            Collections.sort(permissionsTypeId, new PermissionTypeIdComparator());
-          /*
-            Logger.getLogger(UserDTOEx.class).debug("Permissions now = " +
-                    permissionsTypeId);
-                    */
-        }
-        boolean retValue;
-        PermissionDTO permission = new PermissionDTO(0, new PermissionTypeDTO(typeId, null), 
-                foreignId, null, null);
-        if (Collections.binarySearch(permissionsTypeId, permission,
-                new PermissionTypeIdComparator()) >= 0) {
-            retValue = true;
-        } else {
-            retValue = false;
-        }
-        
-        /*
-        Logger.getLogger(UserDTOEx.class).debug("permission for type = " + 
-                typeId + " foreignId = " + foreignId + " result = " +
-                retValue);
-        */
-        return retValue;
+    private boolean paymentInstrumentEntered(List<PaymentInformationDTO> paymentInstruments) {
+    	if(paymentInstruments.size() < 2) {
+    		for(MetaFieldValue value : paymentInstruments.iterator().next().getMetaFields()) {
+    			if(value.getValue() != null &&  !value.getValue().toString().isEmpty()) {
+    				return true;
+    			}
+    		}
+    		return false;
+    	}
+    	return true;
     }
 
     /**
@@ -304,20 +282,6 @@ public final class UserDTOEx extends UserDTO {
     /**
      * @return
      */
-    public CreditCardDTO getCreditCard() {
-        return creditCard;
-    }
-
-    /**
-     * @param cardDTO
-     */
-    public void setCreditCard(CreditCardDTO cardDTO) {
-        creditCard = cardDTO;
-    }
-
-    /**
-     * @return
-     */
     public Integer getLastInvoiceId() {
         return lastInvoiceId;
     }
@@ -356,19 +320,7 @@ public final class UserDTOEx extends UserDTO {
     public void setCurrencyName(String currencyName) {
         this.currencyName = currencyName;
     }
-
-    /**
-     * @return Returns the ach.
-     */
-    public AchDTO getAch() {
-        return ach;
-    }
-    /**
-     * @param ach The ach to set.
-     */
-    public void setAch(AchDTO ach) {
-        this.ach = ach;
-    }
+    
     public Locale getLocale() {
         return locale;
     }
@@ -426,7 +378,40 @@ public final class UserDTOEx extends UserDTO {
     public void setBalance(BigDecimal balance) {
         this.balance = balance;
     }
+    
     public BigDecimal getBalance() {
         return balance;
+    }
+    
+    public void setTimelineDatesMap(Map<Integer, ArrayList<Date>> timelineDatesMap) {
+    	this.timelineDatesMap =  timelineDatesMap;
+    }
+    
+    public Map<Integer, ArrayList<Date>> getTimelineDatesMap() {
+    	return timelineDatesMap;
+    }
+    
+    public void setEffectiveDateMap(Map<Integer, Date> effectiveDateMap) {
+    	this.effectiveDateMap =  effectiveDateMap;
+    }
+    
+    public Map<Integer, Date> getEffectiveDateMap() {
+    	return effectiveDateMap;
+    }
+    
+    public void setRemovedDatesMap(Map<Integer, ArrayList<Date>> removedDatesMap) {
+    	this.removedDatesMap =  removedDatesMap;
+    }
+    
+    public Map<Integer, ArrayList<Date>> getRemovedDatesMap() {
+    	return removedDatesMap;
+    }
+
+    public boolean isCreateCredentials() {
+        return createCredentials;
+    }
+
+    public void setCreateCredentials(boolean createCredentials) {
+        this.createCredentials = createCredentials;
     }
 }

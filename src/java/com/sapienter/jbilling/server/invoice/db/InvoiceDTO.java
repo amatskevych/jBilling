@@ -27,25 +27,21 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
+import javax.persistence.*;
 import javax.persistence.CascadeType;
-import javax.persistence.Column;
 import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
-import javax.persistence.OneToMany;
 import javax.persistence.Table;
-import javax.persistence.TableGenerator;
-import javax.persistence.Version;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.metafields.EntityType;
+import com.sapienter.jbilling.server.metafields.MetaFieldHelper;
+import com.sapienter.jbilling.server.metafields.db.CustomizedEntity;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue;
 import com.sapienter.jbilling.server.util.csv.Exportable;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
-import org.hibernate.Hibernate;
-import org.hibernate.annotations.Fetch;
-import org.hibernate.annotations.FetchMode;
+import org.hibernate.annotations.*;
 
 import com.sapienter.jbilling.server.order.db.OrderProcessDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentInvoiceMapDTO;
@@ -54,11 +50,11 @@ import com.sapienter.jbilling.server.user.db.UserDTO;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.db.CurrencyDTO;
 import com.sapienter.jbilling.server.process.db.PaperInvoiceBatchDTO;
+
+import org.hibernate.annotations.Cache;
+
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import javax.persistence.Transient;
-import org.hibernate.annotations.Cache;
-import org.hibernate.annotations.CacheConcurrencyStrategy;
 
 @Entity
 @TableGenerator(
@@ -70,9 +66,9 @@ import org.hibernate.annotations.CacheConcurrencyStrategy;
         allocationSize = 100)
 @Table(name = "invoice")
 @Cache(usage = CacheConcurrencyStrategy.NONSTRICT_READ_WRITE)
-public class InvoiceDTO implements Serializable, Exportable {
+public class InvoiceDTO extends CustomizedEntity implements Serializable, Exportable {
 
-    private static final Logger LOG = Logger.getLogger(InvoiceDTO.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(InvoiceDTO.class));
 
     private static final int PROCESS = 1;
     public static final int DO_NOT_PROCESS = 0;
@@ -141,6 +137,7 @@ public class InvoiceDTO implements Serializable, Exportable {
         setInvoices(new HashSet<InvoiceDTO>(invoice.getInvoices()));
         setOrderProcesses(new HashSet<OrderProcessDTO>(invoice.getOrderProcesses()));
         setPaymentMap(new ArrayList<PaymentInvoiceMapDTO>(invoice.getPaymentMap()));
+        setMetaFields(new ArrayList<MetaFieldValue>(invoice.getMetaFields()));
     }
 
     public InvoiceDTO(int id, CurrencyDTO currencyDTO, Date createDatetime,
@@ -240,6 +237,16 @@ public class InvoiceDTO implements Serializable, Exportable {
         this.dueDate = dueDate;
     }
 
+    /**
+     * Sum total of the invoice lines for the current period. This amount will not change
+     * when the invoice is paid, and will always show the dollar value of this invoice for
+     * historical purposes.
+     *
+     * Since a carried invoice balance is added as an invoice line, this total automatically
+     * includes the total for the current month plus the carried balances of old un-paid invoices.
+     *
+     * @return sum total of the invoice lines
+     */
     @Column(name = "total", nullable = false, precision = 17, scale = 17)
     public BigDecimal getTotal() {
         return this.total;
@@ -294,16 +301,37 @@ public class InvoiceDTO implements Serializable, Exportable {
     public void setToProcess(Integer toProcess) {
         if (toProcess == null) {
             setInvoiceStatus(null);
-            return;
-        }
+        } else {
+            Integer status;
+            if(toProcess == DO_NOT_PROCESS){
+                status = Constants.INVOICE_STATUS_PAID;
+            } else {
+                if(getInvoiceStatus()!=null
+                        && Constants.INVOICE_STATUS_UNPAID_AND_CARRIED==getInvoiceStatus().getId()){
+                    // set the original status as it is only in case of carried
+                    // because we don't want to change carried status to paid/unpaid (#5958)
+                    status = getInvoiceStatus().getId();
+                } else {
+                    //else stick to the original rule, processing invoice to unpaid status
+                    status = Constants.INVOICE_STATUS_UNPAID;
+                }
+            }
 
-        setInvoiceStatus(new InvoiceStatusDAS().find(
-                (toProcess == DO_NOT_PROCESS
-                        ? Constants.INVOICE_STATUS_PAID
-                        : Constants.INVOICE_STATUS_UNPAID)
-        ));
+            setInvoiceStatus(new InvoiceStatusDAS().find(status));
+        }
     }
 
+    /**
+     * The total amount owing that must be paid for this single invoice to be brought to zero and marked
+     * paid. The initial balance is calculated as the invoice total {@link #getTotal()} - carried
+     * balance {@link #getCarriedBalance()}. The initial balance of the invoice <strong>represents the
+     * current periods charges only</strong>, not including any carried balances.
+     *
+     * As payments are applied, this balance will be reduced until it reaches zero and the invoice
+     * is marked as paid.
+     *
+     * @return total owing balance
+     */
     @Column(name = "balance", precision = 17, scale = 17)
     public BigDecimal getBalance() {
         return this.balance;
@@ -313,6 +341,13 @@ public class InvoiceDTO implements Serializable, Exportable {
         this.balance = balance;
     }
 
+    /**
+     * The sum total of all remaining un-paid or partially paid invoice balances. This represents
+     * the portion of the invoice total amount {@link #getTotal()} that was brought forward from
+     * an old un-paid invoice.
+     *
+     * @return portion of the invoice total that was carried forward.
+     */
     @Column(name = "carried_balance", nullable = false, precision = 17, scale = 17)
     public BigDecimal getCarriedBalance() {
         return this.carriedBalance;
@@ -356,6 +391,16 @@ public class InvoiceDTO implements Serializable, Exportable {
 
     public void setCustomerNotes(String customerNotes) {
         this.customerNotes = customerNotes;
+    }
+
+    public void appendCustomerNote (String note) {
+        if (! StringUtils.isBlank(note)) {
+            StringBuilder newNote = new StringBuilder();
+            if (this.customerNotes != null) {
+                newNote.append(this.customerNotes).append(" ");
+            }
+            setCustomerNotes(newNote.append(note).toString());
+        }
     }
 
     @Column(name = "public_number", length = 40)
@@ -440,6 +485,23 @@ public class InvoiceDTO implements Serializable, Exportable {
     public void setVersionNum(int versionNum) {
         this.versionNum = versionNum;
     }
+
+    @OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @Cascade(org.hibernate.annotations.CascadeType.DELETE_ORPHAN)
+    @JoinTable(
+            name = "invoice_meta_field_map",
+            joinColumns = @JoinColumn(name = "invoice_id"),
+            inverseJoinColumns = @JoinColumn(name = "meta_field_value_id")
+    )
+    @Sort(type = SortType.COMPARATOR, comparator = MetaFieldHelper.MetaFieldValuesOrderComparator.class)
+    public List<MetaFieldValue> getMetaFields() {
+        return getMetaFieldsList();
+    }
+
+    @Transient
+    public EntityType[] getCustomizedEntityType() {
+        return new EntityType[] { EntityType.INVOICE };
+    }
     
     // Helpers, for JPA migration
     @Transient
@@ -484,6 +546,12 @@ public class InvoiceDTO implements Serializable, Exportable {
     public String getNumber() {
         return getPublicNumber();
     }
+
+    @Transient
+    public boolean isReviewInvoice() {
+        return ( isReview != null && isReview.intValue() == 1 );
+    }
+
 
     /**
      * Touch this InvoiceDTO and initialize all lazy-loaded fields.

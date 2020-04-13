@@ -20,21 +20,23 @@
 
 package com.sapienter.jbilling.server.user.tasks;
 
-import java.util.Iterator;
+import java.util.Date;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.CommonConstants;
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentMethodDAS;
 import com.sapienter.jbilling.server.pluggableTask.PaymentInfoTask;
 import com.sapienter.jbilling.server.pluggableTask.PluggableTask;
 import com.sapienter.jbilling.server.pluggableTask.TaskException;
-import com.sapienter.jbilling.server.user.AchBL;
-import com.sapienter.jbilling.server.user.CreditCardBL;
 import com.sapienter.jbilling.server.user.UserBL;
-import com.sapienter.jbilling.server.user.db.AchDTO;
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
 import com.sapienter.jbilling.server.util.Constants;
+import org.joda.time.format.DateTimeFormat;
 
 /**
  * This creates payment dto. It now only goes and fetches the credit card
@@ -49,7 +51,7 @@ import com.sapienter.jbilling.server.util.Constants;
 public class PaymentInfoNoValidateTask 
         extends PluggableTask implements PaymentInfoTask {
 
-    private static final Logger LOG = Logger.getLogger(PaymentInfoNoValidateTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaymentInfoNoValidateTask.class));
     /** 
      * This will return an empty payment dto with only the credit card/ach set
      * if a valid credit card is found for the user. Otherwise null.
@@ -57,58 +59,63 @@ public class PaymentInfoNoValidateTask
      */
     public PaymentDTOEx getPaymentInfo(Integer userId) 
             throws TaskException {
-        PaymentDTOEx retValue = null;
+        PaymentDTOEx retValue = new PaymentDTOEx();;
+        PaymentInformationBL paymentBL = new PaymentInformationBL();
         try {
-            Integer method = Constants.AUTO_PAYMENT_TYPE_CC; // def to cc
             UserBL userBL = new UserBL(userId);
-            CreditCardBL ccBL = new CreditCardBL();
-            if (userBL.getEntity().getCustomer() != null) {
-                // now non-customers only use credit cards
-                method = userBL.getEntity().getCustomer().getAutoPaymentType();
-                if (method == null) { 
-                    method = Constants.AUTO_PAYMENT_TYPE_CC;
-                }
-            }
             
-            if (method.equals(Constants.AUTO_PAYMENT_TYPE_CC)) {
-                if (userBL.getEntity().getCreditCards().isEmpty()) {
-                    // no credit cards entered! no payment ...
-                } else {
-                    // go around the provided cards and get one that is sendable
-                    // to the processor
-                    for (Iterator it = userBL.getEntity().getCreditCards().
-                            iterator(); it.hasNext(); ) {
-                        ccBL.set(((CreditCardDTO) it.next()).getId());
-                        // takes the first one, no validation
-                        retValue = new PaymentDTOEx();
-                        retValue.setCreditCard(ccBL.getDTO());
-                        retValue.setPaymentMethod(new PaymentMethodDAS().find(ccBL.getPaymentMethod()));
-                        break;
-                    }
-                }
-            } else if (method.equals(Constants.AUTO_PAYMENT_TYPE_ACH)) {
-                AchDTO ach =  null;
-                if (userBL.getEntity().getAchs().size() > 0) {
-                    AchBL bl = new AchBL(((AchDTO)userBL.getEntity().getAchs().toArray()[0]).getId());
-                    ach = bl.getEntity();
-                }
-                if (ach == null) {
-                    // no info, no payment
-                } else {
-                    retValue = new PaymentDTOEx();
-                    retValue.setAch(new AchDTO(0, ach.getAbaRouting(),
-                            ach.getBankAccount(), ach.getAccountType(),
-                            ach.getBankName(), ach.getAccountName(), ach.getGatewayKey()));
-                    retValue.setPaymentMethod(new PaymentMethodDAS().find(Constants.PAYMENT_METHOD_ACH));
-                }
-            }
+            for(PaymentInformationDTO paymentInformation : userBL.getEntity().getPaymentInstruments()) {
+        		LOG.debug("Payment instrument " + paymentInformation.getId());
+        		// If its a payment/credit card
+        		if(paymentInformation.getPaymentMethodType().getPaymentMethodTemplate().getTemplateName().equalsIgnoreCase(CommonConstants.PAYMENT_CARD)) {
+        			processCreditCard(retValue, paymentInformation, paymentBL);
+        		} else if(paymentInformation.getPaymentMethodType().getPaymentMethodTemplate().getTemplateName().equalsIgnoreCase(CommonConstants.ACH)) {
+        			processACH(retValue, paymentInformation);
+        		}
+        	}
         } catch (Exception e) {
             throw new TaskException(e);
         }
-        if (retValue == null) {
+        if (retValue.getPaymentInstruments().isEmpty()) {
             LOG.debug("Could not find payment instrument for user " + userId);
+            retValue = null;
         }
         return retValue;
+    }
+    
+    /**
+     * Processes the payment instrument that is a credit card and if its a valid credit card then adds it to payment instruments
+     * 
+     * @param dto	PaymentDTOEx
+     * @param paymentInstrument	PaymentInformationDTO
+     * @param piBl	PaymentInformationBL
+     * @throws UnsupportedOperationException
+     */
+    protected void processCreditCard(PaymentDTOEx dto, PaymentInformationDTO paymentInstrument, PaymentInformationBL piBl) throws UnsupportedOperationException {
+    	// TODO: some fields like gateway key that were being process in old implementation have been removed at all
+    	String cardNumber = piBl.getStringMetaFieldByType(paymentInstrument, MetaFieldType.PAYMENT_CARD_NUMBER);
+    	Date ccExpiryDate = DateTimeFormat.forPattern("mm/yy").parseDateTime(piBl.getStringMetaFieldByType(paymentInstrument, MetaFieldType.DATE)).toDate();
+    	LOG.debug("Expiry date is: " + ccExpiryDate);
+    	if(piBl.validateCreditCard(ccExpiryDate, cardNumber)) {
+    		LOG.debug("Card is valid");
+    		PaymentInformationDTO paymentInformation = paymentInstrument.getDTO();
+    		paymentInformation.setPaymentMethod(new PaymentMethodDAS().find(piBl.getPaymentMethod(cardNumber)));
+    		
+    		dto.getPaymentInstruments().add(paymentInformation);
+    	}
+    }
+    
+    /**
+     * Process the payment instrument if its ach
+     * @param dto	PaymentDTOEx
+     * @param paymentInstrument	PaymentInformationDTO
+     */
+    protected void processACH(PaymentDTOEx dto, PaymentInformationDTO paymentInstrument) {
+    	// TODO: some fields like gateway key that were being process in old implementation have been removed at all
+    	PaymentInformationDTO paymentInformation = paymentInstrument.getDTO();
+		paymentInformation.setPaymentMethod(new PaymentMethodDAS().find(Constants.PAYMENT_METHOD_ACH));
+		
+		dto.getPaymentInstruments().add(paymentInformation);
     }
 
 }

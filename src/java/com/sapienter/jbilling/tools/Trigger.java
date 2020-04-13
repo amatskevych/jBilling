@@ -88,7 +88,7 @@ public class Trigger {
                 System.out.println("Running trigger for " + today);
                 System.out.println("Starting billing process at " + 
                         Calendar.getInstance().getTime());
-                remoteBillingProcess.trigger(today);
+                remoteBillingProcess.trigger(today, null);
                 System.out.println("Ended billing process at " + 
                         Calendar.getInstance().getTime());
             }
@@ -107,15 +107,6 @@ public class Trigger {
                         Calendar.getInstance().getTime());
             }
 
-            // now the partner payout process
-            if (step == null || step.intValue() == 3) {
-                System.out.println("Starting partner process at " + 
-                        Calendar.getInstance().getTime());
-                remoteUser.processPayouts(today);
-                System.out.println("Ended partner process at " + 
-                        Calendar.getInstance().getTime());
-            }
-            
             // finally the orders about to expire notification
             if (step == null || step.intValue() == 4) {
                 System.out.println("Starting order notification at " + 

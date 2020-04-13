@@ -25,13 +25,15 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 
+import com.sapienter.jbilling.server.user.partner.db.InvoiceCommissionDTO;
 import org.hibernate.Criteria;
-import org.hibernate.criterion.Order;
-import org.hibernate.criterion.Projections;
-import org.hibernate.criterion.Restrictions;
+import org.hibernate.ScrollableResults;
+import org.hibernate.criterion.*;
 import org.apache.log4j.Logger;
 
-import com.sapienter.jbilling.server.invoice.NewInvoiceDTO;
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.invoice.NewInvoiceContext;
+import com.sapienter.jbilling.server.order.db.OrderDTO;
 import com.sapienter.jbilling.server.process.db.BillingProcessDAS;
 import com.sapienter.jbilling.server.process.db.BillingProcessDTO;
 import com.sapienter.jbilling.server.user.db.UserDAS;
@@ -42,15 +44,32 @@ import com.sapienter.jbilling.server.util.Constants;
 import java.math.BigDecimal;
 
 public class InvoiceDAS extends AbstractDAS<InvoiceDTO> {
-    public static final Logger LOG = Logger.getLogger(InvoiceDAS.class);
+    public static final FormatLogger LOG = new FormatLogger(Logger.getLogger(InvoiceDAS.class));
 
     // used for the web services call to get the latest X
     public List<Integer> findIdsByUserLatestFirst(Integer userId, int maxResults) {
-        Criteria criteria = getSession().createCriteria(InvoiceDTO.class).add(
-                Restrictions.eq("deleted", 0)).createAlias("baseUser", "u")
-                .add(Restrictions.eq("u.id", userId)).setProjection(
-                        Projections.id()).addOrder(Order.desc("id"))
+        Criteria criteria = getSession().createCriteria(InvoiceDTO.class)
+                .add(Restrictions.eq("deleted", 0))
+                .add(Restrictions.eq("isReview", 0))
+                .createAlias("baseUser", "u")
+                .add(Restrictions.eq("u.id", userId))
+                .setProjection(Projections.id())
+                .addOrder(Order.desc("id"))
                 .setMaxResults(maxResults);
+        return criteria.list();
+    }
+
+
+    public List<InvoiceDTO> findInvoicesByUserPaged(Integer userId, int maxResults, int offset) {
+        Criteria criteria = getSession().createCriteria(InvoiceDTO.class)
+                .add(Restrictions.eq("deleted", 0))
+                .add(Restrictions.eq("isReview", 0))
+                .createAlias("baseUser", "u")
+                .add(Restrictions.eq("u.id", userId))
+                .addOrder(Order.desc("id"))
+                .setMaxResults(maxResults)
+                .setFirstResult(offset)
+                .setComment("findIdsByUserPaged " + userId + " " + maxResults + " " + offset);
         return criteria.list();
     }
 
@@ -123,14 +142,14 @@ public class InvoiceDAS extends AbstractDAS<InvoiceDTO> {
         return (BigDecimal) criteria.uniqueResult();
     }
 
-    public Integer findLinesForPeriodByItem(Integer userId, Integer itemId,
+    public Long findLinesForPeriodByItem(Integer userId, Integer itemId,
             Date start, Date end) {
         Criteria criteria = getSession().createCriteria(InvoiceDTO.class);
         addUserCriteria(criteria, userId);
         addPeriodCriteria(criteria, start, end);
         addItemCriteria(criteria, itemId);
         criteria.setProjection(Projections.count("id"));
-        return (Integer) criteria.uniqueResult();
+        return (Long) criteria.uniqueResult();
     }
 
     public BigDecimal findAmountForPeriodByItemCategory(Integer userId,
@@ -153,14 +172,14 @@ public class InvoiceDAS extends AbstractDAS<InvoiceDTO> {
         return (BigDecimal) criteria.uniqueResult();
     }
 
-    public Integer findLinesForPeriodByItemCategory(Integer userId,
+    public Long findLinesForPeriodByItemCategory(Integer userId,
             Integer categoryId, Date start, Date end) {
         Criteria criteria = getSession().createCriteria(InvoiceDTO.class);
         addUserCriteria(criteria, userId);
         addPeriodCriteria(criteria, start, end);
         addItemCategoryCriteria(criteria, categoryId);
         criteria.setProjection(Projections.count("id"));
-        return (Integer) criteria.uniqueResult();
+        return (Long) criteria.uniqueResult();
     }
     
     
@@ -218,6 +237,23 @@ public class InvoiceDAS extends AbstractDAS<InvoiceDTO> {
         return criteria.list();
     }
 
+    @SuppressWarnings("unchecked")
+    public InvoiceDTO findOverdueInvoiceForUserFirstByDate(Integer userId, Date date, Integer excludedInvoiceId) {
+        Criteria criteria = getSession().createCriteria(InvoiceDTO.class);
+        addUserCriteria(criteria, userId);
+        criteria
+                .add(Restrictions.lt("dueDate", date))
+                .createAlias("invoiceStatus", "s")
+                .add(Restrictions.ne("s.id", Constants.INVOICE_STATUS_PAID))
+                .add(Restrictions.eq("isReview", 0))
+                .addOrder(Order.asc("dueDate"));
+        if (excludedInvoiceId != null) {
+            criteria.add(Restrictions.ne("id", excludedInvoiceId));
+        }
+        List<InvoiceDTO> invoices = criteria.list();
+        return invoices.isEmpty() ? null : invoices.get(0);
+    }
+
     /**
      * query="SELECT OBJECT(a) FROM invoice a WHERE a.billingProcess.id = ?1 AND
      * a.invoiceStatus.id = 2 AND a.isReview = 0 AND a.inProcessPayment = 1 AND
@@ -247,17 +283,20 @@ public class InvoiceDAS extends AbstractDAS<InvoiceDTO> {
         criteria.add(Restrictions.eq("baseUser.id", userId));
         criteria.add(Restrictions.eq("deleted", 0));
         criteria.add(Restrictions.eq("isReview", 0));
+        criteria.createAlias("invoiceStatus", "status");
+        criteria.add(Restrictions.ne("status.id", Constants.INVOICE_STATUS_PAID));
         criteria.setProjection(Projections.id()).addOrder(Order.desc("id"));
         return criteria.list();
     }
 
-    public InvoiceDTO create(Integer userId, NewInvoiceDTO invoice,
+    public InvoiceDTO create(Integer userId, NewInvoiceContext invoice,
             BillingProcessDTO process) {
 
         InvoiceDTO entity = new InvoiceDTO();
 
         entity.setCreateDatetime(invoice.getBillingDate());
-        entity.setCreateTimestamp(Calendar.getInstance().getTime());
+        entity.setCreateTimestamp(null != invoice.getCreateTimestamp() ? //in case of importing legacy invoices this can be given
+		        invoice.getCreateTimestamp() : Calendar.getInstance().getTime());
         entity.setDeleted(new Integer(0));
         entity.setDueDate(invoice.getDueDate());
         entity.setTotal(invoice.getTotal());
@@ -268,6 +307,7 @@ public class InvoiceDAS extends AbstractDAS<InvoiceDTO> {
         entity.setIsReview(invoice.getIsReview());
         entity.setCurrency(invoice.getCurrency());
         entity.setBaseUser(new UserDAS().find(userId));
+        entity.setCustomerNotes(invoice.getCustomerNotes());
 
         // note: toProcess was replaced by a generic status InvoiceStatusDTO
         // ideally we should replace it here too, however in this case PAID/UNPAID statuses have a different
@@ -282,7 +322,8 @@ public class InvoiceDAS extends AbstractDAS<InvoiceDTO> {
         } else {
             entity.setToProcess(new Integer(1));
         }
-
+        //Added by Gurdev Parmar
+        entity.setMetaFields(invoice.getMetaFields());
         if (process != null) {
             entity.setBillingProcess(process);
             InvoiceDTO saved = save(entity);
@@ -319,21 +360,23 @@ public class InvoiceDAS extends AbstractDAS<InvoiceDTO> {
 
     }
 
+    
+    //This method is faulty. The balance of a carried Invoice should not be included
     public BigDecimal findTotalBalanceByUser(Integer userId) {
         Criteria criteria = getSession().createCriteria(InvoiceDTO.class);
         
         addUserCriteria(criteria, userId);
         criteria.add(Restrictions.eq("isReview", 0));
-        
-        criteria.createAlias("invoiceStatus", "s")
-            .add(Restrictions.ne("s.id", Constants.INVOICE_STATUS_PAID));
+        criteria.add(Restrictions.eq("deleted", 0));
         
         criteria.setProjection(Projections.sum("balance")); 
         criteria.setComment("InvoiceDAS.findTotalBalanceByUser");
 
         Object ttlBal= criteria.uniqueResult();
         
-        return ( ttlBal == null ? BigDecimal.ZERO : (BigDecimal) ttlBal);
+        BigDecimal invoiceBalance= ( ttlBal == null ? BigDecimal.ZERO : (BigDecimal) ttlBal);
+        LOG.debug("Total Invoice Balance for User %d is %s", userId, invoiceBalance);
+        return invoiceBalance;
     }
 
     /**
@@ -348,10 +391,15 @@ public class InvoiceDAS extends AbstractDAS<InvoiceDTO> {
         criteria.createAlias("invoiceStatus", "status");
         criteria.add(Restrictions.ne("status.id", Constants.INVOICE_STATUS_PAID));
         criteria.add(Restrictions.eq("isReview", 0));
+        criteria.add(Restrictions.eq("deleted", 0));
         criteria.setProjection(Projections.sum("balance"));
         criteria.setComment("InvoiceDAS.findTotalAmountOwed");
 
-        return (criteria.uniqueResult() == null ? BigDecimal.ZERO : (BigDecimal) criteria.uniqueResult());
+        BigDecimal totalAmountOwed= (criteria.uniqueResult() == null ? BigDecimal.ZERO : (BigDecimal) criteria.uniqueResult());
+        		
+		LOG.debug("Total Amount Owed for User %s is %s", userId, totalAmountOwed);
+        
+        return totalAmountOwed;
     }
 
     /*
@@ -371,6 +419,7 @@ public class InvoiceDAS extends AbstractDAS<InvoiceDTO> {
         criteria.createAlias("invoiceStatus", "s").add(Restrictions.eq("s.id", Constants.INVOICE_STATUS_UNPAID));
         criteria.add(Restrictions.eq("isReview", 0));
         criteria.add(Restrictions.eq("deleted", 0));
+        criteria.addOrder(Order.asc("dueDate"));
 
         return criteria.list();
     }
@@ -383,7 +432,7 @@ public class InvoiceDAS extends AbstractDAS<InvoiceDTO> {
         return criteria.list();
     }
 
-    public List<Integer> findIdsByUserAndDate(Integer userId, Date since, 
+    public List<Integer> findIdsByUserAndDate(Integer userId, Date since,
             Date until) {
         Criteria criteria = getSession().createCriteria(InvoiceDTO.class);
         addUserCriteria(criteria, userId);
@@ -393,4 +442,73 @@ public class InvoiceDAS extends AbstractDAS<InvoiceDTO> {
         return criteria.list();
     }
 
+    /**
+     * This method returns the invoices that should be processed to calculate
+     * the commissions for the given partner and period.
+     * @param partnerId
+     * @param startDate
+     * @param endDate
+     */
+    public List<InvoiceDTO> findForPartnerCommissions(Integer partnerId, Date endDate) {
+        DetachedCriteria invoicesWithCommissions = DetachedCriteria.forClass(InvoiceCommissionDTO.class)
+                .createAlias("invoice", "_invoice")
+                .add(Restrictions.eq("_invoice.deleted", 0))
+                .createAlias("_invoice.baseUser", "_baseUser")
+                .createAlias("_baseUser.customer", "_customer")
+                .createAlias("_customer.partner", "_partner")
+                .add(Restrictions.eq("_partner.id", partnerId))
+                .add(Restrictions.le("_invoice.createDatetime", endDate))
+                .setProjection(Property.forName("_invoice.id"));
+
+        Criteria criteria = getSession().createCriteria(InvoiceDTO.class)
+                .add(Restrictions.eq("deleted", 0))
+                .createAlias("baseUser", "_baseUser")
+                .createAlias("_baseUser.customer", "_customer")
+                .createAlias("_customer.partner", "_partner")
+                .add(Restrictions.eq("_partner.id", partnerId))
+                .add(Restrictions.le("createDatetime", endDate))
+                .add(Subqueries.propertyNotIn("id", invoicesWithCommissions))
+                .addOrder(Order.asc("id"));
+
+        return criteria.list();
+    }
+
+    /**
+     * Added for supporting OverdueInvoicePenaltyTask, to find unpaid, or paid after due date invoices
+     * @param userId
+     * @return
+     */
+    public List<Integer> findLatePaidInvoicesForUser(Integer userId) {
+
+        LOG.debug("findLatePaidInvoicesForUser");
+        
+        String hql = "select distinct(invoice.id) " +
+                     "  from InvoiceDTO invoice right join invoice.paymentMap as map " +                     
+                     "  where ( (invoice.invoiceStatus.id = 1 and invoice.dueDate < map.createDatetime) ) " +
+                     "    and invoice.deleted = 0 " +
+                     "    and invoice.isReview = 0 " +
+                     "    and invoice.baseUser.id = :userId " +
+                     "  order by invoice.id desc";
+        List<Integer> data = getSession()
+                        .createQuery(hql)
+                        .setParameter("userId", userId)
+                        .setComment("InvoiceDAS.findLatePaidInvoicesForUser " + userId)
+                        .list();        
+        return data;
+    }
+    
+    /**
+     * finds all the invoices with given order id
+     * 
+     * @param orderId
+     * @return
+     */
+    public List<InvoiceDTO> findInvoicesByOrder(Integer orderId) {
+        Criteria criteria = getSession().createCriteria(InvoiceDTO.class);
+                criteria.createAlias("orderProcesses", "o");
+                criteria.add(Restrictions.eq("o.purchaseOrder.id", orderId));
+                criteria.addOrder(Order.desc("id"));
+        return criteria.list();
+    }
+    
 }

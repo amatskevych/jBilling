@@ -20,7 +20,7 @@
 
 package com.sapienter.jbilling.server.user.validator;
 
-import org.hibernate.validator.constraints.impl.LuhnValidator;
+import org.hibernate.validator.internal.constraintvalidators.LuhnCheckValidator;
 
 import javax.validation.ConstraintValidator;
 import javax.validation.ConstraintValidatorContext;
@@ -36,10 +36,14 @@ public class CreditCardNumberValidator implements ConstraintValidator<CreditCard
 
     private static final long serialVersionUID = 1L;
 
-    private LuhnValidator luhnValidator;
+    private LuhnCheckValidator luhnValidator;
 
     public CreditCardNumberValidator() {
-        this.luhnValidator = new LuhnValidator(2);
+        this.luhnValidator = new LuhnCheckValidator() {
+            {
+                initialize(0, Integer.MAX_VALUE, -1, false);
+            }
+        };
     }
 
     public void initialize(CreditCardNumber annotation) {
@@ -50,6 +54,12 @@ public class CreditCardNumberValidator implements ConstraintValidator<CreditCard
             return true;
         }
 
-        return luhnValidator.passesLuhnTest(value);
+        try {
+			Long.parseLong(value);
+		} catch (Exception e) {
+			return false;
+		}
+        
+        return luhnValidator.isValid(value, constraintContext);
     }
 }

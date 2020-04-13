@@ -25,7 +25,9 @@ import java.util.List;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
 import com.sapienter.jbilling.server.pluggableTask.PaymentTask;
 import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskDTO;
@@ -42,8 +44,8 @@ import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
  */
 public class PaymentMethodRouterTask extends AbstractPaymentRouterTask {
 
-    private static final Logger LOG = Logger.getLogger(
-            PaymentMethodRouterTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(
+            PaymentMethodRouterTask.class));
     
     private static final ParameterDescription CREDIT_CARD_DELEGATE = 
     	new ParameterDescription("cc_payment_task", false, ParameterDescription.Type.STR);
@@ -72,12 +74,12 @@ public class PaymentMethodRouterTask extends AbstractPaymentRouterTask {
             throws PluggableTaskException {
         
         Integer selectedTaskId = null;
-        
-        if (paymentInfo.getCreditCard() != null) {
+        PaymentInformationBL piBl = new PaymentInformationBL();
+        if (piBl.isCreditCard(paymentInfo.getInstrument())) {
             // Credit card data is present in payment record
             selectedTaskId = new Integer((String)parameters.get(CREDIT_CARD_DELEGATE));
             LOG.debug("Delegating to credit card payment processor");
-        } else if (paymentInfo.getAch() != null) {
+        } else if (piBl.isACH(paymentInfo.getInstrument())) {
             // ACH data is present in payment record
             selectedTaskId = new Integer((String)parameters.get(ACH_DELEGATE));
             LOG.debug("Delegating to ACH payment processor");

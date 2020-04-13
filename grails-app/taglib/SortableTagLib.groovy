@@ -1,3 +1,6 @@
+import com.sapienter.jbilling.client.util.SortableCriteria
+
+import java.util.regex.Pattern
 
 /*
  jBilling - The Enterprise Open Source Billing System
@@ -36,7 +39,11 @@ class SortableTagLib {
 
         def action = assertAttribute('action', attrs, 'remoteSort') as String
         def controller = params.controller ?: controllerName
-        def id = params.id
+        def id = attrs.id ?: params.id
+        def eventId = attrs.containsKey('eventId') ? attrs.remove('eventId') : null
+        def method = attrs.containsKey('method') ? attrs.remove('method') : null
+
+        def searchParams = attrs.searchParams ?: [:]
 
         def update = assertAttribute('update', attrs, 'remoteSort') as String
 
@@ -50,6 +57,9 @@ class SortableTagLib {
                               controller: controller,
                               id: id,
                               update: update,
+                              eventId: eventId,
+                              method: method,
+                              searchParams: searchParams,
                               body: body()
                       ]
         )
@@ -69,8 +79,12 @@ class SortableTagLib {
             urlParameters.put('order', order)
         }
 
-        alias?.each { k, v ->
-            urlParameters.put("alias.${k}", v)
+        if (alias == SortableCriteria.NO_ALIAS) {
+            urlParameters.put("alias", SortableCriteria.NO_ALIAS)
+        } else {
+            alias?.each { k, v ->
+                urlParameters.put("alias.${k}", v)
+            }
         }
 
         return urlParameters

@@ -22,6 +22,8 @@ package com.sapienter.jbilling.server.util.db;
 
 import java.io.Serializable;
 
+import com.sapienter.jbilling.common.SessionInternalError;
+import com.sapienter.jbilling.server.util.Constants;
 import org.apache.log4j.Logger;
 
 import com.sapienter.jbilling.common.SessionInternalError;
@@ -74,10 +76,10 @@ public abstract class AbstractDescription implements Serializable {
      */
     public String getDescription() {
         if (description == null) {
-            return getDescription(1);
-        } else {
-            return description;
+        	description = getDescription(Constants.LANGUAGE_ENGLISH_ID);
         }
+        return description;
+        
     }
 
     /**
@@ -88,7 +90,7 @@ public abstract class AbstractDescription implements Serializable {
      */
     public String getDescription(Integer languageId) {
         InternationalDescriptionDTO description = getDescriptionDTO(languageId);
-        return description != null ? description.getContent() : null;
+        return description != null ? description.getContent() : ( !Constants.LANGUAGE_ENGLISH_ID.equals(languageId) ? getDescription(Constants.LANGUAGE_ENGLISH_ID) : null) ;
     }
 
     /**
@@ -100,6 +102,11 @@ public abstract class AbstractDescription implements Serializable {
      */
     public String getDescription(Integer languageId, String label) {
         InternationalDescriptionDTO description = getDescriptionDTO(languageId, label);
+		if (description == null
+				&& !Constants.LANGUAGE_ENGLISH_ID.equals(languageId)) {
+        	//get string for the given label and default language
+        	description = getDescriptionDTO(Constants.LANGUAGE_ENGLISH_ID, label);
+        }
         return description != null ? description.getContent() : null;
         
     }
@@ -138,5 +145,25 @@ public abstract class AbstractDescription implements Serializable {
         InternationalDescriptionDTO desc = new InternationalDescriptionDTO(id, content);
 
         new DescriptionDAS().save(desc);
+    }
+
+    public void deleteDescription(int languageId) {
+        JbillingTableDAS tableDas = Context.getBean(Context.Name.JBILLING_TABLE_DAS);
+        JbillingTable table = tableDas.findByName(getTable());
+
+        InternationalDescriptionDAS descriptionDas = (InternationalDescriptionDAS) Context
+                .getBean(Context.Name.DESCRIPTION_DAS);
+        
+        descriptionDas.delete(table.getId(), getId(), "description", languageId);
+    }
+    
+    public void deleteDescription(String label, int languageId) {
+        JbillingTableDAS tableDas = Context.getBean(Context.Name.JBILLING_TABLE_DAS);
+        JbillingTable table = tableDas.findByName(getTable());
+
+        InternationalDescriptionDAS descriptionDas = (InternationalDescriptionDAS) Context
+                .getBean(Context.Name.DESCRIPTION_DAS);
+        
+        descriptionDas.delete(table.getId(), getId(), label, languageId);
     }
 }

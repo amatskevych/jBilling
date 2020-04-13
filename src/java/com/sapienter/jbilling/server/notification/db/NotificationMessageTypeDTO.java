@@ -122,5 +122,5 @@ public class NotificationMessageTypeDTO extends AbstractDescription implements S
     protected String getTable() {
         return Constants.TABLE_NOTIFICATION_MESSAGE_TYPE;
     }
-    
+
 }

@@ -20,6 +20,7 @@
 package com.sapienter.jbilling.server.order.db;
 
 
+import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -85,6 +86,7 @@ public class OrderBillingTypeDTO extends AbstractDescription implements java.io.
     public String toString() {
         return " OrderBillingType=" + id;
     }
+
 }
 
 

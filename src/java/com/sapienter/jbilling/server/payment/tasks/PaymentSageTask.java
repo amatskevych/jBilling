@@ -23,7 +23,6 @@ package com.sapienter.jbilling.server.payment.tasks;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.text.SimpleDateFormat;
 import java.util.LinkedList;
 
 import org.apache.commons.httpclient.HttpClient;
@@ -31,8 +30,12 @@ import org.apache.commons.httpclient.NameValuePair;
 import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentResultDAS;
 import com.sapienter.jbilling.server.pluggableTask.PaymentTask;
 import com.sapienter.jbilling.server.pluggableTask.PaymentTaskWithTimeout;
@@ -40,9 +43,9 @@ import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskDTO;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.user.ContactBL;
 import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
-import com.sapienter.jbilling.server.user.db.AchDTO;
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
 import com.sapienter.jbilling.server.util.Constants;
+
+import org.joda.time.format.DateTimeFormat;
 
 /**
  * A pluggable PaymentTask that uses Sage gateway for Bankcard and ACH
@@ -176,7 +179,7 @@ public class PaymentSageTask extends PaymentTaskWithTimeout implements
     // Value for checking bank account type
     private static final int CHECKING = 1;
 
-    private static final Logger LOG = Logger.getLogger(PaymentSageTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaymentSageTask.class));
 
     // ------------------------ Fields --------------------------
     private String merchantId;
@@ -245,6 +248,7 @@ public class PaymentSageTask extends PaymentTaskWithTimeout implements
      */
     public boolean confirmPreAuth(PaymentAuthorizationDTO auth,
             PaymentDTOEx payment) throws PluggableTaskException {
+    	PaymentInformationBL piBl = new PaymentInformationBL();
         LOG.debug("ConfirmPreAuth processing for " + PROCESSOR + " gateway");
         if (!PROCESSOR.equals(auth.getProcessor())) {
             LOG.warn("The procesor of the pre-auth is not paypal, is "
@@ -253,7 +257,13 @@ public class PaymentSageTask extends PaymentTaskWithTimeout implements
             // can do something about it: probably call this one again but for
             // 'process'
         }
-        CreditCardDTO card = payment.getCreditCard();
+        
+        // check if the provided instrument is a credit card
+        PaymentInformationDTO card = null;
+        if(piBl.isCreditCard(payment.getInstrument())) {
+        	card = payment.getInstrument();
+        }
+        
         if (card == null) {
             throw new PluggableTaskException(
                     "Credit card is required capturing" + " payment: "
@@ -320,7 +330,8 @@ public class PaymentSageTask extends PaymentTaskWithTimeout implements
      *            payment data
      */
     private boolean isApplicable(PaymentDTOEx payment) {
-        if (payment.getCreditCard() == null && payment.getAch() == null) {
+    	PaymentInformationBL piBl = new PaymentInformationBL();
+        if (piBl.isCreditCard(payment.getInstrument()) && piBl.isACH(payment.getInstrument())) {
             LOG.warn("Can't process without a credit card or ach");
             return false;
         }
@@ -342,7 +353,7 @@ public class PaymentSageTask extends PaymentTaskWithTimeout implements
      */
     private boolean isAch(PaymentDTOEx payment) {
         // we use ACH payment by default
-        return (payment.getAch() != null);
+        return new PaymentInformationBL().isACH(payment.getInstrument());
     }
 
     /**
@@ -406,28 +417,24 @@ public class PaymentSageTask extends PaymentTaskWithTimeout implements
         }
         request.add(SageParams.General.TRANSACTION_AMOUNT, formatAmount(payment.getAmount()));
         request.add(SageParams.General.TRANSACTION_CODE, transaction.getCode());
+        PaymentInformationBL piBl = new PaymentInformationBL();
         if (isAch) {
-            AchDTO ach = payment.getAch();
-            request.add(SageParams.VirtualCheck.ROUTING_NUMBER, ach
-                    .getAbaRouting());
-            request.add(SageParams.VirtualCheck.BANK_ACCOUNT_NUMBER, ach
-                    .getBankAccount());
+            PaymentInformationDTO ach = payment.getInstrument();
+            request.add(SageParams.VirtualCheck.ROUTING_NUMBER, piBl.getStringMetaFieldByType(payment.getInstrument(), MetaFieldType.BANK_ROUTING_NUMBER));
+            request.add(SageParams.VirtualCheck.BANK_ACCOUNT_NUMBER, piBl.getStringMetaFieldByType(payment.getInstrument(), MetaFieldType.BANK_ACCOUNT_NUMBER));
+            String accountType = piBl.getStringMetaFieldByType(payment.getInstrument(), MetaFieldType.BANK_ACCOUNT_TYPE);
             request
                     .add(
                             SageParams.VirtualCheck.BANK_ACCOUNT_NUMBER,
-                            ach.getAccountType() == CHECKING ? SageValues.BankAccountType.CHECKING
+                            accountType.equalsIgnoreCase(Constants.ACH_CHECKING) ? SageValues.BankAccountType.CHECKING
                                     : SageValues.BankAccountType.SAVING);
             request.add(SageParams.VirtualCheck.CUSTOMER_TYPE,
                     SageValues.CustomerType.PERSONAL_MERCHANT_INITIATED);
         } else {
-            CreditCardDTO card = payment.getCreditCard();
-            request.add(SageParams.CreditCard.CARD_NUMBER, card.getNumber());
+            PaymentInformationDTO card = payment.getInstrument();
+            request.add(SageParams.CreditCard.CARD_NUMBER, piBl.getStringMetaFieldByType(payment.getInstrument(), MetaFieldType.PAYMENT_CARD_NUMBER));
             request.add(SageParams.CreditCard.CARD_EXPIRATION_DATE,
-                    new SimpleDateFormat(DATE_FORMAT).format(card.getCcExpiry()));
-            if (card.getSecurityCode() != null) {
-                request.add(SageParams.CreditCard.CARD_CVV, String
-                        .valueOf(payment.getCreditCard().getSecurityCode()));
-            }
+			DateTimeFormat.forPattern(DATE_FORMAT).print(piBl.getDateMetaFieldByType(payment.getInstrument(), MetaFieldType.BANK_ROUTING_NUMBER).getTime()));
         }
     }
 

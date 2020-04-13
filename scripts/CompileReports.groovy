@@ -29,6 +29,8 @@ target(compileReports: "Compiles jasper report designs.") {
 
     delete(dir: "${resourcesDir}/reports")
     mkdir(dir: "${resourcesDir}/reports")
+    //error reports are generated here and files saved by the asset upload process
+    mkdir(dir: "${resourcesDir}/reports/assets")
 
     mkdir(dir: tempDir)
     jrc(destdir: "${resourcesDir}/reports", tempdir: tempDir, keepjava: "true", xmlvalidation: "true") {

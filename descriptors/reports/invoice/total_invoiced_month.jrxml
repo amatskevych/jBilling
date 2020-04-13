@@ -5,23 +5,25 @@
 	<property name="ireport.y" value="0"/>
 	<subDataset name="chart_dataset">
 		<parameter name="entityId" class="java.lang.Integer"/>
+		<parameter name="childEntities" class="java.util.List"/>
 		<parameter name="startDate" class="java.util.Date"/>
 		<parameter name="endDate" class="java.util.Date"/>
+		<!-- For Mysql use DATE_FORMAT(i.create_datetime, 'WW') -->
 		<queryString>
 			<![CDATA[select
                 sum(i.total) as total,
                 to_char(i.create_datetime, 'MM') as month_of_year,
-                to_char(i.create_datetime, 'Mon') as month,
-                to_char(i.create_datetime, 'yyyy') as year
+                to_char(i.create_datetime, 'MONTH') as month,
+                to_char(i.create_datetime, 'YYYY') as year
             from
                 invoice i
                 inner join base_user u on i.user_id = u.id
             where
-                u.entity_id = $P{entityId}
+                (u.entity_id = $P{entityId} or $X{IN,u.entity_id,childEntities})  
                 and i.deleted = 0
                 and i.is_review = 0
                 and i.create_datetime >= $P{startDate}
-                and i.create_datetime <= $P{endDate}
+                and i.create_datetime < $P{endDate}
             group by month_of_year, month, year
             order by year, month_of_year]]>
 		</queryString>
@@ -31,6 +33,7 @@
 		<field name="year" class="java.lang.String"/>
 	</subDataset>
 	<parameter name="entityId" class="java.lang.Integer"/>
+	<parameter name="childEntities" class="java.util.List"/>
 	<parameter name="startDate" class="java.util.Date"/>
 	<parameter name="endDate" class="java.util.Date"/>
 	<queryString>
@@ -38,17 +41,17 @@
               sum(i.total) as total,
               count(i.id) as invoice_count,
               to_char(i.create_datetime, 'MM') as month_of_year,
-              to_char(i.create_datetime, 'Month') as month,
-              to_char(i.create_datetime, 'yyyy') as year
+              to_char(i.create_datetime, 'MONTH') as month,
+              to_char(i.create_datetime, 'YYYY') as year
             from
               invoice i
               inner join base_user u on i.user_id = u.id
             where
-              u.entity_id = $P{entityId}
+              (u.entity_id = $P{entityId} or $X{IN,u.entity_id,childEntities})  
               and i.deleted = 0
               and i.is_review = 0
               and i.create_datetime >= $P{startDate}
-              and i.create_datetime <= $P{endDate}
+              and i.create_datetime < $P{endDate}
             group by month_of_year, month, year
             order by year, month_of_year]]>
 	</queryString>
@@ -75,6 +78,9 @@
 						<datasetRun subDataset="chart_dataset">
 							<datasetParameter name="entityId">
 								<datasetParameterExpression><![CDATA[$P{entityId}]]></datasetParameterExpression>
+							</datasetParameter>
+							<datasetParameter name="childEntities">
+								<datasetParameterExpression><![CDATA[$P{childEntities}]]></datasetParameterExpression>
 							</datasetParameter>
 							<datasetParameter name="startDate">
 								<datasetParameterExpression><![CDATA[$P{startDate}]]></datasetParameterExpression>

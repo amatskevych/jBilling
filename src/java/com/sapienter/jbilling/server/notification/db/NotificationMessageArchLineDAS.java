@@ -21,6 +21,7 @@ package com.sapienter.jbilling.server.notification.db;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.util.db.AbstractDAS;
 
 /**
@@ -38,7 +39,7 @@ public class NotificationMessageArchLineDAS extends
 
         if (content.length() > CONTENT_MAX_LENGTH) {
             content = content.substring(0, CONTENT_MAX_LENGTH);
-            Logger.getLogger(NotificationMessageArchLineDAS.class).warn(
+            new FormatLogger(Logger.getLogger(NotificationMessageArchLineDAS.class)).warn(
                     "Trying to insert line too long. Truncating to "
                             + CONTENT_MAX_LENGTH);
         }

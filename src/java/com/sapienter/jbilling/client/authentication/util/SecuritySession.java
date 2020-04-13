@@ -21,7 +21,6 @@
 package com.sapienter.jbilling.client.authentication.util;
 
 import com.sapienter.jbilling.client.authentication.CompanyUserDetails;
-import grails.plugins.springsecurity.Secured;
 import org.apache.log4j.Logger;
 import org.springframework.web.servlet.LocaleResolver;
 import org.springframework.web.servlet.i18n.SessionLocaleResolver;

@@ -120,9 +120,9 @@ public class AgeingDTOEx extends AgeingEntityStepDTO {
 
 	public String toString() {
 		return "AgeingDTOEx [statusId=" + statusId + ", statusStr=" + statusStr
-				+ ", welcomeMessage=" + welcomeMessage
-				+ ", failedLoginMessage=" + failedLoginMessage + ", inUse="
-				+ inUse + "]";
+				+ ", notification=" + getSendNotification()
+				+ ", retry=" + getRetryPayment() + ", suspend="
+				+ getSuspend() + "]";
 	}
 
 }

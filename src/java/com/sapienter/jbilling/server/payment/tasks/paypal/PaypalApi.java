@@ -87,15 +87,18 @@ public class PaypalApi {
         decoder.decode(NVPResponse);
 
         PaypalResult result = new PaypalResult();
+
         if(decoder.get("ACK").equals("Failure")) {
             result.setSucceseeded(false);
             result.setErrorCode(decoder.get("L_ERRORCODE0"));
             return result;
-        }
 
-        result.setTransactionId(decoder.get("TRANSACTIONID"));
-        result.setAvs(decoder.get("AVSCODE"));
-        return result;
+        } else {
+            result.setSucceseeded(true);
+            result.setTransactionId(decoder.get("TRANSACTIONID"));
+            result.setAvs(decoder.get("AVSCODE"));
+            return result;
+        }
     }
 
     public PaypalResult doReferenceTransaction(
@@ -119,14 +122,17 @@ public class PaypalApi {
         decoder.decode(NVPResponse);
 
         PaypalResult result = new PaypalResult();
+
         if(decoder.get("ACK").equals("Failure")) {
             result.setSucceseeded(false);
             result.setErrorCode(decoder.get("L_ERRORCODE0"));
             return result;
-        }
 
-        result.setTransactionId(decoder.get("TRANSACTIONID"));
-        return result;
+        } else {
+            result.setSucceseeded(true);
+            result.setTransactionId(decoder.get("TRANSACTIONID"));
+            return result;
+        }
     }
 
     public PaypalResult doCapture(String authorizationId, Payment payment, CompleteType completeType)
@@ -149,14 +155,17 @@ public class PaypalApi {
         decoder.decode(NVPResponse);
 
         PaypalResult result = new PaypalResult();
+
         if(decoder.get("ACK").equals("Failure")) {
             result.setSucceseeded(false);
             result.setErrorCode(decoder.get("L_ERRORCODE0"));
             return result;
-        }
 
-        result.setTransactionId(decoder.get("AUTHORIZATIONID"));
-        return result;
+        } else {
+            result.setSucceseeded(true);
+            result.setTransactionId(decoder.get("AUTHORIZATIONID"));
+            return result;
+        }
     }
 
     public PaypalResult doVoid(String transactionId)
@@ -176,14 +185,17 @@ public class PaypalApi {
         decoder.decode(NVPResponse);
 
         PaypalResult result = new PaypalResult();
+
         if(decoder.get("ACK").equals("Failure")) {
             result.setSucceseeded(false);
             result.setErrorCode(decoder.get("L_ERRORCODE0"));
             return result;
-        }
 
-        result.setTransactionId(decoder.get("AUTHORIZATIONID"));
-        return result;
+        } else {
+            result.setSucceseeded(true);
+            result.setTransactionId(decoder.get("AUTHORIZATIONID"));
+            return result;
+        }
     }
 
     public PaypalResult refundTransaction(String transactionId, String amount, RefundType refundType)
@@ -207,13 +219,16 @@ public class PaypalApi {
         decoder.decode(NVPResponse);
 
         PaypalResult result = new PaypalResult();
+
         if(decoder.get("ACK").equals("Failure")) {
             result.setSucceseeded(false);
             result.setErrorCode(decoder.get("L_ERRORCODE0"));
             return result;
-        }
 
-        result.setTransactionId(decoder.get("REFUNDTRANSACTIONID"));
-        return result;
+        } else {
+            result.setSucceseeded(true);
+            result.setTransactionId(decoder.get("REFUNDTRANSACTIONID"));
+            return result;
+        }
     }
 }

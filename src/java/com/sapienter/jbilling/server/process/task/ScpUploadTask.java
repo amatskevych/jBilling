@@ -36,6 +36,7 @@ import org.rev6.scf.ScpException;
 import org.rev6.scf.ScpFacade;
 import org.rev6.scf.ScpFile;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 
 /**
@@ -78,7 +79,7 @@ import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
  */
 public class ScpUploadTask extends AbstractCronTask {
 	
-    private static final Logger LOG = Logger.getLogger(ScpUploadTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(ScpUploadTask.class));
 
     private static final ParameterDescription PARAM_SCP_USERNAME = 
     	new ParameterDescription("scp_username", true, ParameterDescription.Type.STR);
@@ -116,7 +117,7 @@ public class ScpUploadTask extends AbstractCronTask {
     
     
     public String getTaskName() {
-        return "scp upload task " + getScheduleString();
+        return "scp upload task , entity id " + getEntityId() + ", taskId " + getTaskId();
     }
 
     public void execute(JobExecutionContext context) throws JobExecutionException {

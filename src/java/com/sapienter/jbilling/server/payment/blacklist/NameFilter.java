@@ -19,14 +19,18 @@
  */
 package com.sapienter.jbilling.server.payment.blacklist;
 
+import java.util.Date;
 import java.util.List;
 import java.util.ResourceBundle;
 
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
+import com.sapienter.jbilling.server.metafields.db.*;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
 import com.sapienter.jbilling.server.payment.blacklist.db.BlacklistDAS;
 import com.sapienter.jbilling.server.payment.blacklist.db.BlacklistDTO;
 import com.sapienter.jbilling.server.user.contact.db.ContactDAS;
 import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
+import com.sapienter.jbilling.server.user.db.CustomerDAS;
 import com.sapienter.jbilling.server.user.db.UserDAS;
 import com.sapienter.jbilling.server.util.Util;
 
@@ -40,24 +44,68 @@ public class NameFilter implements BlacklistFilter {
     }
 
     public Result checkUser(Integer userId) {
-        ContactDTO userContact = new ContactDAS().findPrimaryContact(userId);
-
-        if (userContact == null) {
-            return new Result(false, null);
-        }
-
-        if (userContact.getFirstName() == null && userContact.getLastName() == null) {
-            return new Result(false, null);
-        }
-
         Integer entityId = new UserDAS().find(userId).getCompany().getId();
-        List<BlacklistDTO> blacklist = new BlacklistDAS().filterByName(
-                entityId, userContact.getFirstName(), userContact.getLastName());
 
-        if (!blacklist.isEmpty()) {
-            ResourceBundle bundle = Util.getEntityNotificationsBundle(userId);
-            return new Result(true, 
-                    bundle.getString("payment.blacklist.name_filter"));
+        ContactDTO userContact = new ContactDAS().findContact(userId);
+        //check in the contact
+        if (userContact != null) {
+            if(null != userContact.getFirstName() || null != userContact.getLastName()){
+                List<BlacklistDTO> blacklist = new BlacklistDAS().filterByName(
+                        entityId, userContact.getFirstName(), userContact.getLastName());
+
+                if (!blacklist.isEmpty()) {
+                    ResourceBundle bundle = Util.getEntityNotificationsBundle(userId);
+                    return new Result(true,
+                            bundle.getString("payment.blacklist.name_filter"));
+                }
+            }
+        }
+
+        //check against meta fields
+        CustomerDAS customerDAS = new CustomerDAS();
+        MetaFieldDAS metaFieldDAS = new MetaFieldDAS();
+        Integer customerId = customerDAS.getCustomerId(userId);
+        if(null != customerId){
+            List<Integer> aitIds = customerDAS.getCustomerAccountInfoTypeIds(customerId);
+            for(Integer ait : aitIds){
+                String firstName = null;
+                String lastName = null;
+                Date effectiveDate = new Date();
+                
+                List<Integer> firstNameIds =
+                        metaFieldDAS.getCustomerFieldValues(customerId, MetaFieldType.FIRST_NAME, ait, effectiveDate);
+                Integer firstNameId = null != firstNameIds && firstNameIds.size() > 0 ?
+                        firstNameIds.get(0) : null;
+
+                List<Integer> lastNameIds =
+                        metaFieldDAS.getCustomerFieldValues(customerId, MetaFieldType.LAST_NAME, ait, effectiveDate);
+                Integer lastNameId = null != lastNameIds && lastNameIds.size() > 0 ?
+                        lastNameIds.get(0) : null;
+
+                if(null != firstNameId) {
+                    MetaFieldValue value = metaFieldDAS.getStringMetaFieldValue(firstNameId);
+                    firstName = null != value.getValue() ? (String) value.getValue() : null;
+                }
+
+                if(null != lastNameId) {
+                    MetaFieldValue value = metaFieldDAS.getStringMetaFieldValue(lastNameId);
+                    lastName = null != value.getValue() ? (String) value.getValue() : null;
+                }
+
+                if(null != firstName || null != lastName) {
+
+                    List<BlacklistDTO> blacklist = new BlacklistDAS().filterByName(
+                            entityId,
+                            firstName,
+                            lastName);
+
+                    if (!blacklist.isEmpty()) {
+                        ResourceBundle bundle = Util.getEntityNotificationsBundle(userId);
+                        return new Result(true,
+                                bundle.getString("payment.blacklist.name_filter"));
+                    }
+                }
+            }
         }
 
         return new Result(false, null);

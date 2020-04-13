@@ -20,6 +20,7 @@
 package com.sapienter.jbilling.server.order.db;
 
 
+import java.io.Serializable;
 import java.util.Date;
 
 import javax.persistence.Column;
@@ -180,7 +181,7 @@ public class OrderProcessDTO  implements java.io.Serializable {
     protected void setVersionNum(Integer versionNum) {
         this.versionNum = versionNum;
     }
-    
+
 }
 
 

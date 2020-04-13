@@ -25,6 +25,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue;
+import com.sapienter.jbilling.server.user.db.UserDAS;
+import com.sapienter.jbilling.server.user.db.UserDTO;
 import org.apache.log4j.Logger;
 
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
@@ -33,8 +37,6 @@ import com.sapienter.jbilling.server.pluggableTask.PaymentTask;
 import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.user.ContactBL;
-import com.sapienter.jbilling.server.user.ContactDTOEx;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldDTO;
 
 /**
  * Routes payments to other processor plug-ins baed on a custom 
@@ -46,7 +48,7 @@ import com.sapienter.jbilling.server.user.contact.db.ContactFieldDTO;
 public class PaymentRouterCCFTask extends AbstractPaymentRouterTask {
 	public static final ParameterDescription PARAM_CUSTOM_FIELD_PAYMENT_PROCESSOR = 
 		new ParameterDescription("custom_field_id", true, ParameterDescription.Type.STR);
-    private static final Logger LOG = Logger.getLogger(PaymentRouterCCFTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaymentRouterCCFTask.class));
 
     //initializer for pluggable params
     { 
@@ -96,17 +98,29 @@ public class PaymentRouterCCFTask extends AbstractPaymentRouterTask {
         contactLoader = new ContactBL();
         contactLoader.set(userId);
 
-        ContactDTOEx contact = contactLoader.getDTO();
-        ContactFieldDTO paymentProcessorField = (ContactFieldDTO) contact.getFieldsTable().get(
-                parameters.get(PARAM_CUSTOM_FIELD_PAYMENT_PROCESSOR.getName()));
-        if (paymentProcessorField == null){
-            LOG.warn("Can't find CCF with type " + 
-                    parameters.get(PARAM_CUSTOM_FIELD_PAYMENT_PROCESSOR.getName()) +
-                    " contact = " + contact);
-            processorName = null;
-        } else {
-            processorName = paymentProcessorField.getContent();
+        UserDTO user = new UserDAS().find(userId);
+        if (user.getCustomer() != null && user.getCustomer().getMetaFields() != null) {
+            String metaFieldName = parameters.get(PARAM_CUSTOM_FIELD_PAYMENT_PROCESSOR.getName());
+            MetaFieldValue customField = user.getCustomer().getMetaField(metaFieldName);
+            if (customField == null) {
+                // todo: try to search by id, may be temporary (now is applied)
+                try {
+                    Integer metaFieldNameId = Integer.valueOf(metaFieldName);
+                    customField = user.getCustomer().getMetaField(metaFieldNameId);
+                } catch (Exception ex) {
+                    // do nothing
+                }
+            }
+            if (customField == null){
+                LOG.warn("Can't find Custom Field with type " +
+                        parameters.get(PARAM_CUSTOM_FIELD_PAYMENT_PROCESSOR.getName()) +
+                        " user = " + userId);
+                processorName = null;
+            } else {
+                processorName = (String) customField.getValue();
+            }
         }
+
         return processorName;
     }
 }

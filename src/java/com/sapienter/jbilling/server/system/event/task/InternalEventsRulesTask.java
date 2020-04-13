@@ -27,6 +27,7 @@ import java.util.Map;
 import org.apache.log4j.Logger;
 
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.rule.RulesBaseTask;
@@ -40,6 +41,7 @@ import com.sapienter.jbilling.server.util.Context;
  * It inserts into the rules memory context the received event object,
  * plus the publically accessible objects the event contains.
  */
+@Deprecated
 public class InternalEventsRulesTask extends RulesBaseTask
         implements IInternalEventsTask {
 
@@ -47,8 +49,8 @@ public class InternalEventsRulesTask extends RulesBaseTask
             new Class[] { };
 
     @Override
-    protected Logger getLog() {
-        return Logger.getLogger(InternalEventsRulesTask.class);
+    protected FormatLogger getLog() {
+        return new FormatLogger(Logger.getLogger(InternalEventsRulesTask.class));
     }
 
     /**
@@ -90,7 +92,6 @@ public class InternalEventsRulesTask extends RulesBaseTask
     public void process(Event event) throws PluggableTaskException {
         // add event
         rulesMemoryContext.add(event);
-
         // Extract fields from concrete event type using reflection
         // and add to rules memory context.
         try {

@@ -20,7 +20,7 @@
 
 package com.sapienter.jbilling.server.user.event;
 
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.system.event.Event;
 
 /**
@@ -29,14 +29,14 @@ import com.sapienter.jbilling.server.system.event.Event;
  */
 public class NewCreditCardEvent implements Event {
 
-    private final CreditCardDTO creditCard;
+    private final PaymentInformationDTO creditCard;
     private final Integer entityId;
 
-    public CreditCardDTO getCreditCard() {
+    public PaymentInformationDTO getCreditCard() {
         return creditCard;
     }
 
-    public NewCreditCardEvent(CreditCardDTO creditCard, Integer entityId) {
+    public NewCreditCardEvent(PaymentInformationDTO creditCard, Integer entityId) {
         this.creditCard = creditCard;
         this.entityId = entityId;
     }

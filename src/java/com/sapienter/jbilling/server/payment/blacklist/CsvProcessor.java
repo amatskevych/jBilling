@@ -24,26 +24,26 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.Locale;
 import java.util.ResourceBundle;
-import java.util.Set;
+
+import com.sapienter.jbilling.server.metafields.db.MetaField;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldDAS;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
 import com.sapienter.jbilling.server.payment.blacklist.db.BlacklistDAS;
 import com.sapienter.jbilling.server.payment.blacklist.db.BlacklistDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.user.EntityBL;
 import com.sapienter.jbilling.server.user.contact.db.ContactDAS;
 import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldDTO;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldTypeDAS;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldTypeDTO;
 import com.sapienter.jbilling.server.user.db.CompanyDAS;
 import com.sapienter.jbilling.server.user.db.CompanyDTO;
-import com.sapienter.jbilling.server.user.db.CreditCardDAS;
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
 import com.sapienter.jbilling.server.user.db.UserDAS;
 import com.sapienter.jbilling.server.user.db.UserDTO;
 import com.sapienter.jbilling.server.util.Util;
@@ -84,14 +84,13 @@ public class CsvProcessor {
     private static final char FIELD_SEPARATOR = ',';
     private static final String R_BUNDLE_KEY = "payment.blacklist.csv.";
 
-    private static Logger LOG = Logger.getLogger(CsvProcessor.class);
+    private static FormatLogger LOG = new FormatLogger(Logger.getLogger(CsvProcessor.class));
 
     // some frequently used data classes
     private BlacklistDAS blacklistDAS = null;
     private UserDAS userDAS = null;
     private ContactDAS contactDAS = null;
-    private CreditCardDAS creditCardDAS = null;
-    private ContactFieldTypeDTO ipAddressFieldTypeDTO = null;
+    private Integer ipAddressCustomField = null;
     private ResourceBundle rBundle = null;
 
     // current line and line number
@@ -102,7 +101,6 @@ public class CsvProcessor {
         blacklistDAS = new BlacklistDAS();
         userDAS = new UserDAS();
         contactDAS = new ContactDAS();
-        creditCardDAS = new CreditCardDAS();
     }
 
     /**
@@ -123,8 +121,7 @@ public class CsvProcessor {
             inFile = new BufferedReader(new FileReader(filePath));
 
             CompanyDTO company = new CompanyDAS().find(entityId);
-            ipAddressFieldTypeDTO = new ContactFieldTypeDAS().find(
-                BlacklistBL.getIpAddressCcfId(entityId));
+            ipAddressCustomField = BlacklistBL.getIpAddressCcfId(entityId);
 
             EntityBL entity = new EntityBL(entityId);
             Locale locale = entity.getLocale();
@@ -159,7 +156,11 @@ public class CsvProcessor {
 
                 Integer type = getInt(Column.TYPE);
                 BlacklistDTO entry = new BlacklistDTO();
-
+                entry.setType(type);
+                entry.setSource(BlacklistDTO.SOURCE_EXTERNAL_UPLOAD);
+                entry.setCompany(company);
+                entry.setCreateDate(new Date());
+                
                 if (type.equals(BlacklistDTO.TYPE_USER_ID)) {
                     createUserRecord(entry);
                 } else if (type.equals(BlacklistDTO.TYPE_NAME)) {
@@ -177,10 +178,6 @@ public class CsvProcessor {
                             "invalid_type", type), lineNum, Column.TYPE);
                 }
 
-                entry.setType(type);
-                entry.setSource(BlacklistDTO.SOURCE_EXTERNAL_UPLOAD);
-                entry.setCompany(company);
-                entry.setCreateDate(new Date());
                 blacklistDAS.save(entry);
                 entriesAdded++;
             }
@@ -279,13 +276,9 @@ public class CsvProcessor {
      */
     private void createCcRecord(BlacklistDTO entry) throws ParseException {
         checkForEmptyRecord("CC_NUMBER", Column.CC_NUMBER);
-
-        CreditCardDTO creditCard = new CreditCardDTO();
-
-        creditCard.setNumber(getString(Column.CC_NUMBER));
-        creditCard.setDeleted(0);
-        creditCard.setCcType(2); // not null
-        creditCard.setCcExpiry(new Date()); // not null
+        
+        PaymentInformationBL piBl = new PaymentInformationBL();
+        PaymentInformationDTO creditCard = piBl.getCreditCardObject(getString(Column.CC_NUMBER), entry.getCompany());
 
         entry.setCreditCard(creditCard);
     }
@@ -296,19 +289,12 @@ public class CsvProcessor {
     private void createIpAddressRecord(BlacklistDTO entry) throws ParseException {
         checkForEmptyRecord("IP_ADDRESS", Column.IP_ADDRESS);
 
-        ContactDTO newContact = new ContactDTO();
-        newContact.setCreateDate(new Date());
-        newContact.setDeleted(0);
-        ContactFieldDTO newField = new ContactFieldDTO();
-        newField.setType(ipAddressFieldTypeDTO);
-        newField.setContent(getString(Column.IP_ADDRESS));
-        newField.setContact(newContact);
+        MetaField metaField = new MetaFieldDAS().find(ipAddressCustomField);
 
-        Set<ContactFieldDTO> fields = new HashSet<ContactFieldDTO>(1);
-        fields.add(newField);
-        newContact.setFields(fields);
+        MetaFieldValue newValue = metaField.createValue();
+        newValue.setValue(getString(Column.IP_ADDRESS));
 
-        entry.setContact(newContact);
+        entry.setMetaFieldValue(newValue);
     }
 
     /**

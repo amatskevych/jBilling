@@ -52,8 +52,16 @@ public class EventLogger {
     public static final Integer SUBSCRIPTION_STATUS_CHANGE = new Integer(20);
     public static final Integer SUBSCRIPTION_STATUS_NO_CHANGE = new Integer(32);
     public static final Integer ACCOUNT_LOCKED = new Integer(21);
+    public static final Integer ACCOUNT_EXPIRED = new Integer(22);
     public static final Integer DYNAMIC_BALANCE_CHANGE = new Integer(33);
     public static final Integer INVOICE_IF_CHILD_CHANGE = new Integer(34);
+    public static final Integer ORDER_CREATED_FOR_RESELLER_IN_ROOT = new Integer(35);
+    public static final Integer NEXT_INVOICE_DATE_CHANGE= new Integer(35);
+    
+    public static final Integer SUCESSFULL_USER_LOGIN= new Integer(38);
+    public static final Integer USER_LOGOUT= new Integer(39);
+    public static final Integer FAILED_USER_LOGIN= new Integer(40);
+    public static final Integer FAILED_LOGIN_ATTEMPTS = new Integer(37);
     // order maintenance
     public static final Integer ORDER_STATUS_CHANGE = new Integer(13);
     public static final Integer ORDER_LINE_UPDATED = new Integer(17);
@@ -69,11 +77,7 @@ public class EventLogger {
     // blacklist
     public static final Integer BLACKLIST_USER_ID_ADDED = new Integer(27);
     public static final Integer BLACKLIST_USER_ID_REMOVED = new Integer(28);
-    //provisioning
-    public static final Integer PROVISIONING_UUID = new Integer(29);
-    public static final Integer PROVISIONING_COMMAND=new Integer(30);
-    public static final Integer PROVISIONING_STATUS_CHANGE=new Integer(31);
-
+    
     // others
     public static final Integer ROW_CREATED = new Integer(25);
     public static final Integer ROW_DELETED = new Integer(7);
@@ -94,9 +98,7 @@ public class EventLogger {
     public static final Integer MODULE_PAYMENT_MAINTENANCE = new Integer(10);
     public static final Integer MODULE_TASK_MAINTENANCE = new Integer(11);
     public static final Integer MODULE_WEBSERVICES = new Integer(12);
-    public static final Integer MODULE_MEDIATION = new Integer(13);
     public static final Integer MODULE_BLACKLIST = new Integer(14);
-    public static final Integer MODULE_PROVISIONING=new Integer(15);
 
 
     // levels of logging
@@ -111,7 +113,7 @@ public class EventLogger {
     private EventLogModuleDAS eventLogModuleDAS = null;
     private JbillingTableDAS jbDAS = null;
 
-    //private static final Logger LOG = Logger.getLogger(EventLogger.class);
+    //private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(EventLogger.class));
 
     public EventLogger() {
         eventLogDAS = new EventLogDAS();
@@ -120,7 +122,7 @@ public class EventLogger {
         jbDAS = (JbillingTableDAS) Context.getBean(Context.Name.JBILLING_TABLE_DAS);
     }
 
-    public static EventLogger getInstance() {
+    public static synchronized EventLogger getInstance() {
         return new EventLogger();
     }
 

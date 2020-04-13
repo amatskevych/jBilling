@@ -24,11 +24,12 @@ import java.util.Date;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.order.OrderBL;
 import com.sapienter.jbilling.server.system.event.Event;
 
 public class NewActiveUntilEvent implements Event {
-    private static final Logger LOG = Logger.getLogger(NewActiveUntilEvent.class); 
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(NewActiveUntilEvent.class)); 
     private Integer entityId;
     private Integer userId;
     private Integer orderId;
@@ -45,7 +46,7 @@ public class NewActiveUntilEvent implements Event {
             this.entityId = order.getEntity().getUser().getEntity().getId();
             this.userId = order.getEntity().getUser().getUserId();
             this.orderType = order.getEntity().getOrderPeriod().getId();
-            this.statusId = order.getEntity().getStatusId();
+            this.statusId = order.getEntity().getOrderStatus().getId();
         } catch (Exception e) {
             LOG.error("Handling order in event", e);
         } 

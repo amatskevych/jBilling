@@ -1,28 +1,28 @@
+%{--
+     jBilling - The Enterprise Open Source Billing System
+   Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
+
+   This file is part of jbilling.
+   
+   jbilling is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+   
+   jbilling is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+   
+   You should have received a copy of the GNU Affero General Public License
+   along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+ 
+  --}%
 
 <div class="column-hold">
     <div class="heading">
         <strong>
-            %{--
-  jBilling - The Enterprise Open Source Billing System
-  Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
-
-  This file is part of jbilling.
-
-  jbilling is free software: you can redistribute it and/or modify
-  it under the terms of the GNU Affero General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  jbilling is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU Affero General Public License for more details.
-
-  You should have received a copy of the GNU Affero General Public License
-  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
-  --}%
-
-<g:if test="${selected}">
+            <g:if test="${selected && !selected.hasErrors()}">
                 <g:message code="filters.save.edit.title" args="[selected.name]"/>
             </g:if>
             <g:else>
@@ -37,7 +37,7 @@
                 <g:applyLayout name="form/text">
                     <content tag="label"><g:message code="filters.save.label.id"/></content>
 
-                    <g:if test="${selected}">
+                    <g:if test="${selected && !selected.hasErrors()}">
                         ${selected.id}
                         <g:hiddenField name="id" value="${selected?.id}"/>
                     </g:if>
@@ -47,7 +47,7 @@
                 </g:applyLayout>
 
 
-                <g:if test="${selected}">
+ 				<g:if test="${selected && !selected.hasErrors()}">
                     <g:applyLayout name="form/text">
                         <content tag="label"><g:message code="filters.save.label.name"/></content>
                         ${selected.name}
@@ -57,7 +57,7 @@
                     <g:applyLayout name="form/input">
                         <content tag="label"><g:message code="filters.save.label.name"/></content>
                         <content tag="label.for">name</content>
-                        <g:textField class="field" name="name" value="${selected?.name}"/>
+                        <g:textField class="field" name="name" maxlength="30" value="${selected?.name}"/>
                     </g:applyLayout>
                 </g:else>
             </div>
@@ -90,12 +90,12 @@
     </div>
 
     <div class="btn-box">
-        <g:if test="${!selected}">
+        <g:if test="${!selected || selected.hasErrors()}">
             <a class="submit save" onclick="$('#filter-save-form').submit();">
                 <span><g:message code="button.save"/></span>
             </a>
         </g:if>
-        <g:if test="${selected}">
+        <g:if test="${selected && !selected.hasErrors()}">
             <g:remoteLink class="submit delete" controller="filter" action="delete" id="${selected.id}" update="filtersets">
                 <span><g:message code="button.delete"/></span>
             </g:remoteLink>

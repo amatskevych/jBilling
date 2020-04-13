@@ -27,6 +27,28 @@ import com.sapienter.jbilling.common.CommonConstants;
  *
  */
 public final class Constants implements CommonConstants {
+	
+	/*
+	 * 
+	 * Spring Batch Constants
+	 * 
+	 */
+	public static final String JOBCONTEXT_TOTAL_USERS_FAILED_KEY = "usersFailed";
+	public static final String JOBCONTEXT_BILLING_PROCESS_ID_KEY = "billingProcessId";
+	public static final String JOBCONTEXT_FAILED_USERS_LIST_KEY = "failedUsersList";
+	public static final String JOBCONTEXT_TOTAL_INVOICES_KEY = "totalInvoices";	
+	public static final String JOBCONTEXT_SUCCESSFULL_USERS_LIST_KEY = "successfulUsersList";
+	public static final String JOBCONTEXT_PROCESS_USER_RESULT_KEY = "userInvoices";
+    public static final String JOBCONTEXT_USERS_LIST_KEY = "userIds";
+	
+	public static final String BATCH_JOB_PARAM_ENTITY_ID = "entityId";
+	public static final String BATCH_JOB_PARAM_BILLING_DATE = "billingDate";
+	public static final String BATCH_JOB_PARAM_AGEING_DATE = "ageingDate";
+	public static final String BATCH_JOB_PARAM_PERIOD_VALUE = "periodValue";
+	public static final String BATCH_JOB_PARAM_PERIOD_TYPE = "periodType";
+	public static final String BATCH_JOB_PARAM_REVIEW = "review";
+	public static final String BATCH_JOB_PARAM_UNIQUE = "unique";
+	
     /*
      * DATA BASE CONSTANTS
      * These values are in the database, should be initialized by the
@@ -89,10 +111,7 @@ public final class Constants implements CommonConstants {
     public static final String TABLE_NOTIFICATION_MESSAGE_ARCHIVE_LINE = "notification_message_arch_line";
     public static final String TABLE_REPORT = "report";
     public static final String TABLE_REPORT_TYPE = "report_type";
-    public static final String TABLE_PERMISSION = "permission";
-    public static final String TABLE_PERMISSION_TYPE = "permission_type";
     public static final String TABLE_ROLE= "role";
-    public static final String TABLE_PERMISSION_ROLE_MAP= "permission_role_map";
     public static final String TABLE_USER_ROLE_MAP= "user_role_map";
     public static final String TABLE_MENU_OPTION = "menu_option";
     public static final String TABLE_COUNTRY = "country";
@@ -119,28 +138,54 @@ public final class Constants implements CommonConstants {
     public static final String TABLE_ACH = "ach";
     public static final String TABLE_LIST_ENTITY = "list_entity";
     public static final String TABLE_LIST_FIELD_ENTITY = "list_field_entity";
-    public static final String TABLE_MEDIATION_CFG = "mediation_cfg";
     public static final String TABLE_BLACKLIST = "blacklist";
     public static final String TABLE_GENERIC_STATUS_TYPE = "generic_status_type";
     public static final String TABLE_GENERIC_STATUS = "generic_status";
-    public static final String TABLE_ORDER_LINE_PROVISIONING_STATUS = "order_line_provisioning_status";
-    public static final String TABLE_MEDIATION_RECORD_STATUS = "mediation_record_status";
     public static final String TABLE_PROCESS_RUN_STATUS = "process_run_status";
     public static final String TABLE_NOTIFICATION_CATEGORY = "notification_category";
+    public static final String TABLE_ASSET = "asset";
+    public static final String TABLE_ASSET_STATUS = "asset_status";
+    public static final String TABLE_ASSET_TRANSITION = "asset_transition";
 
+    public static final String TABLE_ENUMERATION = "enumeration";
+    public static final String TABLE_ENUMERATION_VALUES = "enumeration_values";
+    public static final String TABLE_METAFIELD_GROUP = "meta_field_group";
+    public static final String TABLE_METAFIELD= "meta_field_name";
+    public static final String TABLE_VALIDATION_RULE= "validation_rule";
+    
+    public static final String TABLE_DISCOUNT = "discount";
+    
+    public static final String TABLE_ORDER_CHANGE_STATUS = "order_change_status";
+    public static final String TABLE_ORDER_CHANGE = "order_change";
+    
+    public static final String TABLE_ORDER_CHANGE_PLAN_ITEM = "order_change_plan_item";
+
+    public static final String TABLE_RATE_CARDS = "rate_card";
+
+    public static final String TABLE_PAYMENT_METHOD_TYPE = "payment_method_type";
+
+    // psudo column values from international description
+    public static final String PSUDO_COLUMN_TITLE = "title";
+    public static final String PSUDO_COLUMN_DESCRIPTION = "description";
+    
     // order line types
-    public static final Integer ORDER_LINE_TYPE_ITEM = new Integer(1);
-    public static final Integer ORDER_LINE_TYPE_TAX = new Integer(2);
-    public static final Integer ORDER_LINE_TYPE_PENALTY = new Integer(3);
+    public static final int ORDER_LINE_TYPE_ITEM = 1;
+    public static final int ORDER_LINE_TYPE_TAX = 2;
+    public static final int ORDER_LINE_TYPE_PENALTY = 3;
+    public static final int ORDER_LINE_TYPE_DISCOUNT = 4;
+    public static final int ORDER_LINE_TYPE_SUBSCRIPTION = 5;
     
     // order periods. This are those NOT related with any single entity
     public static final Integer ORDER_PERIOD_ONCE = new Integer(1);
     
+    public static final Integer ORDER_PERIOD_ALL_ORDERS = new Integer(5);
+
     // period unit types
     public static final Integer PERIOD_UNIT_MONTH = new Integer(1);
     public static final Integer PERIOD_UNIT_WEEK = new Integer(2);
     public static final Integer PERIOD_UNIT_DAY = new Integer(3);
     public static final Integer PERIOD_UNIT_YEAR= new Integer(4);
+    public static final Integer PERIOD_UNIT_SEMI_MONTHLY= new Integer(5);
     
     // order billing types
     public static final Integer ORDER_BILLING_PRE_PAID = new Integer(1);
@@ -161,17 +206,15 @@ public final class Constants implements CommonConstants {
     public static final Integer PLUGGABLE_TASK_ASYNC_PAYMENT_PARAMS = new Integer(12);
     public static final Integer PLUGGABLE_TASK_ITEM_MANAGER = new Integer(13);
     public static final Integer PLUGGABLE_TASK_ITEM_PRICING = new Integer(14);
-    public static final Integer PLUGGABLE_TASK_MEDIATION_READER = new Integer(15);
-    public static final Integer PLUGGABLE_TASK_MEDIATION_PROCESS = new Integer(16);
     public static final Integer PLUGGABLE_TASK_INTERNAL_EVENT = new Integer(17);
-    public static final Integer PLUGGABLE_TASK_EXTERNAL_PROVISIONING = new Integer(18);
     public static final Integer PLUGGABLE_TASK_VALIDATE_PURCHASE = new Integer(19);
     public static final Integer PLUGGABLE_TASK_BILL_PROCESS_FILTER = new Integer(20);
-    public static final Integer PLUGGABLE_TASK_MEDIATION_ERROR_HANDLER = new Integer(21);
     public static final Integer PLUGGABLE_TASK_SCHEDULED = new Integer(22);
     public static final Integer PLUGGABLE_TASK_RULES_GENERATOR = new Integer(23);
     public static final Integer PLUGGABLE_TASK_AGEING = new Integer(24);
-    
+    public static final Integer PLUGGABLE_TASK_PARTNER_COMMISSION = new Integer(25);
+    public static final Integer PLUGGABLE_TASK_FILE_EXCHANGE = new Integer(26);
+
     // pluggable task types (belongs to a category)
     public static final Integer PLUGGABLE_TASK_T_PAPER_INVOICE = new Integer(12);
     
@@ -183,9 +226,6 @@ public final class Constants implements CommonConstants {
     public static final Integer INVOICE_LINE_TYPE_SUB_ACCOUNT = new Integer(5);
     public static final Integer INVOICE_LINE_TYPE_ITEM_ONETIME = new Integer(6);
 
-    // permission types - this should be moved to PermissionConstant.java
-    public static final Integer PERMISSION_TYPE_MENU= new Integer(1);
-    
     // languages - when the project is a big company, we can do this right ! :p
     public static final Integer LANGUAGE_ENGLISH_ID = new Integer(1);
     public static final String LANGUAGE_ENGLISH_STR = "English";
@@ -215,8 +255,6 @@ public final class Constants implements CommonConstants {
     public static final Integer NOTIFICATION_TYPE_USER_SUSPENDED_2 = 7;
     public static final Integer NOTIFICATION_TYPE_USER_SUSPENDED_3 = 8;
     public static final Integer NOTIFICATION_TYPE_USER_DELETED = 9;
-    public static final Integer NOTIFICATION_TYPE_PAYOUT_REMINDER = 10;
-    public static final Integer NOTIFICATION_TYPE_PARTNER_PAYOUT = 11;
     public static final Integer NOTIFICATION_TYPE_INVOICE_PAPER = 12;
     public static final Integer NOTIFICATION_TYPE_ORDER_EXPIRE_1 = 13;
     public static final Integer NOTIFICATION_TYPE_ORDER_EXPIRE_2 = 14;
@@ -226,10 +264,89 @@ public final class Constants implements CommonConstants {
     public static final Integer NOTIFICATION_TYPE_INVOICE_REMINDER = 18;
     public static final Integer NOTIFICATION_TYPE_CREDIT_CARD_UPDATE = 19;
     public static final Integer NOTIFICATION_TYPE_LOST_PASSWORD = 20;
-
+    public static final Integer NOTIFICATION_TYPE_INITIAL_CREDENTIALS = 21;
+    public static final Integer NOTIFICATION_TYPE_USAGE_POOL_CONSUMPTION = 24;
+    
     // contact type
     public static final Integer ENTITY_CONTACT_TYPE = new Integer(1);
 
     //Jbilling Table Ids
     public static final Integer ENTITY_TABLE_ID = new Integer(5);
+
+    //Internal AssetStatus objects
+    public static final Integer ASSET_STATUS_MEMBER_OF_GROUP = 1;
+
+    // primary currency id is assumed to be USD currently
+    public static final Integer PRIMARY_CURRENCY_ID = 1;
+
+    // JBilling Interface Name
+    public static final String I_SCHEDULED_TASK = "com.sapienter.jbilling.server.process.task.IScheduledTask";
+    // AbstractSimpleScheduledTask parameter
+    public static final String PARAM_START_TIME = "start_time";
+    public static final String PARAM_END_TIME = "end_time";
+    public static final String PARAM_REPEAT = "repeat";
+    // Scheduled Plugin Date/Time Format
+    public static final String DATE_TIME_FORMAT = "yyyyMMdd-HHmm";
+
+    public static final String CC_DATE_FORMAT = "MM/yyyy";
+
+    // Currency Field Names
+    public static final String FIELD_CURRENCY = "currency";
+    public static final String FIELD_FEE_CURRENCY = "feeCurrency";
+    
+    // Decimal Point String Constant
+    public static final String DOT = ".";
+    public static final String DECIMAL_POINT = ".";
+    public static final String SINGLE_SPACE = " ";
+    public static final String COLON = ":";
+    public static final String PIPE = "|";
+
+    //Account Type Table
+    public static final String TABLE_ACCOUNT_TYPE = "account_type";
+    
+    // Reseller Customer Constants
+    public static final String RESELLER_PASSWORD = "P@ssword1";
+    
+    //Route Table
+    public static final String TABLE_ROUTE = "route";
+    //Route RateCard Table
+    public static final String TABLE_ROUTE_RATE_CARD = "route_rate_card";
+
+    public static final String PRICE_FIELD_FILE_NAME = "file_name";
+
+ //
+    public static final String PROPERTY_RUN_COMMISION = "process.run_commission";
+    public static final String PROPERTY_RUN_API_ONLY_BUT_NO_BATCH = "process.run_api_only_but_no_batch";
+    public static final String PROPERTY_RUN_ORDER_UPDATE = "process.run_order_update";
+    public static final String BLANK_STRING = "";
+    
+    // Main Subscription Period Temlate Name
+    public static final String TEMPLATE_MONTHLY = "monthly";
+    public static final String TEMPLATE_WEEKLY = "weekly";
+    public static final String TEMPLATE_DAILY = "daily";
+    public static final String TEMPLATE_YEARLY= "yearly";
+    public static final String TEMPLATE_SEMI_MONTHLY= "semiMonthly";
+    
+    public static final Integer SEMI_MONTHLY_END_OF_MONTH= new Integer(15);
+
+    public static final String PLANS_INTERNAL_CATEGORY_NAME = "plans";
+
+    //encryption scheme
+    public static final String PASSWORD_ENCRYPTION_SCHEME = "security.password_encrypt_scheme";
+	public static final String PROPERTY_LOCKOUT_PASSWORD = "security.lockout_password";
+
+    //Invoice Templates
+    public static final String TABLE_INVOICE_TEMPLATE = "invoice_template";
+    public static final String TABLE_INVOICE_TEMPLATE_VERSION = "invoice_template_version";
+    public static final String TABLE_INVOICE_TEMPLATE_FILE = "invoice_template_file";
+
+    // Enumerations
+    public static final Integer ENUMERATION_VALUE_MAX_LENGTH = Integer.valueOf(50);
+
+    public static final String RESERVAED_STATUS = "Reserved";
+
+    /*
+        Response error codes
+    */
+    public static final Integer ERROR_CODE_404 = Integer.valueOf(404);
 }

@@ -20,9 +20,10 @@
 
 package com.sapienter.jbilling.server.order;
 
-import com.sapienter.jbilling.server.order.db.OrderLineDTO;
+import com.sapienter.jbilling.common.FormatLogger;
 import org.apache.log4j.Logger;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
@@ -34,8 +35,8 @@ import java.util.List;
  * @author Brian Cowdery
  * @since 16-08-2010
  */
-public class Usage {
-    private static Logger LOG = Logger.getLogger(Usage.class);
+public class Usage implements Serializable {
+    private static FormatLogger LOG = new FormatLogger(Logger.getLogger(Usage.class));
 
     private Integer userId;
     private Integer itemId;
@@ -43,13 +44,21 @@ public class Usage {
     private BigDecimal quantity;
     private BigDecimal amount;
 
+    private BigDecimal currentQuantity;
+    private BigDecimal currentAmount;
+    
+    private BigDecimal currentLineQuantity;
+
     private Date startDate;
     private Date endDate;
-
+    
+    private BigDecimal freeUsageQuantity;
+    
     public Usage() {
     }
 
-    public Usage(Integer userId, Integer itemId, Integer itemTypeId, BigDecimal quantity, BigDecimal amount, Date startDate, Date endDate) {
+    public Usage(Integer userId, Integer itemId, Integer itemTypeId, BigDecimal quantity, BigDecimal amount,
+                 BigDecimal currentQuantity, BigDecimal currentAmount, Date startDate, Date endDate) {
         this.userId = userId;
         this.itemId = itemId;
         this.itemTypeId = itemTypeId;
@@ -57,25 +66,8 @@ public class Usage {
         this.amount = amount;
         this.startDate = startDate;
         this.endDate = endDate;
-    }
-
-    public Usage(List<OrderLineDTO> lines, Integer userId, Integer itemId, Integer itemTypeId, Date startDate, Date endDate) {
-        this.userId = userId;
-        this.itemId = itemId;
-        this.itemTypeId = itemTypeId;
-        this.startDate = startDate;
-        this.endDate = endDate;
-
-        calculateUsage(lines);
-    }
-
-    public void calculateUsage(List<OrderLineDTO> lines) {
-        quantity = BigDecimal.ZERO;
-        amount = BigDecimal.ZERO;
-        for (OrderLineDTO line : lines) {
-            quantity = quantity.add(line.getQuantity());
-            amount = amount.add(line.getAmount());
-        }
+        this.currentQuantity = currentQuantity;
+        this.currentAmount = currentAmount;
     }
 
     public Integer getUserId() {
@@ -146,26 +138,58 @@ public class Usage {
     }
 
     /**
-     * Add the quantity and amount from a given order line.
-     * 
-     * @param line order line to add
+     * Quantity purchased over the working order
+     * @return Local item quantity
      */
-    public void addLine(OrderLineDTO line) {
-        LOG.debug("Adding usage from line: " + line);
-        addAmount(line.getAmount());
-        addQuantity(line.getQuantity());
+    public BigDecimal getCurrentQuantity() {
+        return (currentQuantity != null ? currentQuantity : BigDecimal.ZERO);
+    }
+
+    public void setCurrentQuantity(BigDecimal currentQuantity) {
+        this.currentQuantity = currentQuantity;
+    }
+
+    public void addCurrentQuantity(BigDecimal currentQuantity) {
+        if (currentQuantity != null) {
+            setCurrentQuantity(getCurrentQuantity().add(currentQuantity));
+        }
+    }
+
+    public void subtractCurrentQuantity(BigDecimal currentQuantity) {
+        if (currentQuantity != null)
+            setCurrentQuantity(getCurrentQuantity().subtract(currentQuantity));
+    }
+    
+    public BigDecimal getCurrentLineQuantity() {
+        return (currentLineQuantity != null ? currentLineQuantity : BigDecimal.ZERO);
+    }
+
+    public void setCurrentLineQuantity(BigDecimal currentLineQuantity) {
+        this.currentLineQuantity = currentLineQuantity;
     }
 
     /**
-     * Subtract the quantity and amount from a given order line.
+     * Amount of usage purchased over the working order
      *
-     * @param line order line to subtract
+     * @return local item amount
      */
-    public void subtractLine(OrderLineDTO line) {
-        LOG.debug("Subtracting usage from line: " + line);
-        subractAmount(line.getAmount());
-        subtractQuantity(line.getQuantity());
+    public BigDecimal getCurrentAmount() {
+        return (currentAmount != null ? currentAmount : BigDecimal.ZERO);
+    }
 
+    public void setCurrentAmount(BigDecimal currentAmount) {
+        this.currentAmount = currentAmount;
+    }
+
+    public void addCurrentAmount(BigDecimal currentAmount) {
+        if (currentAmount != null) {
+            setCurrentAmount(getCurrentAmount().add(currentAmount));
+        }
+    }
+
+    public void subtractCurrentAmount(BigDecimal currentAmount) {
+        if (currentAmount != null)
+            setCurrentAmount(getCurrentAmount().subtract(currentAmount));
     }
 
     public Date getStartDate() {
@@ -183,7 +207,15 @@ public class Usage {
     public void setEndDate(Date endDate) {
         this.endDate = endDate;
     }
+    
+    public BigDecimal getFreeUsageQuantity() {
+        return (freeUsageQuantity != null ? freeUsageQuantity : BigDecimal.ZERO);
+    }
 
+    public void setFreeUsageQuantity(BigDecimal freeUsageQuantity) {
+        this.freeUsageQuantity = freeUsageQuantity;
+    }
+    
     @Override
     public String toString() {
         return "Usage{"
@@ -193,6 +225,7 @@ public class Usage {
                 + ", amount=" + getAmount()
                 + ", startDate=" + startDate
                 + ", endDate=" + endDate
+                + ", freeUsageQuantity=" + freeUsageQuantity
                 + '}';
     }
 }

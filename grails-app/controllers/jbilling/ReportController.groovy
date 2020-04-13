@@ -20,16 +20,30 @@
 
 package jbilling
 
-import com.sapienter.jbilling.server.report.db.ReportDTO
-import grails.plugins.springsecurity.Secured
 
-import com.sapienter.jbilling.server.user.db.CompanyDTO
+import com.sapienter.jbilling.client.util.SortableCriteria
+import com.sapienter.jbilling.common.SessionInternalError
+import org.joda.time.format.DateTimeFormat
+import com.sapienter.jbilling.server.item.db.ItemDAS;
+import com.sapienter.jbilling.server.report.db.ReportDTO
+import com.sapienter.jbilling.server.util.Constants
+import com.sapienter.jbilling.server.util.PreferenceBL
 import com.sapienter.jbilling.server.report.db.ReportTypeDTO
 import com.sapienter.jbilling.server.report.ReportBL
-import org.codehaus.groovy.grails.web.servlet.mvc.GrailsParameterMap
+
 import com.sapienter.jbilling.server.report.ReportExportFormat
+import com.sapienter.jbilling.client.util.Constants;
 import com.sapienter.jbilling.client.util.DownloadHelper
 import com.sapienter.jbilling.server.report.db.ReportParameterDTO
+
+import org.apache.commons.lang.StringUtils;
+import org.codehaus.groovy.grails.web.servlet.mvc.GrailsParameterMap
+import org.hibernate.criterion.MatchMode
+import org.hibernate.criterion.Restrictions
+
+
+import grails.converters.JSON
+import grails.plugin.springsecurity.annotation.Secured
 
 /**
  * ReportController 
@@ -37,28 +51,42 @@ import com.sapienter.jbilling.server.report.db.ReportParameterDTO
  * @author Brian Cowdery
  * @since 07/03/11
  */
-@Secured(["MENU_96"])
+@Secured(["isAuthenticated()"])
 class ReportController {
 
+    static scope = "prototype"
     static pagination = [ max: 10, offset: 0 ]
-
+    static final viewColumnsToFields =
+            ['reportId': 'id']
+	
     def viewUtils
     def filterService
     def recentItemService
     def breadcrumbService
 
-    def index = {
-        redirect action: list, params: params
+    def index () {
+        list()
     }
 
     def getReportTypes() {
-        return ReportTypeDTO.list()
+        params.max = pagination.max
+        // This fixes an issue when retrieving the types from the database
+        //If more than max appear, they will be left out.
+        params.offset = params?.offset?.toInteger() ?: pagination.offset
+
+        return ReportTypeDTO.createCriteria().list(
+                max:    params.max,
+                offset: params.offset
+        ) {
+            resultTransformer org.hibernate.Criteria.DISTINCT_ROOT_ENTITY
+            SortableCriteria.sort(params, delegate)
+        }
     }
 
     def getReports(Integer typeId) {
         params.max = params?.max?.toInteger() ?: pagination.max
         params.offset = params?.offset?.toInteger() ?: pagination.offset
-
+		def company_id = session['company_id']
         return ReportDTO.createCriteria().list(
                 max:    params.max,
                 offset: params.offset
@@ -69,38 +97,116 @@ class ReportController {
             }
 
             entities {
-                eq('id', session['company_id'])
+                eq('id', company_id)
+            }
+            if(params.name) {
+                or{
+                    addToCriteria(Restrictions.ilike("fileName",  params.name, MatchMode.ANYWHERE))
+                    addToCriteria(Restrictions.ilike("name", params.name, MatchMode.ANYWHERE));
+                }
             }
 
-            order('id', 'desc')
+            SortableCriteria.sort(params, delegate)
         }
     }
 
-    def list = {
+    def list () {
+        def type = ReportTypeDTO.get(params.int('id'))
+        breadcrumbService.addBreadcrumb(controllerName, 'list', null, params.int('id'), type?.getDescription(session['language_id']))
+
+        def usingJQGrid = PreferenceBL.getPreferenceValueAsBoolean(session['company_id'], Constants.PREFERENCE_USE_JQGRID);
+        //If JQGrid is showing, the data will be retrieved when the template renders
+        if (usingJQGrid){
+            render view: 'list', model: [ selectedTypeId: type?.id ]
+            return
+        }
+
         def types = getReportTypes()
         def reports = params.id ? getReports(params.int('id')) : null
-        def type = params.id ? reports.get(0)?.type : null
-
-        breadcrumbService.addBreadcrumb(controllerName, 'list', null, params.int('id'), type?.getDescription(session['language_id']))
 
         render view: 'list', model: [ types: types, reports: reports, selectedTypeId: type?.id ]
     }
 
-    def reports = {
+    def findTypes () {
+        params.sort = viewColumnsToFields[params.sidx]
+        params.order = params.sord
+        params.max = params.rows
+        params.offset = params?.page ? (params.int('page') - 1) * params.int('rows') : 0
+        params.alias = SortableCriteria.NO_ALIAS
+
+        def types = getReportTypes()
+
+        try {
+            render getAsJsonData(types, params) as JSON
+
+        } catch (SessionInternalError e) {
+            viewUtils.resolveException(flash, session.locale, e)
+            render e.getMessage()
+        }
+
+    }
+
+    def findReports (){
+        params.sort = viewColumnsToFields[params.sidx]
+        params.order = params.sord
+        params.max = params.rows
+        params.offset = params?.page ? (params.int('page') - 1) * params.int('rows') : 0
+        params.alias = SortableCriteria.NO_ALIAS
+
+        def type = params.int('id')
+        def reports = getReports(type) // If type is null, then search for all
+
+        try {
+            render getAsJsonData(reports, params) as JSON
+
+        } catch (SessionInternalError e) {
+            viewUtils.resolveException(flash, session.locale, e)
+            render e.getMessage()
+        }
+    }
+
+    /**
+     * Converts * to JSon
+     */
+    private def Object getAsJsonData(elements, GrailsParameterMap params) {
+        def jsonCells = elements
+        def currentPage = params.page ? Integer.valueOf(params.page) : 1
+        def rowsNumber = params.rows ? Integer.valueOf(params.rows): 1
+        def totalRecords =  jsonCells ? jsonCells.totalCount : 0
+        def numberOfPages = Math.ceil(totalRecords / rowsNumber)
+
+        def jsonData = [rows: jsonCells, page: currentPage, records: totalRecords, total: numberOfPages]
+
+        jsonData
+    }
+
+    def reports () {
         def typeId = params.int('id')
+        def type = ReportTypeDTO.get(params.int('id'))
+        breadcrumbService.addBreadcrumb(controllerName, 'list', null, typeId, type?.getDescription(session['language_id']))
+
+        def usingJQGrid = PreferenceBL.getPreferenceValueAsBoolean(session['company_id'], Constants.PREFERENCE_USE_JQGRID);
+        //If JQGrid is showing, the data will be retrieved when the template renders
+        if (usingJQGrid){
+            render template: 'reportsTemplate', model: [selectedTypeId: typeId]
+            return
+        }
         def reports = typeId ? getReports(typeId) : null
-
-        breadcrumbService.addBreadcrumb(controllerName, 'list', null, typeId, reports?.get(0)?.type?.getDescription(session['language_id']))
-
-        render template: 'reports', model: [ reports: reports, selectedTypeId: typeId ]
+        render template: 'reportsTemplate', model: [ reports: reports, selectedTypeId: typeId ]
     }
 
-    def allReports = {
+    def allReports () {
+        def usingJQGrid = PreferenceBL.getPreferenceValueAsBoolean(session['company_id'], Constants.PREFERENCE_USE_JQGRID);
+        //If JQGrid is showing, the data will be retrieved when the template renders
+        if (usingJQGrid){
+            render template: 'reportsTemplate', model: []
+            return
+        }
         def reports = getReports(null)
-        render template: 'reports', model: [ reports: reports ]
+        render template: 'reportsTemplate', model: [ reports: reports ]
     }
 
-    def show = {
+    def show () {
         ReportDTO report = ReportDTO.get(params.int('id'))
         breadcrumbService.addBreadcrumb(controllerName, actionName, null, report?.id, report ? message(code: report.name) : null)
 
@@ -123,17 +229,51 @@ class ReportController {
      * will be rendered as HTML. If an export format is selected, then the generated file will be sent
      * to the browser.
      */
-    def run = {
+    def run () {
         def report = ReportDTO.get(params.int('id'))
         bindParameters(report, params)
-
         def runner = new ReportBL(report, session['locale'], session['company_id'])
+		def typeId = report?.type?.id
+		def types = getReportTypes()
+		def reports = getReports(typeId)
+		
+		if(params.end_date && params.start_date) {
+			Date startDate = DateTimeFormat.forPattern(message(code: 'datepicker.format')).parseDateTime(params.start_date).toDate()
+			Date endDate = DateTimeFormat.forPattern(message(code: 'datepicker.format')).parseDateTime(params.end_date).toDate()
+			if(endDate.compareTo(startDate)<0) {
+				flash.error = message(code: 'report.start_date.before.end_date.valid')
+				render view: 'list', model: [ types: types, reports: reports, selected: report, selectedTypeId: typeId ]
+				return
+			}
+		}
+		
+		if(report.type.name == 'order'){
+		    if (null == params.item_id || params.item_id.isEmpty() || !params.item_id.isInteger()) {
+		        flash.error = message(code: 'report.item.invalid')
+		        render view: 'list', model: [types: types, reports: reports, selected: report, selectedTypeId: typeId]
+		        return
+		    }
+		
+		    if (null == new ItemDAS().findNow(params.item_id as Integer)) {
+		        flash.error = message(code: 'item.not.exists')
+		        render view: 'list', model: [ types: types, reports: reports, selected: report, selectedTypeId: typeId ]
+		        return
+		    }
+		}
+		
+		if(report.type.name  == 'user') {
+			if(StringUtils.isEmpty((params.start_year).trim()) || StringUtils.isEmpty((params.end_year).trim())) {
+				flash.error = message(code: 'report.start.end.year.not.blank')
+				render view: 'list', model: [types: types, reports: reports, selected: report, selectedTypeId: typeId]
+				return
+			}
+		}
 
         if (params.format) {
             // export to selected format
             def format = ReportExportFormat.valueOf(params.format)
             def export = runner.export(format);
-            DownloadHelper.sendFile(response, export.fileName, export.contentType, export.bytes)
+            DownloadHelper.sendFile(response, export?.fileName, export?.contentType, export?.bytes)
 
         } else {
             // render as HTML
@@ -149,15 +289,28 @@ class ReportController {
      * retrieves images by name and returns the bytes to the browser. The jasper report HTML contains <code>img</code>
      * tags that look to this action as their source.
      */
-    def images = {
+    def images () {
         Map images = session[ReportBL.SESSION_IMAGE_MAP]
         response.outputStream << images.get(params.name)
     }
 
-    def bindParameters(ReportDTO report, GrailsParameterMap params) {
+    def bindParameters(report, params) {
         params.each { name, value ->
             ReportParameterDTO<?> parameter = report.getParameter(name)
-            if (parameter) bindData(parameter, ['value': value])
+            if (parameter) {
+
+                bindData(parameter, ['value': value])
+            }
         }
+		
+		try {
+			report.childEntities = new ArrayList<Integer>()
+			// bind childs to list
+			params.list('childs').each { child ->
+				report.childEntities.add(Integer.parseInt(child))
+			}
+		} catch(Exception e) {
+			//string is null, 
+		}
     }
 }

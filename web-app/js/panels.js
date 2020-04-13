@@ -2,19 +2,19 @@
 /*
  * jBilling - The Enterprise Open Source Billing System
  * Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
- *
+ * 
  * This file is part of jbilling.
- *
+ * 
  * jbilling is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *
+ * 
  * jbilling is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Affero General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU Affero General Public License
  * along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -96,6 +96,35 @@ var next = {
     }
 };
 
+var current = {
+    index: function() {
+        return clicked;
+    },
+    visible: function() {
+        var index = this.index();
+        if (index > 2) {
+            return false
+        } else {
+            return $('#viewport .column:nth-child(' + index + ')').get(0) != null;
+        }
+    },
+    animate: function() {
+        $('#viewport .column:first-child').animate(
+            {
+                marginLeft: '-=100%'
+            },
+            {
+                duration: 'slow',
+                easing: 'easeInExpo',
+                complete: function() {
+                    $(this).empty().remove();
+                    calculateColumnId();
+                }
+            }
+        );
+    }
+};
+
 /**
  * Registers a click on an AJAX link so that the source column is known to the renderer.
  *
@@ -129,13 +158,13 @@ function render(data, target) {
     if (target.visible()) {
         // render data in visible column
         var column = $('#viewport .column:nth-child(' + target.index() + ')');
-        column.find('.column-hold').html(data);
+        column.find('.column-hold:first').html(data);
 
 
     } else {
         // build a new column node and append to viewport list
         var column = $('#panel-template').clone().attr('id', '');
-        column.find('.column-hold').html(data);
+        column.find('.column-hold:first').html(data);
         column.show();
         $('#viewport').append(column);
 
@@ -162,7 +191,16 @@ function calculateColumnId() {
  */
 function closePanel(element) {
     register(element);
-    $('#viewport .column:nth-child(' + clicked + ')').remove();
+    if(clicked == 1){
+        clicked = clicked + 1;
+    }
+    $('#viewport .column:nth-child(' + clicked + ') > div > div').remove();
+    removeErrorMessages();
+}
+
+function removeErrorMessages() {
+
+    $("#messages").html("");
 }
 
 /**

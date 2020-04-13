@@ -23,11 +23,14 @@
  */
 package com.sapienter.jbilling.server.process;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
+import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskManager;
 import com.sapienter.jbilling.server.process.db.AgeingEntityStepDAS;
 import com.sapienter.jbilling.server.process.db.AgeingEntityStepDTO;
+import com.sapienter.jbilling.server.process.task.BasicAgeingTask;
 import com.sapienter.jbilling.server.process.task.IAgeingTask;
 import com.sapienter.jbilling.server.user.EntityBL;
 import com.sapienter.jbilling.server.user.UserDTOEx;
@@ -39,10 +42,13 @@ import com.sapienter.jbilling.server.user.db.UserStatusDTO;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.audit.EventLogger;
 import org.apache.log4j.Logger;
+import org.hibernate.ScrollableResults;
 
 import javax.naming.NamingException;
-import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -50,7 +56,7 @@ import java.util.concurrent.ConcurrentMap;
  * @author Emil
  */
 public class AgeingBL {
-    private static final Logger LOG = Logger.getLogger(AgeingBL.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(AgeingBL.class));
 
     private AgeingEntityStepDAS ageingDas = null;
     private AgeingEntityStepDTO ageing = null;
@@ -80,33 +86,42 @@ public class AgeingBL {
         ageing = ageingDas.find(id);
     }
 
-    public void reviewAll(Integer entityId, Date today) throws NamingException, SessionInternalError, SQLException {
-        running.putIfAbsent(entityId, Boolean.FALSE);
-
-        if (running.get(entityId)) {
-            LOG.warn("Failed to trigger ageing review process at " + today + ", another process is already running.");
-            return;
-
-        } else {
-            running.put(entityId, Boolean.TRUE);
-        }
-
-        CompanyDTO company = new EntityBL(entityId).getEntity();
-
+    public ScrollableResults getUsersForAgeing(Integer entityId, Date ageingDate) {
         try {
             PluggableTaskManager<IAgeingTask> taskManager
                     = new PluggableTaskManager<IAgeingTask>(entityId, Constants.PLUGGABLE_TASK_AGEING);
 
             IAgeingTask task = taskManager.getNextClass();
-            while (task != null) {
-                task.reviewAllUsers(company.getId(), company.getAgeingEntitySteps(), today, null);
-                task = taskManager.getNextClass();
+            // If one was not configured just use the basic task by default
+            if (task == null) {
+                task = new BasicAgeingTask();
             }
+            return task.findUsersToAge(entityId, ageingDate);
 
         } catch (PluggableTaskException e) {
             throw new SessionInternalError("Ageing task exception while running ageing review.", e);
-        } finally {
-            running.put(entityId, Boolean.FALSE);
+        }
+    }
+
+    public List<InvoiceDTO> reviewUserForAgeing(Integer entityId, Integer userId, Date today) {
+        try {
+            PluggableTaskManager<IAgeingTask> taskManager
+                    = new PluggableTaskManager<IAgeingTask>(entityId, Constants.PLUGGABLE_TASK_AGEING);
+
+            CompanyDTO company = new EntityBL(entityId).getEntity();
+
+            IAgeingTask task = taskManager.getNextClass();
+            List<InvoiceDTO> overdueInvoices = new ArrayList<InvoiceDTO>();
+
+            while (task != null) {
+                overdueInvoices.addAll(task.reviewUser(entityId, company.getAgeingEntitySteps(), userId, today, null));
+                task = taskManager.getNextClass();
+            }
+
+            return overdueInvoices;
+
+        } catch (PluggableTaskException e) {
+            throw new SessionInternalError("Ageing task exception while running ageing review.", e);
         }
     }
 
@@ -145,137 +160,156 @@ public class AgeingBL {
         }
     }
 
-    public String getWelcome(Integer entityId, Integer languageId, Integer statusId) throws NamingException {
-        AgeingEntityStepDTO step = new AgeingEntityStepDAS().findStep(entityId, statusId);
-        ageing = ageingDas.find(step.getId());
-        return ageing.getWelcomeMessage(languageId);
+    public AgeingDTOEx[] getOrderedSteps(Integer entityId) {
+        return getSteps(entityId, null, null);
     }
-    
-    public AgeingDTOEx[] getSteps(Integer entityId, Integer executorLanguageId, Integer languageId) throws NamingException {
-        AgeingDTOEx[] result  = new AgeingDTOEx[UserDTOEx.STATUS_DELETED.intValue()];
-        
-        // go over all the steps
-        for (int step = UserDTOEx.STATUS_ACTIVE.intValue(); step <= UserDTOEx.STATUS_DELETED.intValue(); step++) {
+
+    public AgeingDTOEx[] getSteps(Integer entityId,
+                                  Integer executorLanguageId, Integer languageId) {
+
+        List<AgeingEntityStepDTO> ageingSteps = ageingDas.findAgeingStepsForEntity(entityId);
+
+        AgeingDTOEx[] result  = new AgeingDTOEx[ageingSteps.size()];
+
+        for (int i = 0; i < ageingSteps.size(); i++) {
+            AgeingEntityStepDTO step = ageingSteps.get(i);
             AgeingDTOEx newStep = new AgeingDTOEx();
-            newStep.setStatusId(new Integer(step));
-            UserStatusDTO statusRow = new UserStatusDAS().find(step);
-            newStep.setStatusStr(statusRow.getDescription(executorLanguageId));
-            newStep.setCanLogin(statusRow.getCanLogin());
-            AgeingEntityStepDTO myStep = new AgeingEntityStepDAS().findStep(entityId, new Integer(step));
-
-            if (myStep != null) { // it doesn't have to be there
-                ageing = ageingDas.find(myStep.getId());
-
-                newStep.setDays(ageing.getDays());
-                newStep.setFailedLoginMessage(ageing.getFailedLoginMessage(languageId));
-                newStep.setInUse(true);
-                newStep.setWelcomeMessage(ageing.getWelcomeMessage(languageId));
+            newStep.setStatusId(step.getUserStatus().getId());
+            UserStatusDTO statusRow = new UserStatusDAS().find(newStep.getStatusId());
+            if (executorLanguageId != null) {
+                newStep.setStatusStr(statusRow.getDescription(executorLanguageId));
             } else {
-                newStep.setInUse(false);
+                newStep.setStatusStr(statusRow.getDescription());
             }
-            result[step-1] = newStep;
+            newStep.setId(step.getId());
+
+            newStep.setDays(step.getDays());
+            newStep.setSuspend(step.getSuspend());
+            newStep.setRetryPayment(step.getRetryPayment());
+            newStep.setSendNotification(step.getSendNotification());
+
+            newStep.setCanLogin(statusRow.getCanLogin());
+            newStep.setDays(step.getDays());
+            if (languageId != null) {
+                newStep.setDescription(step.getDescription(languageId));
+            } else {
+                newStep.setDescription(step.getDescription());
+            }
+
+            newStep.setInUse(ageingDas.isAgeingStepInUse(step.getId()));
+
+            result[i] = newStep;
         }
-        
+
         return result;
     }
-    
-	public AgeingDTOEx[] validate(AgeingDTOEx[] steps) throws SessionInternalError {
-
-        int lastSelected = 0;
-        for (int f = 1; f < steps.length; f++) {
-            AgeingDTOEx line = steps[f];
-            if (line.getInUse()) {
-                lastSelected = f;
-            }
-        }
-
-        for (int f = 0; f < steps.length; f++) {
-        	//Active Step cannot be set to not-in-use
-	        if (steps[f].getStatusId().equals(UserDTOEx.STATUS_ACTIVE)) {
-	            steps[f].setInUse(true);
-	        }
-
-	        if (steps[f].getInUse()) {
-	        	//if the Step is not deleted, welcome message may not be null
-                if (!steps[f].getStatusId().equals(UserDTOEx.STATUS_DELETED) &&
-                        steps[f].getWelcomeMessage() == null ) {
-                	SessionInternalError exception = new SessionInternalError("Welcome message may not be null for a step");
-                	exception.setErrorMessages(new String[] {"AgeingWS,welcomeMessage,config.ageing.error.null.message,null"});
-                	throw exception;
-                }
-
-                //for inUse steps (NOT ACTIVE or DELETE Step) , days may not be zero
-                if ( ! ( steps[f].getStatusId().equals(UserDTOEx.STATUS_ACTIVE) ||
-                		steps[f].getStatusId().equals(UserDTOEx.STATUS_DELETED) )
-                		&& f != lastSelected ) {
-
-                	if (steps[f].getDays() <= 0 ) {
-                		SessionInternalError exception = new SessionInternalError("Days cannot be zero for an 'in use' step");
-                    	exception.setErrorMessages(new String[] {"AgeingWS,days,config.ageing.error.zero.days,0"});
-                    	throw exception;
-                	}
-                }
-
-                //set days to zero by default for the last Selected Step
-                if (f == lastSelected ) {
-                	if (steps[f].getDays() > 0) {
-	                	SessionInternalError exception = new SessionInternalError("The days for the last selected step has to be 0");
-	                	exception.setErrorMessages(new String[] {"AgeingWS,days,config.ageing.error.lastDay," + steps[f].getDays()});
-	                	throw exception;
-                	}
-                	else {steps[f].setDays(0);}
-                }
-	        }
-        }
-        return steps;
-	}
 
     public void setSteps(Integer entityId, Integer languageId, AgeingDTOEx[] steps) throws NamingException {
+        LOG.debug("Setting a total of " + steps.length + " steps");
+
+        //validate unique steps
+        List<AgeingDTOEx> ageingStepsList = new ArrayList<AgeingDTOEx>(Arrays.asList(steps));
+        List<AgeingDTOEx> stepsList;
+        List<Integer>  days;
         for (AgeingDTOEx step : steps) {
-            // get the existing data for this step
-            AgeingEntityStepDTO myStep = new AgeingEntityStepDAS().findStep(entityId, step.getStatusId());
-            if (myStep != null) {
-                ageing = ageingDas.find(myStep.getId());
-            } else {
-                ageing = null;
+            stepsList = ageingStepsList;
+            stepsList.remove(step);
+
+            days = new ArrayList<Integer>();
+            for(AgeingDTOEx stp: stepsList){
+                days.add(stp.getDays());
+            }
+            if(days.contains(step.getDays())){
+                LOG.debug("Received non-unique ageing step(s) : "+step);
+                throw new SessionInternalError("There are non-unique ageing step(s)");
+            }
+        }
+
+        List<AgeingDTOEx> existedAgeingSteps = new ArrayList<AgeingDTOEx>(
+                Arrays.asList(getSteps(entityId, languageId, languageId)));
+
+        for (AgeingDTOEx step : steps) {
+
+            LOG.debug("Processing step for persisting: " + step);
+
+            AgeingDTOEx persistedStep = null;
+            UserStatusDTO stepUserStatus = new UserStatusDAS().find(step.getStatusId());
+            if (stepUserStatus != null && stepUserStatus.getAgeingEntityStep() != null) {
+                for (AgeingDTOEx stp : existedAgeingSteps) {
+                    LOG.debug("Matching received step: " + stepUserStatus.getAgeingEntityStep().getId() + " with existing step: " + stp.getId());
+                    if (stepUserStatus.getAgeingEntityStep().getId() == stp.getId()) {
+                        persistedStep = stp;
+                        break;
+                    }
+                }
             }
 
-            if (!step.getInUse()) {
-                // delete if not in use
-                if (ageing != null) {
-                    ageingDas.delete(ageing);
+            if (persistedStep != null) {
+                existedAgeingSteps.remove(persistedStep);
+                ageing = ageingDas.find(persistedStep.getId());
+                // update
+                LOG.debug("Updating ageing step#" + ageing.getId());
+                ageing.setDays(step.getDays());
+                ageing.setDescription(step.getStatusStr(), languageId);
+
+                ageing.setSuspend(step.getSuspend());
+                UserStatusDAS userDas = new UserStatusDAS();
+                UserStatusDTO userStatusDTO = userDas.find(ageing.getUserStatus().getId());
+                if (!userStatusDTO.getDescription(languageId).equals(ageing.getDescription(languageId))) {
+                    LOG.debug("Updating user status description to: " + ageing.getDescription(languageId));
+                    userStatusDTO.setDescription(ageing.getDescription(languageId), languageId);
+                    userDas.save(userStatusDTO);
                 }
+                ageing.setRetryPayment(step.getRetryPayment());
+                ageing.setSendNotification(step.getSendNotification());
 
             } else {
-                // in use, create or update
-                if (ageing == null) {
-                    // create
-                    ageingDas.create(entityId,
-                                     step.getStatusId(),
-                                     step.getWelcomeMessage(),
-                                     step.getFailedLoginMessage(),
-                                     languageId,
-                                     step.getDays());
-
-                } else {
-                    // update
-                    ageing.setDays(step.getDays());
-                    ageing.setFailedLoginMessage(languageId, step.getFailedLoginMessage());
-                    ageing.setWelcomeMessage(languageId, step.getWelcomeMessage());
-                }
+                LOG.debug("Creating step.");
+                ageingDas.create(entityId, step.getStatusStr(),
+                        languageId, step.getDays(), step.getSendNotification(),
+                        step.getRetryPayment(), step.getSuspend()
+                );
             }
+        }
+
+        for (AgeingDTOEx ageingStep : existedAgeingSteps) {
+            if (ageingStep.getInUse()) {
+                throw new SessionInternalError("Ageing entity step is in use and can't be deleted!");
+            }
+            AgeingEntityStepDTO ageingDto = ageingDas.find(ageingStep.getId());
+            UserStatusDAS userStatusDas = new UserStatusDAS();
+            userStatusDas.delete(ageingDto.getUserStatus());
+            ageingDas.delete(ageingDto);
         }
     }
 
     public AgeingWS getWS(AgeingDTOEx dto) {
-        return null == dto ? null : new AgeingWS(dto);
+    	if(null == dto) return null;
+    	
+		AgeingWS ws = new AgeingWS();
+		ws.setStatusId(dto.getStatusId());
+		ws.setStatusStr(dto.getStatusStr());
+		ws.setWelcomeMessage(dto.getWelcomeMessage());
+		ws.setFailedLoginMessage(dto.getFailedLoginMessage());
+		ws.setSuspended(dto.getSuspend() == 1);
+		ws.setPaymentRetry(dto.getRetryPayment() == 1);
+		ws.setSendNotification(dto.getSendNotification() == 1);
+		ws.setInUse(dto.getInUse());
+		ws.setDays(dto.getDays());
+		ws.setEntityId((null != dto.getCompany()) ? dto.getCompany().getId()
+				: null);
+
+		return ws;
     }
 
     public AgeingDTOEx getDTOEx(AgeingWS ws) {
         AgeingDTOEx dto= new AgeingDTOEx();
         dto.setStatusId(ws.getStatusId());
         dto.setStatusStr(ws.getStatusStr());
-        dto.setInUse(null == ws.getInUse() ? Boolean.FALSE : ws.getInUse());
+        dto.setSuspend(ws.getSuspended() ? 1 : 0);
+        dto.setSendNotification(ws.getSendNotification() ? 1 : 0);
+        dto.setRetryPayment(ws.getPaymentRetry() ? 1 : 0);
+        dto.setInUse(ws.getInUse());
         dto.setDays(null == ws.getDays() ? 0 : ws.getDays().intValue());
         dto.setWelcomeMessage(ws.getWelcomeMessage());
         dto.setFailedLoginMessage(ws.getFailedLoginMessage());

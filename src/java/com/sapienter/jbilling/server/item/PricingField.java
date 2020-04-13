@@ -20,7 +20,12 @@
 package com.sapienter.jbilling.server.item;
 
 import javax.xml.bind.annotation.XmlTransient;
+import java.io.Serializable;
+
+import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
@@ -29,15 +34,16 @@ import java.util.List;
 /**
  * @author Emil
  */
-public class PricingField {
+public class PricingField implements Serializable {
 
-    private String name;
+    private static final String STRING_ENCODING = "UTF-8";
+	private String name;
     private Type type;
     private Integer position = 1;
     private String value = null;
     private long resultId; // at the time, only used for mediation of batch
-    
-    public enum Type { STRING, INTEGER, DECIMAL, DATE, BOOLEAN }
+
+    public enum Type { STRING, INTEGER, DECIMAL, DATE, BOOLEAN, LONG }
 
     public PricingField() {
     }
@@ -60,10 +66,14 @@ public class PricingField {
             return;
         }
 
-        this.name = fields[0];
-        this.position = Integer.parseInt(fields[1]);
-        this.type = mapType(fields[2]);
-        this.value = fields[3]; 
+        try {
+    		this.name = fields[0] != null ? URLDecoder.decode(fields[0], STRING_ENCODING) : fields[0];
+	        this.position = Integer.parseInt(fields[1]);
+	        this.type = mapType(fields[2]);
+        	this.value = fields[3].equals("null") ? null : URLDecoder.decode(fields[3], STRING_ENCODING);
+		} catch (UnsupportedEncodingException e) {
+			// Should never happen
+		}
     }
 
     /**
@@ -138,6 +148,12 @@ public class PricingField {
         this.type = Type.BOOLEAN;
         setBooleanValue(value);
     }
+    
+    public PricingField(String name, Long value) {
+    	this.name = name;
+    	this.type = Type.LONG;
+    	setLongValue(value);
+    }
 
     public String getName() {
         return name;
@@ -183,6 +199,7 @@ public class PricingField {
             case INTEGER : return getIntValue();
             case DECIMAL : return getDecimalValue();
             case BOOLEAN : return getBooleanValue();
+            case LONG    : return getLongValue();
             default: return null;
         }        
     }
@@ -282,6 +299,22 @@ public class PricingField {
         if (value == null) return null;
         return Boolean.valueOf(this.value);        
     }
+    
+    @XmlTransient
+    public Long getLongValue() {
+    	if (value == null) {
+    		return null;
+    	}
+    	return Long.valueOf(this.value);
+    }
+    
+    public void setLongValue(Long value) {
+    	if (value != null) {
+    		this.value = value.toString();
+    	} else {
+    		this.value = null;
+    	}
+    }
 
 
     /**
@@ -310,6 +343,8 @@ public class PricingField {
             return Type.DATE;
         } else if (myType.equalsIgnoreCase("boolean")) {
             return Type.BOOLEAN;
+        } else if (myType.equalsIgnoreCase("long")) {
+        	return Type.LONG;
         } else {
             return null;
         }
@@ -329,33 +364,38 @@ public class PricingField {
      * @return encoded string
      */
     public static String encode(PricingField field) {
-        StringBuffer sb = new StringBuffer()
-            .append(field.getName())
-            .append(":")
-            .append(field.getPosition());
-
-        switch(field.getType()) {
-            case STRING:
-                sb.append(":string:");
-                break;
-
-            case INTEGER:
-                sb.append(":integer:");
-                break;
-
-            case DECIMAL:
-                sb.append(":float:");
-                break;
-
-            case DATE:
-                sb.append(":date:");
-                break;
-            case BOOLEAN:
-                sb.append(":boolean:");
-                break;
-        }
-
-        sb.append(field.getStrValue());
+    	StringBuffer sb = new StringBuffer();
+    	try {
+	    	sb.append(URLEncoder.encode(field.getName(), STRING_ENCODING))
+	            .append(':')
+	            .append(field.getPosition());
+	
+	        switch(field.getType()) {
+	            case STRING:
+	                sb.append(":string:");
+	                break;
+	
+	            case INTEGER:
+	                sb.append(":integer:");
+	                break;
+	            
+	            case LONG:
+	            	sb.append(":long:");
+	            	break;
+	
+	            case DECIMAL:
+	                sb.append(":float:");
+	                break;
+	
+	            case DATE:
+	                sb.append(":date:");
+	                break;
+	            case BOOLEAN:
+	                sb.append(":boolean:");
+	                break;
+	        }
+			sb.append(field.getStrValue() != null ? URLEncoder.encode(field.getStrValue(), STRING_ENCODING) : field.getStrValue());
+		} catch (UnsupportedEncodingException e) {}
 
         return sb.toString();
     }
@@ -397,11 +437,28 @@ public class PricingField {
             for (int i = 0; i < fields.length; i++) {
                 result.append(PricingField.encode(fields[i]));
                 if (i < (fields.length - 1)) {
-                    result.append(",");
+                    result.append(',');
                 }
             }
         }
         return result.toString();
+    }
+
+    /**
+     * Convenience method to find a pricing field by name.
+     *
+     * @param fields pricing fields
+     * @param fieldName name
+     * @return found pricing field or null if no field found.
+     */
+    public static PricingField find(List<PricingField> fields, String fieldName) {
+        if(fields != null) {
+            for (PricingField field : fields) {
+                if (field.getName().equals(fieldName))
+                    return field;
+            }
+        }
+        return null;
     }
 
     @Override
@@ -412,4 +469,48 @@ public class PricingField {
                 + " position: " + position
                 + " resultId: " + resultId;
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        PricingField that = (PricingField) o;
+
+        if (name != null ? !name.equals(that.name) : that.name != null) return false;
+        if (position != null ? !position.equals(that.position) : that.position != null) return false;
+        if (type != that.type) return false;
+        if (value != null ? !value.equals(that.value) : that.value != null) return false;
+
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = name != null ? name.hashCode() : 0;
+        result = 31 * result + (type != null ? type.hashCode() : 0);
+        result = 31 * result + (position != null ? position.hashCode() : 0);
+        result = 31 * result + (value != null ? value.hashCode() : 0);
+        return result;
+    }
+
+	public static String setPricingFieldsValue(List<PricingField> pricingFields) {
+		PricingField[] fields = pricingFields.toArray(new PricingField[0]);
+		return setPricingFieldsValue(fields);
+	}
+
+    public static void add(List<PricingField> fields, PricingField pricingField) {
+        PricingField fieldToAdd = PricingField.find(fields, pricingField.getName());
+        if (fieldToAdd != null) {
+            fields.remove(fieldToAdd);
+        }
+        fields.add(pricingField);
+    }
+
+    public static void addAll(List<PricingField> fields, List<PricingField> fieldsToAdd) {
+        for(PricingField fieldToAdd: fieldsToAdd) {
+            PricingField.add(fields, fieldToAdd);
+        }
+    }
+
 }

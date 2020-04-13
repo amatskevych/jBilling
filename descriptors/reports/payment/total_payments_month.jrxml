@@ -5,24 +5,26 @@
 	<property name="ireport.y" value="0"/>
 	<subDataset name="chart_dataset">
 		<parameter name="entityId" class="java.lang.Integer"/>
+		<parameter name="childEntities" class="java.util.List"/>
 		<parameter name="startDate" class="java.util.Date"/>
 		<parameter name="endDate" class="java.util.Date"/>
+		<!-- For Mysql use DATE_FORMAT(i.create_datetime, 'WW') -->
 		<queryString>
 			<![CDATA[select
 	            sum(p.amount) as amount,
 	            to_char(p.payment_date, 'MM') as month_of_year,
-	            to_char(p.payment_date, 'Month') as month,
-	            to_char(p.payment_date, 'yyyy') as year
+	            to_char(p.payment_date, 'MONTH') as month,
+	            to_char(p.payment_date, 'YYYY') as year
             from
 	            payment p
 	            inner join base_user u on p.user_id = u.id
             where
-	            u.entity_id = $P{entityId}
+	            (u.entity_id = $P{entityId} or $X{IN,u.entity_id,childEntities})   
 	            and p.deleted = 0
 	            and p.is_preauth = 0
 	            and p.result_id in (1, 4)
 	            and p.payment_date >= $P{startDate}
-	            and p.payment_date <= $P{endDate}
+	            and p.payment_date < $P{endDate}
             group by month_of_year, month, year
             order by year, month_of_year]]>
 		</queryString>
@@ -32,6 +34,7 @@
 		<field name="year" class="java.lang.String"/>
 	</subDataset>
 	<parameter name="entityId" class="java.lang.Integer"/>
+	<parameter name="childEntities" class="java.util.List"/>
 	<parameter name="startDate" class="java.util.Date"/>
 	<parameter name="endDate" class="java.util.Date"/>
 	<queryString>
@@ -39,18 +42,18 @@
 	        sum(p.amount) as amount,
 	        count(p.id) as payment_count,
 	        to_char(p.payment_date, 'MM') as month_of_year,
-	        to_char(p.payment_date, 'Month') as month,
-	        to_char(p.payment_date, 'yyyy') as year
+	        to_char(p.payment_date, 'MONTH') as month,
+	        to_char(p.payment_date, 'YYYY') as year
         from
 	        payment p
 	        inner join base_user u on p.user_id = u.id
         where
-	        u.entity_id = $P{entityId}
+	        (u.entity_id = $P{entityId} or $X{IN,u.entity_id,childEntities})  
 	        and p.deleted = 0
 	        and p.is_preauth = 0      -- ignore pre-authorizations
 	        and p.result_id in (1, 4) -- successful or entered
 	        and p.payment_date >= $P{startDate}
-	        and p.payment_date <= $P{endDate}
+	        and p.payment_date < $P{endDate}
         group by month_of_year, month, year
         order by year, month_of_year]]>
 	</queryString>
@@ -77,6 +80,9 @@
 						<datasetRun subDataset="chart_dataset">
 							<datasetParameter name="entityId">
 								<datasetParameterExpression><![CDATA[$P{entityId}]]></datasetParameterExpression>
+							</datasetParameter>
+							<datasetParameter name="childEntities">
+								<datasetParameterExpression><![CDATA[$P{childEntities}]]></datasetParameterExpression>
 							</datasetParameter>
 							<datasetParameter name="startDate">
 								<datasetParameterExpression><![CDATA[$P{startDate}]]></datasetParameterExpression>

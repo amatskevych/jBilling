@@ -20,6 +20,8 @@
 package com.sapienter.jbilling.server.item.tasks;
 
 import com.sapienter.jbilling.client.util.Constants;
+import com.sapienter.jbilling.common.FormatLogger;
+
 import java.math.BigDecimal;
 import org.apache.log4j.Logger;
 
@@ -29,7 +31,7 @@ import org.apache.log4j.Logger;
  */
 public class PricingManager {
 
-    private static final Logger LOG = Logger.getLogger(PricingManager.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PricingManager.class));
     private final Integer itemId;
     private final Integer userId;
     private final Integer currencyId;
@@ -48,7 +50,7 @@ public class PricingManager {
     }
 
     public void setPrice(double defaultPrice) {
-        LOG.debug("Setting price of item " + itemId + " to " + defaultPrice);
+        LOG.debug("Setting price of item %s to %s", itemId, defaultPrice);
         this.price = new BigDecimal(defaultPrice);
     }
 

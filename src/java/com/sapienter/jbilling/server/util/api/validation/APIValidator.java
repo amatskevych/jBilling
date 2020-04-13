@@ -20,6 +20,7 @@
 
 package com.sapienter.jbilling.server.util.api.validation;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import org.apache.log4j.Logger;
 import org.springframework.aop.MethodBeforeAdvice;
@@ -38,7 +39,7 @@ import java.util.Set;
  */
 public class APIValidator implements MethodBeforeAdvice {
 
-    private static final Logger LOG = Logger.getLogger(APIValidator.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(APIValidator.class));
     
     private Validator validator;
     private Set<String> objectsToTest = null;
@@ -65,9 +66,16 @@ public class APIValidator implements MethodBeforeAdvice {
         for (Object arg: args) {
             if (arg != null) {
 
+                // object name from the argument
                 String objectName = getObjectName(arg);
-            	if (arg.getClass().isArray() && ((Object[])arg).length > 0) {
-            		objectName= (((Object[]) arg) [0]).getClass().getName();
+
+                // argument is an array, object name from contents
+            	if (arg.getClass().isArray()) {
+                    Object[] array = (Object[]) arg;
+                    if (array.length > 0) {
+                        objectName = getObjectName(array[0]);
+                        LOG.debug("Object name: '" + objectName + "'");
+                    }
             	}
 
                 boolean testThisObject = false;
@@ -106,9 +114,12 @@ public class APIValidator implements MethodBeforeAdvice {
     private List<String> getErrorMessages(Set<ConstraintViolation<Object>> constraintViolations, String objectName) {
         List<String> errors = new ArrayList<String>(constraintViolations.size());
 
-        if (!constraintViolations.isEmpty())
-            for (ConstraintViolation<Object> violation: constraintViolations)
-                errors.add(objectName + "," + violation.getPropertyPath().toString() + "," + violation.getMessage());
+        if (!constraintViolations.isEmpty()) {
+            for (ConstraintViolation<Object> violation: constraintViolations) {
+                String path = violation.getPropertyPath().toString().replaceAll("\\[\\d+\\]", ""); // strip array indices from path
+                errors.add(objectName + "," + path + "," + violation.getMessage());
+            }
+        }
 
         return errors;
     }

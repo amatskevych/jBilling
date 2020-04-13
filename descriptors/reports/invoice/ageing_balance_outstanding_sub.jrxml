@@ -7,13 +7,13 @@
 	<parameter name="start_days" class="java.lang.Integer"/>
     <parameter name="start_date" class="java.util.Date" isForPrompting="false">
         <defaultValueExpression>
-            <![CDATA[new Date(System.currentTimeMillis() - ($P{start_days} * 1000 * 60 * 60 * 24))]]>
+            <![CDATA[new Date(System.currentTimeMillis() - ($P{start_days} * 1000L * 60 * 60 * 24))]]>
         </defaultValueExpression>
     </parameter>
 	<parameter name="end_days" class="java.lang.Integer"/>
     <parameter name="end_date" class="java.util.Date" isForPrompting="false">
         <defaultValueExpression>
-            <![CDATA[new Date(System.currentTimeMillis() - ($P{end_days} * 1000 * 60 * 60 * 24))]]>
+            <![CDATA[new Date(System.currentTimeMillis() - ($P{end_days} * 1000L * 60 * 60 * 24))]]>
         </defaultValueExpression>
     </parameter>
 	<queryString>

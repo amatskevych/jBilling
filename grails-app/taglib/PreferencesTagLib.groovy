@@ -18,7 +18,11 @@
  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+
+import com.sapienter.jbilling.client.util.Constants
+import com.sapienter.jbilling.common.Util
 import com.sapienter.jbilling.server.util.PreferenceBL
+import org.apache.commons.lang.StringUtils
 import org.springframework.dao.EmptyResultDataAccessException
 import org.hibernate.ObjectNotFoundException
 /**
@@ -36,12 +40,12 @@ class PreferencesTagLib {
      */
     def preference = { attrs, body ->
 
-        def preferenceId = assertAttribute('preferenceId', attrs, 'hasPreference') as Integer
+        def preferenceId = assertAttribute('preferenceId', attrs, 'preference') as Integer
 
         try {
-            PreferenceBL preference = new PreferenceBL(session['company_id'], preferenceId);
-            if (!preference.isNull())
-                out << preference.getValueAsString()
+            def preferenceValue = PreferenceBL.getPreferenceValue(session['company_id'], preferenceId)
+            if (!StringUtils.isEmpty(preferenceValue))
+                out << preferenceValue
 
         } catch (EmptyResultDataAccessException e) {
             /* ignore */
@@ -60,8 +64,8 @@ class PreferencesTagLib {
         def preferenceId = assertAttribute('preferenceId', attrs, 'hasPreference') as Integer
 
         try {
-            PreferenceBL preference = new PreferenceBL(session['company_id'], preferenceId);
-            if (!preference.isNull())
+            def preferenceValue = PreferenceBL.getPreferenceValue(session['company_id'], preferenceId)
+            if (!StringUtils.isEmpty(preferenceValue))
                 out << body()
 
         } catch (EmptyResultDataAccessException e) {
@@ -83,8 +87,16 @@ class PreferencesTagLib {
         def value = assertAttribute('value', attrs, 'preferenceEquals') as String
 
         try {
-            PreferenceBL preference = new PreferenceBL(session['company_id'], preferenceId)
-            if (preference.getValueAsString().equals(value))
+			def preferenceValue = PreferenceBL.getPreferenceValue(session['company_id'], preferenceId)
+			if (StringUtils.isEmpty(preferenceValue)) {
+				return;
+			}
+			
+            if (value.equals(preferenceValue))
+                out << body()
+
+            // Expected value and saved value both are greater then 0 then its assumed to be jqgrid
+            if (preferenceId.equals(Constants.PREFERENCE_USE_JQGRID) && preferenceValue.isInteger() && value.isInteger() && preferenceValue.toInteger()>0 && value.toInteger()>0)
                 out << body()
 
         } catch (EmptyResultDataAccessException e) {
@@ -106,21 +118,57 @@ class PreferencesTagLib {
      */
     def preferenceIsNullOrEquals = { attrs, body ->
 
-        def preferenceId = assertAttribute('preferenceId', attrs, 'preferenceEquals') as Integer
-        def value = assertAttribute('value', attrs, 'preferenceEquals') as String
+        def preferenceId = assertAttribute('preferenceId', attrs, 'preferenceIsNullOrEquals') as Integer
+        def value = assertAttribute('value', attrs, 'preferenceIsNullOrEquals') as String
 
         try {
-            PreferenceBL preference = new PreferenceBL(session['company_id'], preferenceId)
-            if (!preference.isNull() && !preference.getValueAsString().equals(value))
-                return
+            def preferenceValue = PreferenceBL.getPreferenceValue(session['company_id'], preferenceId)
+
+            if (StringUtils.isEmpty(preferenceValue) || preferenceValue.equals(value))
+                out << body()
+
+            // Expected value and saved value both are greater then 0 then its assumed to be jqgrid
+            if (preferenceId.equals(Constants.PREFERENCE_USE_JQGRID) && preferenceValue.isInteger() && value.isInteger() && preferenceValue.toInteger()>0 && value.toInteger()>0)
+                out << body()
 
         } catch (EmptyResultDataAccessException e) {
             /* ignore */
         } catch (ObjectNotFoundException e) {
             /* ignore */
         }
+    }
 
-        out << body()
+    /**
+     * Prints the tag body if the jbilling.properties setting is equal to the given value.
+     *
+     * @param property property key of the value from jbilling.properties
+     * @param value value to compare
+     */
+    def settingEquals = { attrs, body ->
+        def propertyKey = assertAttribute('property', attrs, 'settingEquals') as String
+        def value = assertAttribute('value', attrs, 'settingEquals') as String
+
+        def prop = Util.getSysProp(propertyKey)
+        if (StringUtils.isEmpty(prop)) {
+            return
+        }
+
+        if (value.equals(prop))
+            out << body()
+    }
+
+    /**
+     * Prints the tag body if the jbilling.properties setting, when read as a boolean,
+     * evaluates to true.
+     *
+     * @param property property key of the value from jbilling.properties
+     * @param value value to compare
+     */
+    def settingEnabled = { attrs, body ->
+        def propertyKey = assertAttribute('property', attrs, 'settingEnabled') as String
+
+        if (Util.getSysPropBooleanTrue(propertyKey))
+            out << body()
     }
 
     protected assertAttribute(String name, attrs, String tag) {

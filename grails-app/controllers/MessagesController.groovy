@@ -25,8 +25,10 @@
  * @since  26-11-2010
  */
 class MessagesController {
-    
-    def index = {
-        render template: "/layouts/includes/messages"        
+
+	static scope = "singleton"
+
+    def index () {
+        render template: "/layouts/includes/messages"
     }
 }

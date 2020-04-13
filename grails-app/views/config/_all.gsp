@@ -1,24 +1,25 @@
 %{--
-  jBilling - The Enterprise Open Source Billing System
-  Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
+   jBilling - The Enterprise Open Source Billing System
+   Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
 
-  This file is part of jbilling.
-
-  jbilling is free software: you can redistribute it and/or modify
-  it under the terms of the GNU Affero General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  jbilling is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU Affero General Public License for more details.
-
-  You should have received a copy of the GNU Affero General Public License
-  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+   This file is part of jbilling.
+   
+   jbilling is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+   
+   jbilling is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+   
+   You should have received a copy of the GNU Affero General Public License
+   along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+ 
   --}%
 
-<%@ page import="com.sapienter.jbilling.server.util.Constants; org.apache.commons.lang.StringUtils; org.apache.commons.lang.WordUtils" contentType="text/html;charset=UTF-8" %>
+<%@ page import="org.apache.commons.lang.StringEscapeUtils; com.sapienter.jbilling.server.util.db.PreferenceDTO; com.sapienter.jbilling.server.util.Constants; org.apache.commons.lang.StringUtils; org.apache.commons.lang.WordUtils" contentType="text/html;charset=UTF-8" %>
 
 <%--
   Shows a list of all preferences
@@ -40,8 +41,8 @@
             <g:each var="type" in="${preferenceTypes}">
                 <tr id="type-${type.id}" class="${selected?.id == type.id ? 'active' : ''}">
                     <td>
-                        <g:remoteLink class="cell double" action="show" id="${type.id}" before="register(this);" onSuccess="render(data, next);">
-                            <strong>${StringUtils.abbreviate(type.getDescription(session['language_id']), 50)}</strong>
+                        <g:remoteLink class="cell double" action="show" id="${type.id}" before="register(this);" onSuccess="render(data, next); \$('html, body').animate({ scrollTop: 0 }, 'fast');">
+                            <strong>${StringUtils.abbreviate(StringEscapeUtils.escapeHtml(type.getDescription(session['language_id'])), 50)}</strong>
                             <em>Id: ${type.id}</em>
                         </g:remoteLink>
                     </td>
@@ -51,15 +52,18 @@
 
                             <g:if test="${type.preferences}">
                                 %{
-                                    def preference = type.preferences.find{
-                                                        it.jbillingTable.name == Constants.TABLE_ENTITY && it.foreignId == session['company_id']
-                                                    } ?: type.preferences.asList().first()
+                                    PreferenceDTO preferenceDto = null;            
+									for (PreferenceDTO preference : type.preferences) {
+										if (preference.jbillingTable.name == Constants.TABLE_ENTITY && preference.foreignId == session['company_id']) {
+											preferenceDto = preference;
+											break; 
+										}
+									}
                                 }%
-
-                                ${preference.value}
+                                ${preferenceDto != null ? StringEscapeUtils.escapeHtml(preferenceDto?.value) : StringEscapeUtils.escapeHtml(type?.defaultValue)}
                             </g:if>
                             <g:else>
-                                ${type.defaultValue}
+                                ${StringEscapeUtils.escapeHtml(type?.defaultValue)}
                             </g:else>
 
                         </g:remoteLink>
@@ -69,10 +73,4 @@
 
         </tbody>
     </table>
-</div>
-
-<div class="btn-box">
-    <g:remoteLink action='edit' class="submit add" before="register(this);" onSuccess="render(data, next);">
-        <span><g:message code="button.create"/></span>
-    </g:remoteLink>
 </div>

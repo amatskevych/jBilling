@@ -29,12 +29,18 @@ import java.util.GregorianCalendar;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.order.OrderBL;
+import com.sapienter.jbilling.server.order.OrderStatusFlag;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
-import com.sapienter.jbilling.server.process.BillingProcessBL;
+import com.sapienter.jbilling.server.order.db.OrderPeriodDTO;
+import com.sapienter.jbilling.server.order.db.OrderStatusDAS;
 import com.sapienter.jbilling.server.process.db.BillingProcessDTO;
+import com.sapienter.jbilling.server.user.UserBL;
+import com.sapienter.jbilling.server.user.db.MainSubscriptionDTO;
+import com.sapienter.jbilling.server.util.CalendarUtils;
 import com.sapienter.jbilling.server.util.Constants;
 import com.sapienter.jbilling.server.util.MapPeriodToCalendar;
 import com.sapienter.jbilling.server.util.audit.EventLogger;
@@ -48,7 +54,7 @@ import com.sapienter.jbilling.server.util.audit.EventLogger;
 public class BasicOrderFilterTask 
         extends PluggableTask implements OrderFilterTask {
 
-    private static final Logger LOG =  Logger.getLogger(BasicOrderFilterTask.class);
+    private static final FormatLogger LOG =  new FormatLogger(Logger.getLogger(BasicOrderFilterTask.class));
     protected Date billingUntil = null;
     
     public BasicOrderFilterTask() {
@@ -65,8 +71,8 @@ public class BasicOrderFilterTask
         
         GregorianCalendar cal = new GregorianCalendar();
 
-        LOG.debug("running isApplicable for order " + order.getId() + 
-                " billingUntil = " + billingUntil);
+        LOG.debug("running isApplicable for order %s billingUntil = %s", 
+                order.getId(), billingUntil);
         // some set up to simplify the code
         Date activeUntil = null;
         if (order.getActiveUntil() != null) {
@@ -83,10 +89,24 @@ public class BasicOrderFilterTask
         
         try {
             // calculate how far in time this process applies
+        	UserBL userBL = new UserBL(order.getUser());
+            Date customerNextInvoiceDate = userBL.getDto().getCustomer().getNextInvoiceDate();
+            MainSubscriptionDTO customerBillingCycle = userBL.getDto().getCustomer().getMainSubscription(); 
             if (billingUntil == null) {
-                // this could have been set by a class extending this one
-                // If not, we use this as a default
-                billingUntil = BillingProcessBL.getEndOfProcessPeriod(process);
+            	
+            	// Get date till which the billing process sees the orders
+            	
+            	// billingUntil should be customerNextInvoiceDate when :-
+            	//	1. Non-prorate Post paid
+            	//	2. Prorate Daily Post paid
+            	//	3. Non-prorate Daily Pre paid
+            	
+            	if ((order.getBillingTypeId().compareTo(Constants.ORDER_BILLING_POST_PAID) == 0)) {
+	            	billingUntil = customerNextInvoiceDate;
+	            } else {
+	            	billingUntil = userBL.getBillingUntilDate(customerNextInvoiceDate, process.getBillingDate());
+	            }
+                LOG.debug("Calculating billing until for user, " + order.getUser() + " is " + billingUntil);
             }
 
             EventLogger eLog = EventLogger.getInstance();
@@ -94,9 +114,10 @@ public class BasicOrderFilterTask
             if (order.getBillingTypeId().compareTo(
                     Constants.ORDER_BILLING_POST_PAID) == 0) {
                 
-                // check if it is too early        
-                if(activeSince.
-                        after(billingUntil)) {
+                // check if it is too early 
+            	// one time order not picked up when active since date is after billing until.  
+                if((!activeSince.before(billingUntil) && !order.getPeriodId().equals(Constants.ORDER_PERIOD_ONCE)) || 
+                		(activeSince.after(billingUntil) && order.getPeriodId().equals(Constants.ORDER_PERIOD_ONCE))) {
                     // didn't start yet
                     eLog.info(process.getEntity().getId(), 
                             order.getBaseUserByUserId().getId(), order.getId(), 
@@ -110,27 +131,54 @@ public class BasicOrderFilterTask
                     // check that there's at least one period since this order
                     // started, otherwise it's too early to bill
                     cal.setTime(activeSince);
-                    cal.add(MapPeriodToCalendar.map(order.getOrderPeriod().getUnitId()),
+                    
+                    if (CalendarUtils.isSemiMonthlyPeriod(order.getOrderPeriod().getPeriodUnit())) {
+                    	cal.setTime(CalendarUtils.addSemiMonthyPeriod(cal.getTime()));
+                    } else {
+                    	cal.add(MapPeriodToCalendar.map(order.getOrderPeriod().getUnitId()),
                              order.getOrderPeriod().getValue().intValue());
-                    Date firstBillingDate = thisOrActiveUntil(cal.getTime(), activeUntil);
-                    if (!firstBillingDate.before(billingUntil)) {
-                        eLog.info(process.getEntity().getId(), 
-                                order.getBaseUserByUserId().getId(), 
-                                order.getId(), 
-                                EventLogger.MODULE_BILLING_PROCESS,
-                                EventLogger.BILLING_PROCESS_ONE_PERIOD_NEEDED,
-                                Constants.TABLE_PUCHASE_ORDER);
-                        
-                        retValue = false; // gotta wait for the first bill
+                    }
+                    
+                    // When Order pro-rating is on and if cal.getTime() is getter than process billing date 
+                    // then use process billing date other wise use cal.getTime()
+                    Date firstBillingDate = null;
+                    if (order.getProrateFlag()) {
+                    	firstBillingDate = thisOrActiveUntil((cal.getTime().compareTo(process.getBillingDate()) > 0 ? 
+                								process.getBillingDate() : cal.getTime()), activeUntil);
+                    } else {
+                    	firstBillingDate = thisOrActiveUntil(cal.getTime(), activeUntil);
+                    }
+                    if ((firstBillingDate.after(billingUntil))) {
+            				eLog.info(process.getEntity().getId(), 
+                            order.getBaseUserByUserId().getId(), 
+                            order.getId(), 
+                            EventLogger.MODULE_BILLING_PROCESS,
+                            EventLogger.BILLING_PROCESS_ONE_PERIOD_NEEDED,
+                            Constants.TABLE_PUCHASE_ORDER);
+                    
+                    retValue = false; // gotta wait for the first bill
                     }
                 }
-                
+
                 // there must be at least one period after the last paid day
                 if (retValue && order.getNextBillableDay() != null) {
                     cal.setTime(order.getNextBillableDay());
-                    cal.add(MapPeriodToCalendar.map(order.getOrderPeriod().getUnitId()),
+                    if (CalendarUtils.isSemiMonthlyPeriod(order.getOrderPeriod().getPeriodUnit())) {
+                    	cal.setTime(CalendarUtils.addSemiMonthyPeriod(cal.getTime()));
+                    } else {
+                    	cal.add(MapPeriodToCalendar.map(order.getOrderPeriod().getUnitId()),
                              order.getOrderPeriod().getValue().intValue());
-                    Date endOfNextPeriod = thisOrActiveUntil(cal.getTime(), activeUntil);                
+                    }
+                    
+                    // When Order pro-rating is on and if cal.getTime() is getter than process billing date 
+                    // then use process billing date other wise use cal.getTime()
+                    Date endOfNextPeriod = null;
+                	if (order.getProrateFlag()) {
+                		endOfNextPeriod = thisOrActiveUntil((cal.getTime().compareTo(process.getBillingDate()) > 0 ? 
+                								process.getBillingDate() : cal.getTime()), activeUntil);
+                    } else {
+                    	endOfNextPeriod = thisOrActiveUntil(cal.getTime(), activeUntil); 
+                    }
                     if (endOfNextPeriod.after(billingUntil)) {
                         eLog.info(process.getEntity().getId(), 
                                 order.getBaseUserByUserId().getId(), 
@@ -145,8 +193,7 @@ public class BasicOrderFilterTask
                         if (activeUntil != null && //may be it's immortal ;)
                                 order.getNextBillableDay().compareTo(activeUntil) >= 0) {
                             // this situation shouldn't have happened
-                            LOG.warn("Order " + order.getId() + " should've been" +
-                                " flagged out in the previous process");
+                            LOG.warn("Order %s should've been flagged out in the previous process", order.getId());
                             eLog.warning(process.getEntity().getId(), 
                                     order.getBaseUserByUserId().getId(), 
                                     order.getId(), 
@@ -154,7 +201,7 @@ public class BasicOrderFilterTask
                                     EventLogger.BILLING_PROCESS_WRONG_FLAG_ON,
                                     Constants.TABLE_PUCHASE_ORDER);
                             OrderBL orderBL = new OrderBL(order);
-                            orderBL.setStatus(null, Constants.ORDER_STATUS_FINISHED);    
+                            orderBL.setStatus(null, new OrderStatusDAS().getDefaultOrderStatusId(OrderStatusFlag.FINISHED, order.getUser().getCompany().getId()));    
                             order.setNextBillableDay(null);         
                         }
                     }
@@ -169,8 +216,8 @@ public class BasicOrderFilterTask
                 if (order.getNextBillableDay() != null) {
                     // now check if there's any more time to bill as far as this
                     // process goes
-                    LOG.debug("order " + order.getId() + " nbd = " + 
-                            order.getNextBillableDay() + " bu = " + billingUntil);
+                    LOG.debug("order %s nbd = %s bu = %s", order.getId()
+                            ,order.getNextBillableDay(), billingUntil);
                     if (order.getNextBillableDay().compareTo(billingUntil) >= 0) {
                         retValue = false;
                         eLog.info(process.getEntity().getId(), 
@@ -186,9 +233,8 @@ public class BasicOrderFilterTask
                     if (activeUntil != null && order.getNextBillableDay().
                                 compareTo(activeUntil) >= 0) { 
                         retValue = false;
-                        LOG.warn("Order " + order.getId() + " was set to be" +
-                                " processed but the next billable date is " +
-                                "after the active until");
+                        LOG.warn("Order %s was set to be processed but the next billable date is " +
+                                "after the active until", order.getId());
                         eLog.warning(process.getEntity().getId(), 
                                 order.getBaseUserByUserId().getId(), 
                                 order.getId(), 
@@ -196,28 +242,28 @@ public class BasicOrderFilterTask
                                 EventLogger.BILLING_PROCESS_EXPIRED,
                                 Constants.TABLE_PUCHASE_ORDER);
                         OrderBL orderBL = new OrderBL(order);
-                        orderBL.setStatus(null, Constants.ORDER_STATUS_FINISHED);
+                        //orderBL.setStatus(null, Constants.DEFAULT_ORDER_FINISHED_STATUS_ID);
+                        orderBL.setStatus(null, new OrderStatusDAS().getDefaultOrderStatusId(OrderStatusFlag.FINISHED, order.getUser().getCompany().getId()));
                         order.setNextBillableDay(null);                                   
                     }
                 } else if (activeUntil != null && process.getBillingDate().
                         after(activeUntil)) {
                     retValue = false;
                     OrderBL orderBL = new OrderBL(order);
-                    orderBL.setStatus(null, Constants.ORDER_STATUS_FINISHED);
+                    orderBL.setStatus(null, new OrderStatusDAS().getDefaultOrderStatusId(OrderStatusFlag.FINISHED, order.getUser().getCompany().getId()));
                     eLog.warning(process.getEntity().getId(), 
                             order.getBaseUserByUserId().getId(), order.getId(), 
                             EventLogger.MODULE_BILLING_PROCESS,
                             EventLogger.BILLING_PROCESS_WRONG_FLAG_ON,
                             Constants.TABLE_PUCHASE_ORDER);
-                    LOG.warn("Found expired order " + order.getId() + 
-                            " without nbp but with to_process=1");
+                    LOG.warn("Found expired order %s without nbp but with to_process=1", order.getId());
                 }
             
                 
                 // see if it is too early
                 if (retValue && activeSince != null) {
                     
-                    if (!activeSince.before(billingUntil)) {
+                	if ((!activeSince.before(billingUntil))) {
                         // This process is not including the time this order
                         // starts
                         retValue = false;
@@ -261,7 +307,7 @@ public class BasicOrderFilterTask
             throw new TaskException(e);
         } 
         
-        LOG.debug("Order " + order.getId() + " filter:" + retValue); 
+        LOG.debug("Order %s filter:%s", order.getId(), retValue); 
         
         return retValue;
 
@@ -271,4 +317,28 @@ public class BasicOrderFilterTask
         if (activeUntil == null) return thisDate;
         return activeUntil.before(thisDate) ? activeUntil : thisDate;
     }
+    
+    private boolean isMonthlyCustomerBillingCycle(MainSubscriptionDTO customerBillingCycle) {
+    	OrderPeriodDTO billingCyclePeriod = customerBillingCycle.getSubscriptionPeriod();
+    	return billingCyclePeriod.getUnitId().equals(Constants.PERIOD_UNIT_MONTH) && 
+    			1 == billingCyclePeriod.getValue().intValue();    	
+	}
+    
+    private boolean isSemiMonthlyCustomerBillingCycle(MainSubscriptionDTO customerBillingCycle) {
+    	OrderPeriodDTO billingCyclePeriod = customerBillingCycle.getSubscriptionPeriod();
+    	return billingCyclePeriod.getUnitId().equals(Constants.PERIOD_UNIT_SEMI_MONTHLY) && 
+    			1 == billingCyclePeriod.getValue().intValue();    	
+	}
+    
+    private boolean isWeeklyCustomerBillingCycle(MainSubscriptionDTO customerBillingCycle) {
+    	OrderPeriodDTO billingCyclePeriod = customerBillingCycle.getSubscriptionPeriod();
+    	return billingCyclePeriod.getUnitId().equals(Constants.PERIOD_UNIT_WEEK) && 
+    			1 == billingCyclePeriod.getValue().intValue();    	
+	}
+    
+    private boolean isDailyCustomerBillingCycle(MainSubscriptionDTO customerBillingCycle) {
+    	OrderPeriodDTO billingCyclePeriod = customerBillingCycle.getSubscriptionPeriod();
+    	return billingCyclePeriod.getUnitId().equals(Constants.PERIOD_UNIT_DAY) && 
+    			1 == billingCyclePeriod.getValue().intValue();    	
+	}
 }

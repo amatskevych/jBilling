@@ -1,24 +1,25 @@
 %{--
-  jBilling - The Enterprise Open Source Billing System
-  Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
+     jBilling - The Enterprise Open Source Billing System
+   Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
 
-  This file is part of jbilling.
-
-  jbilling is free software: you can redistribute it and/or modify
-  it under the terms of the GNU Affero General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  jbilling is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU Affero General Public License for more details.
-
-  You should have received a copy of the GNU Affero General Public License
-  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+   This file is part of jbilling.
+   
+   jbilling is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+   
+   jbilling is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+   
+   You should have received a copy of the GNU Affero General Public License
+   along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+ 
   --}%
 
-<%@page import="com.sapienter.jbilling.server.order.db.OrderLineTypeDTO"%>
+<%@page import="org.apache.commons.lang.StringEscapeUtils; org.apache.commons.lang.StringUtils; com.sapienter.jbilling.server.order.db.OrderLineTypeDTO"%>
 
 <%--
   Categories list
@@ -33,6 +34,7 @@
             <thead>
                 <tr>
                     <th><g:message code="product.category.th.name"/></th>
+                    <g:isRoot><th><g:message code="product.label.available.company.name"/></th></g:isRoot>
                     <th class="small"><g:message code="product.category.th.type"/></th>
                 </tr>
             </thead>
@@ -43,24 +45,51 @@
                     <tr id="category-${category.id}" class="${selectedCategoryId == category.id ? 'active' : ''}">
                         <td>
                             <g:remoteLink class="cell double" action="products" id="${category.id}" before="register(this);" onSuccess="render(data, next);">
-                                <strong>${category.description}</strong>
-                                <em><g:message code="table.id.format" args="[category.id]"/></em>
+                                <strong>${StringUtils.abbreviate(StringEscapeUtils.escapeHtml(category?.description), 45)}</strong>
+                                <em><g:message code="table.id.format" args="[category.id as String]"/></em>
                             </g:remoteLink>
                         </td>
+                        <g:isRoot>
+                        <td class="small">
+                        	<%
+							def totalChilds = category?.entities?.size()
+							def multiple = false
+							if(totalChilds > 1 ) {
+								multiple = true
+							}
+							 %>
+                            <g:remoteLink class="cell" action="products" id="${category.id}" before="register(this);" onSuccess="render(data, next);">
+                                <g:if test="${category?.global}">
+                                	<strong><g:message code="product.label.company.global"/></strong>
+                                </g:if>
+                                <g:elseif test="${multiple}">
+                                	<strong><g:message code="product.label.company.multiple"/></strong>
+                                </g:elseif>
+                                <g:else>
+                                	<strong>${StringEscapeUtils.escapeHtml(category?.entities?.toArray()[0]?.description)}</strong>
+                                </g:else>
+                            </g:remoteLink>
+                        </td>
+                        </g:isRoot>
                         <td class="small">
                             <g:remoteLink class="cell" action="products" id="${category.id}" before="register(this);" onSuccess="render(data, next);">
-                                <span>${lineType.description}</span>
+                                <span>${StringEscapeUtils.escapeHtml(lineType?.description)}</span>
                             </g:remoteLink>
                         </td>
                     </tr>
 
                 </g:each>
+                <g:if test="${selectedCategoryId != null}">
+                    <g:remoteLink class="hidden" action="products" name="categoryToClick" id="${selectedCategoryId}" before="register(this);"
+                                  onSuccess="render(data, next);"/>
+                    <script type="text/javascript">$("[name='categoryToClick']").click();</script>
+                </g:if>
             </tbody>
         </table>
     </div>
 </div>
 
-<g:if test="${categories?.totalCount > params.max}">
+
     <div class="pager-box">
         <div class="row left">
             <g:render template="/layouts/includes/pagerShowResults" model="[steps: [10, 20, 50], action: 'categories', update: 'column1']"/>
@@ -69,27 +98,24 @@
             <util:remotePaginate controller="product" action="categories" total="${categories.totalCount}" update="column1"/>
         </div>
     </div>
-</g:if>
+
 
 <div class="btn-box">
-    <sec:ifAllGranted roles="PRODUCT_CATEGORY_50">
-        <g:link action="editCategory" class="submit add"><span><g:message code="button.create.category"/></span></g:link>
-    </sec:ifAllGranted>
+        <g:link action="editCategory" class="submit add" params="${[add: true]}"><span><g:message code="button.create.category"/></span></g:link>
 
-    <sec:ifAllGranted roles="PRODUCT_CATEGORY_51">
         <a href="#" onclick="return editCategory();" class="submit edit"><span><g:message code="button.edit"/></span></a>
-    </sec:ifAllGranted>
 </div>
 
 
 <!-- edit category control form -->
-<g:form name="category-edit-form" url="[action: 'editCategory']">
-    <g:hiddenField name="id" value="${selectedCategoryId}"/>
+<g:form name="category-edit-form" controller="product" action="editCategory">
+    <g:hiddenField name="id" id="editformSelectedCategoryId" value="${selectedCategoryId}"/>
 </g:form>
+${categoryId}
 
 <script type="text/javascript">
     function editCategory() {
-        $('#category-edit-form input#id').val(getSelectedId('#categories'));
+        $('#editformSelectedCategoryId').val(getSelectedId('#categories'));
         $('#category-edit-form').submit();
         return false;
     }

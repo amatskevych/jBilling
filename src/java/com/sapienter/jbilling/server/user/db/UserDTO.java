@@ -21,8 +21,10 @@ package com.sapienter.jbilling.server.user.db;
 
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import javax.persistence.CascadeType;
@@ -42,20 +44,23 @@ import javax.persistence.Table;
 import javax.persistence.TableGenerator;
 import javax.persistence.Transient;
 import javax.persistence.Version;
+import javax.persistence.OrderBy;
 
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
 import com.sapienter.jbilling.server.notification.db.NotificationMessageArchDTO;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
+import com.sapienter.jbilling.server.process.db.BillingProcessFailedUserDTO;
 import com.sapienter.jbilling.server.user.ContactBL;
 import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
-import com.sapienter.jbilling.server.user.partner.db.Partner;
-import com.sapienter.jbilling.server.user.permisson.db.PermissionUserDTO;
+import com.sapienter.jbilling.server.user.partner.db.PartnerDTO;
 import com.sapienter.jbilling.server.user.permisson.db.RoleDTO;
 import com.sapienter.jbilling.server.util.audit.db.EventLogDTO;
 import com.sapienter.jbilling.server.util.csv.Exportable;
 import com.sapienter.jbilling.server.util.db.CurrencyDTO;
 import com.sapienter.jbilling.server.util.db.LanguageDTO;
+
 import org.hibernate.annotations.Cascade;
 
 @Entity
@@ -83,11 +88,11 @@ public class UserDTO implements Serializable, Exportable {
     private Date createDatetime;
     private Date lastStatusChange;
     private Date lastLogin;
+    private Date accountDisabledDate;
     private int failedAttempts;
-
+    private Date changePasswordDate;
+    
     private Set<RoleDTO> roles = new HashSet<RoleDTO>(0);
-    private Set<PermissionUserDTO> permissions = new HashSet<PermissionUserDTO>(0);
-
     private CurrencyDTO currencyDTO;
     private CompanyDTO company;
     private SubscriberStatusDTO subscriberStatus;
@@ -95,18 +100,23 @@ public class UserDTO implements Serializable, Exportable {
     private LanguageDTO language;
     private CustomerDTO customer;
     private ContactDTO contact;
-    private Partner partnersForUserId;
+    private PartnerDTO partnersForUserId;
+    private Integer encryptionScheme;
     private int versionNum;
 
     private Set<PaymentDTO> payments = new HashSet<PaymentDTO>(0);
-    private Set<AchDTO> achs = new HashSet<AchDTO>(0);
-    private Set<Partner> partnersForRelatedClerk = new HashSet<Partner>(0);
     private Set<OrderDTO> purchaseOrdersForCreatedBy = new HashSet<OrderDTO>(0);
     private Set<OrderDTO> orders = new HashSet<OrderDTO>(0);
-    private Set<CreditCardDTO> creditCards = new HashSet<CreditCardDTO>(0);
     private Set<NotificationMessageArchDTO> notificationMessageArchs = new HashSet<NotificationMessageArchDTO>(0);
     private Set<EventLogDTO> eventLogs = new HashSet<EventLogDTO>(0);
     private Set<InvoiceDTO> invoices = new HashSet<InvoiceDTO>(0);
+
+    private Set<BillingProcessFailedUserDTO> processes = new HashSet<BillingProcessFailedUserDTO>(0);
+    
+    // payment instruments
+ 	private List<PaymentInformationDTO> paymentInstruments = new ArrayList<PaymentInformationDTO>(0);
+
+    private Date accountLockedTime;
 
     public UserDTO() {
     }
@@ -125,10 +135,9 @@ public class UserDTO implements Serializable, Exportable {
     public UserDTO(int id, CurrencyDTO currencyDTO, CompanyDTO entity, SubscriberStatusDTO subscriberStatus,
             UserStatusDTO userStatus, LanguageDTO language, String password, short deleted, Date createDatetime,
             Date lastStatusChange, Date lastLogin, String userName, int failedAttempts, Set<PaymentDTO> payments,
-            Set<AchDTO> achs, Set<PermissionUserDTO> permissionUsers,
-            Set<Partner> partnersForRelatedClerk, CustomerDTO customer, Partner partnersForUserId,
+            CustomerDTO customer, PartnerDTO partnersForUserId,
             Set<OrderDTO> purchaseOrdersForCreatedBy, Set<OrderDTO> purchaseOrdersForUserId,
-            Set<CreditCardDTO> creditCards, Set<NotificationMessageArchDTO> notificationMessageArchs, Set<RoleDTO> roles,
+            Set<NotificationMessageArchDTO> notificationMessageArchs, Set<RoleDTO> roles,
             Set<EventLogDTO> eventLogs, Set<InvoiceDTO> invoices) {
         this.id = id;
         this.currencyDTO = currencyDTO;
@@ -144,14 +153,10 @@ public class UserDTO implements Serializable, Exportable {
         this.userName = userName;
         this.failedAttempts = failedAttempts;
         this.payments = payments;
-        this.achs = achs;
-        this.permissions = permissionUsers;
-        this.partnersForRelatedClerk = partnersForRelatedClerk;
         this.customer = customer;
         this.partnersForUserId = partnersForUserId;
         this.purchaseOrdersForCreatedBy = purchaseOrdersForCreatedBy;
         this.orders = purchaseOrdersForUserId;
-        this.creditCards = creditCards;
         this.notificationMessageArchs = notificationMessageArchs;
         this.roles = roles;
         this.eventLogs = eventLogs;
@@ -175,16 +180,13 @@ public class UserDTO implements Serializable, Exportable {
         setCustomer(another.getCustomer());
         setPartner(another.getPartner());
         setPayments(another.getPayments());
-        setAchs(another.getAchs());
-        setPermissions(another.getPermissions());
-        setPartnersForRelatedClerk(another.getPartnersForRelatedClerk());
         setPurchaseOrdersForCreatedBy(another.getPurchaseOrdersForCreatedBy());
         setOrders(another.getOrders());
-        setCreditCards(another.getCreditCards());
         setNotificationMessageArchs(another.getNotificationMessageArchs());
         setRoles(another.getRoles());
         setEventLogs(another.getEventLogs());
         setInvoices(another.getInvoices());
+        setPaymentInstruments(another.getPaymentInstruments());
     }
 
 
@@ -213,7 +215,7 @@ public class UserDTO implements Serializable, Exportable {
         this.userName = userName;
     }
 
-    @Column(name = "password", length = 40)
+    @Column(name = "password", length = 1024)
     public String getPassword() {
         return this.password;
     }
@@ -226,6 +228,14 @@ public class UserDTO implements Serializable, Exportable {
      * Returns 1 if this user is deleted, 0 if they are active.
      * @return is user deleted
      */
+    @Column(name="change_password_date")	
+    public Date getChangePasswordDate() {
+    	return this.changePasswordDate;
+    }
+    
+    public void setChangePasswordDate(Date changePasswordDate) {
+    	this.changePasswordDate=changePasswordDate;
+    }
     @Column(name = "deleted", nullable = false)
     public int getDeleted() {
         return this.deleted;
@@ -327,6 +337,15 @@ public class UserDTO implements Serializable, Exportable {
         this.lastLogin = lastLogin;
     }
 
+    @Column(name = "account_disabled_date", length = 29, nullable = true)
+    public Date getAccountDisabledDate() {
+        return this.accountDisabledDate;
+    }
+
+    public void setAccountDisabledDate(Date accountDisabledDate) {
+        this.accountDisabledDate = accountDisabledDate;
+    }
+
     @Column(name = "failed_attempts", nullable = false)
     public int getFailedAttempts() {
         return this.failedAttempts;
@@ -334,6 +353,15 @@ public class UserDTO implements Serializable, Exportable {
 
     public void setFailedAttempts(int failedAttempts) {
         this.failedAttempts = failedAttempts;
+    }
+    
+    @Column(name = "encryption_scheme", nullable=false)
+    public Integer getEncryptionScheme(){
+    	return this.encryptionScheme;
+    }
+    
+    public void setEncryptionScheme(Integer scheme){
+    	this.encryptionScheme = scheme;
     }
 
     @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
@@ -346,16 +374,6 @@ public class UserDTO implements Serializable, Exportable {
 
     public void setRoles(Set<RoleDTO> roles) {
         this.roles = roles;
-    }
-
-    @Cascade(org.hibernate.annotations.CascadeType.DELETE_ORPHAN)
-    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "baseUser")
-    public Set<PermissionUserDTO> getPermissions() {
-        return this.permissions;
-    }
-
-    public void setPermissions(Set<PermissionUserDTO> permissionUsers) {
-        this.permissions = permissionUsers;
     }
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -444,24 +462,6 @@ public class UserDTO implements Serializable, Exportable {
         this.payments = payments;
     }
 
-    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "baseUser")
-    public Set<AchDTO> getAchs() {
-        return this.achs;
-    }
-
-    public void setAchs(Set<AchDTO> achs) {
-        this.achs = achs;
-    }
-
-    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "baseUserByRelatedClerk")
-    public Set<Partner> getPartnersForRelatedClerk() {
-        return this.partnersForRelatedClerk;
-    }
-
-    public void setPartnersForRelatedClerk(Set<Partner> partnersForRelatedClerk) {
-        this.partnersForRelatedClerk = partnersForRelatedClerk;
-    }
-
     @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "baseUser")
     public CustomerDTO getCustomer() {
         return this.customer;
@@ -487,11 +487,11 @@ public class UserDTO implements Serializable, Exportable {
     }
 
     @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "baseUser")
-    public Partner getPartner() {
+    public PartnerDTO getPartner() {
         return this.partnersForUserId;
     }
 
-    public void setPartner(Partner partnersForUserId) {
+    public void setPartner(PartnerDTO partnersForUserId) {
         this.partnersForUserId = partnersForUserId;
     }
 
@@ -511,19 +511,6 @@ public class UserDTO implements Serializable, Exportable {
 
     public void setOrders(Set<OrderDTO> purchaseOrdersForUserId) {
         this.orders = purchaseOrdersForUserId;
-    }
-
-    @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    @JoinTable(name = "user_credit_card_map",
-               joinColumns = {@JoinColumn(name = "user_id", updatable = false)},
-               inverseJoinColumns = {@JoinColumn(name = "credit_card_id", updatable = false)}
-    )
-    public Set<CreditCardDTO> getCreditCards() {
-        return this.creditCards;
-    }
-
-    public void setCreditCards(Set<CreditCardDTO> creditCards) {
-        this.creditCards = creditCards;
     }
 
     @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "baseUser")
@@ -553,6 +540,15 @@ public class UserDTO implements Serializable, Exportable {
         this.invoices = invoices;
     }
 
+    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY, mappedBy = "user")
+    public Set<BillingProcessFailedUserDTO> getProcesses() {
+        return this.processes;
+    }
+
+    public void setProcesses(Set<BillingProcessFailedUserDTO> processes) {
+        this.processes = processes;
+    }
+
     @Version
     @Column(name = "OPTLOCK")
     public Integer getVersionNum() {
@@ -562,6 +558,25 @@ public class UserDTO implements Serializable, Exportable {
     public void setVersionNum(Integer versionNum) {
         this.versionNum = versionNum;
     }
+    
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "user")
+    @OrderBy("processingOrder")
+    public List<PaymentInformationDTO> getPaymentInstruments() {
+		return paymentInstruments;
+	}
+
+	public void setPaymentInstruments(List<PaymentInformationDTO> paymentInstruments) {
+		this.paymentInstruments = paymentInstruments;
+	}
+
+    @Column(name="account_locked_time", length = 29)
+    public Date getAccountLockedTime() {
+        return accountLockedTime;
+    }
+
+    public void setAccountLockedTime(Date accountLockedTime) {
+        this.accountLockedTime = accountLockedTime;
+    }
 
     @Override
     public String toString() {
@@ -570,6 +585,8 @@ public class UserDTO implements Serializable, Exportable {
         return "UserDTO{"
                + "id=" + id
                + ", userName='" + userName + '\''
+               + ", accountExpired=" + accountExpired
+               + ", accountDisabledDate=" + accountDisabledDate
                + '}';
     }
 
@@ -585,6 +602,11 @@ public class UserDTO implements Serializable, Exportable {
         if (getPartner() != null) {
             getPartner().touch();
         }
+    }
+
+    @Transient
+    public boolean isInvoiceAsChild() {
+        return ( this.getCustomer() != null && this.getCustomer().invoiceAsChild());
     }
 
     @Transient
@@ -666,7 +688,6 @@ public class UserDTO implements Serializable, Exportable {
                  : null),
 
                 (customer != null ? customer.getAutoPaymentType() : null),
-                (customer != null ? customer.getNotes() : null),
 
                 (customer != null && customer.getParent() != null
                  ? customer.getParent().getBaseUser().getId()
@@ -675,7 +696,6 @@ public class UserDTO implements Serializable, Exportable {
                 (customer != null ? customer.getIsParent() : null),
                 (customer != null ? customer.getInvoiceChild() : null),
                 (customer != null ? customer.getExcludeAging() : null),
-                (customer != null ? customer.getBalanceType() : null),
                 (customer != null ? customer.getDynamicBalance() : null),
                 (customer != null ? customer.getCreditLimit() : null),
                 (customer != null ? customer.getAutoRecharge() : null),
@@ -686,6 +706,8 @@ public class UserDTO implements Serializable, Exportable {
                 (contact != null ? contact.getFirstName() : null),
                 (contact != null ? contact.getLastName() : null),
                 (contact != null ? contact.getInitial() : null),
+                (contact != null ? contact.getAddress1(): null),
+                (contact != null ? contact.getAddress2(): null),
                 (contact != null ? contact.getCity() : null),
                 (contact != null ? contact.getStateProvince() : null),
                 (contact != null ? contact.getPostalCode() : null),
@@ -696,4 +718,5 @@ public class UserDTO implements Serializable, Exportable {
             }
         };
     }
+
 }

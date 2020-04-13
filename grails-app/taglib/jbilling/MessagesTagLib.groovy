@@ -20,6 +20,8 @@
 
 package jbilling
 
+import org.apache.commons.lang.StringEscapeUtils
+
 
 class MessagesTagLib {
 	
@@ -29,4 +31,12 @@ class MessagesTagLib {
 		out << render(template:"/errorTag")
 	}
 
+	def truncateLabel = { attrs, body ->
+
+		String label = attrs.label
+		Integer max = attrs.max ?: 15
+		String suffix = attrs.suffix ?: '...'
+
+		out << ((label && label.size() > max) ? (StringEscapeUtils.escapeHtml(label.substring(0, max)+suffix)) : StringEscapeUtils.escapeHtml(label))
+	}
 }

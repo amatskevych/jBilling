@@ -19,13 +19,18 @@
  */
 package com.sapienter.jbilling.server.notification.task;
 
+import java.io.File;
 import java.io.FileWriter;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 
+import com.sapienter.jbilling.server.customer.CustomerBL;
+import com.sapienter.jbilling.server.notification.NotificationMediumType;
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.notification.MessageDTO;
 import com.sapienter.jbilling.server.pluggableTask.NotificationTask;
@@ -40,7 +45,7 @@ public class TestNotificationTask extends PluggableTask implements NotificationT
     
 	public static final ParameterDescription PARAMETER_FROM = 
 		new ParameterDescription("from", false, ParameterDescription.Type.STR);
-    public static final Logger LOG = Logger.getLogger(TestNotificationTask.class);
+    public static final FormatLogger LOG = new FormatLogger(Logger.getLogger(TestNotificationTask.class));
     
     //initializer for pluggable params
     { 
@@ -49,23 +54,32 @@ public class TestNotificationTask extends PluggableTask implements NotificationT
 
     
 
-    public void deliver(UserDTO user, MessageDTO sections)
+    public boolean deliver(UserDTO user, MessageDTO sections)
             throws TaskException {
         String directory = Util.getSysProp("base_dir");
+        ContactBL contact = new ContactBL();
         try {
-            FileWriter writer = new FileWriter(directory + "/emails_sent.txt", true);
+            FileWriter writer = new FileWriter(directory + File.separator + "emails_sent.txt", true);
             
             // find the address
-            ContactBL contact = new ContactBL();
-            List<ContactDTOEx> emails = contact.getAll(user.getUserId());
-            
+            String email = "No email";
+
+            if( null == user.getCustomer() ){
+                List<ContactDTOEx> emails = contact.getAll(user.getUserId());
+                email = emails == null ? "No email" : emails.size() == 0 ? "No email" : emails.get(0).getEmail();
+            } else {
+               ContactDTOEx contactDto = ContactBL.buildFromMetaField(user.getUserId(), new Date());
+               if(null != contactDto){
+                   email = contactDto.getEmail();
+               }
+            }
+
             // find the from
             String from = (String) parameters.get(PARAMETER_FROM.getName());
             if (from == null || from.length() == 0) {
                 from = Util.getSysProp("email_from");
             }
-            
-            String email = emails == null ? "No email" : emails.size() == 0 ? "No email" : emails.get(0).getEmail();
+
             writer.write("Date: " + Calendar.getInstance().getTime() + "\n");
             writer.write("To: " + email + "\n");
             writer.write("From: " + from + "\n");
@@ -81,10 +95,15 @@ public class TestNotificationTask extends PluggableTask implements NotificationT
             LOG.error("Error sending test notification:" + e.getMessage(),e);
             throw new TaskException(e);
         }
-
+        return true;
     }
 
     public int getSections() {
         return 2;
+    }
+
+    @Override
+    public List<NotificationMediumType> mediumHandled() {
+        return Arrays.asList(NotificationMediumType.values());
     }
 }

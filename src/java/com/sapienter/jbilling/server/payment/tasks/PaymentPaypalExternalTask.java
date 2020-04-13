@@ -21,22 +21,24 @@ package com.sapienter.jbilling.server.payment.tasks;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.List;
 
 import org.apache.log4j.Logger;
 
 import com.paypal.sdk.exceptions.PayPalException;
 import com.sapienter.jbilling.common.CommonConstants;
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.Util;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
 import com.sapienter.jbilling.server.payment.IExternalCreditCardStorage;
 import com.sapienter.jbilling.server.payment.PaymentAuthorizationBL;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentDAS;
 import com.sapienter.jbilling.server.payment.db.PaymentDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDAS;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentMethodDAS;
 import com.sapienter.jbilling.server.payment.db.PaymentResultDAS;
 import com.sapienter.jbilling.server.payment.tasks.paypal.PaypalApi;
@@ -50,26 +52,24 @@ import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.user.ContactBL;
 import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
-import com.sapienter.jbilling.server.user.db.AchDTO;
 import com.sapienter.jbilling.server.user.db.UserDTO;
 import com.sapienter.jbilling.server.util.Constants;
-
 import com.sapienter.jbilling.server.payment.tasks.paypal.dto.*;
-import com.sapienter.jbilling.server.payment.db.*;
+
+import org.joda.time.format.DateTimeFormat;
 
 /**
  * Created by Roman Liberov, 03/02/2010
  */
 public class PaymentPaypalExternalTask extends PaymentTaskWithTimeout implements IExternalCreditCardStorage {
 
-    private static final Logger LOG = Logger.getLogger(PaymentPaypalExternalTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaymentPaypalExternalTask.class));
 
     /* Plugin parameters */
     public static final ParameterDescription PARAMETER_PAYPAL_USER_ID =
-    	new ParameterDescription("PaypalUserId", true, ParameterDescription.Type.STR);
+    	new ParameterDescription("PaypalUserId", true, ParameterDescription.Type.STR, true);
     public static final ParameterDescription PARAMETER_PAYPAL_PASSWORD =
-    	new ParameterDescription("PaypalPassword", true, ParameterDescription.Type.STR);
+    	new ParameterDescription("PaypalPassword", true, ParameterDescription.Type.STR, true);
     public static final ParameterDescription PARAMETER_PAYPAL_SIGNATURE =
     	new ParameterDescription("PaypalSignature", true, ParameterDescription.Type.STR);
     public static final ParameterDescription PARAMETER_PAYPAL_ENVIRONMENT =
@@ -122,9 +122,12 @@ public class PaymentPaypalExternalTask extends PaymentTaskWithTimeout implements
      * @param payment payment to prepare for processing from external storage
      */
     public void prepareExternalPayment(PaymentDTOEx payment) {
-        if (payment.getCreditCard().useGatewayKey()) {
+        if (new PaymentInformationBL().useGatewayKey(payment.getInstrument())) {
             LOG.debug("credit card is obscured, retrieving from database to use external store.");
-            payment.setCreditCard(new UserBL(payment.getUserId()).getCreditCard());
+            if(payment.getInstrument().getId() != null) {
+            	// load only if its saved in database. Otherwise do not
+            	payment.setInstrument(new PaymentInformationDAS().find(payment.getInstrument().getId()));
+            }
         } else {
             LOG.debug("new credit card or previously un-obscured, using as is.");
         }
@@ -139,14 +142,15 @@ public class PaymentPaypalExternalTask extends PaymentTaskWithTimeout implements
      *  */
     public void updateGatewayKey(PaymentDTOEx payment) {
         PaymentAuthorizationDTO auth = payment.getAuthorization();
-
+        PaymentInformationBL piBl = new PaymentInformationBL();
         // update the gateway key with the returned PayPal TRANSACTIONID
-        CreditCardDTO card = payment.getCreditCard();
-        card.setGatewayKey(auth.getTransactionId());
+        PaymentInformationDTO card = payment.getInstrument();
+        
+        piBl.updateStringMetaField(card, auth.getTransactionId(), MetaFieldType.GATEWAY_KEY);
 
         // obscure new credit card numbers
-        if (!com.sapienter.jbilling.common.Constants.PAYMENT_METHOD_GATEWAY_KEY.equals(card.getCcType()))
-            card.obscureNumber();
+        if (!com.sapienter.jbilling.common.Constants.PAYMENT_METHOD_GATEWAY_KEY.equals(card.getPaymentMethod().getId()))
+            piBl.obscureCreditCardNumber(card);
     }
 
     /**
@@ -169,7 +173,8 @@ public class PaymentPaypalExternalTask extends PaymentTaskWithTimeout implements
      * @return true if payment can be processed with this task, false if not
      */
     private static boolean isApplicable(PaymentDTOEx payment) {
-        if (payment.getCreditCard() == null && payment.getAch() == null) {
+    	PaymentInformationBL piBl = new PaymentInformationBL();
+        if (piBl.isCreditCard(payment.getInstrument()) && piBl.isACH(payment.getInstrument())) {
             LOG.warn("Can't process without a credit card or ach");
             return false;
         }
@@ -189,7 +194,7 @@ public class PaymentPaypalExternalTask extends PaymentTaskWithTimeout implements
     }
 
     private static boolean isCreditCardStored(PaymentDTOEx payment) {
-        return payment.getCreditCard().useGatewayKey();
+        return new PaymentInformationBL().useGatewayKey(payment.getInstrument());
     }
 
     private PaymentAuthorizationDTO buildPaymentAuthorization(PaypalResult paypalResult) {
@@ -232,15 +237,19 @@ public class PaymentPaypalExternalTask extends PaymentTaskWithTimeout implements
     }
 
     private static String convertCreditCardExpiration(Date ccExpiry) {
-        return new SimpleDateFormat("MMyyyy").format(ccExpiry);
+        if(null == ccExpiry){
+            throw new IllegalArgumentException("Can not convert null object!!!");
+        }
+        return DateTimeFormat.forPattern("MMyyyy").print(ccExpiry.getTime());
     }
 
     private static CreditCard convertCreditCard(PaymentDTOEx payment) {
+    	PaymentInformationBL piBl = new PaymentInformationBL();
         return new CreditCard(
-                            convertCreditCardType(payment.getCreditCard().getCcType()),
-                            payment.getCreditCard().getCcNumberPlain(),
-                            convertCreditCardExpiration(payment.getCreditCard().getExpiry()),
-                            payment.getCreditCard().getSecurityCode());
+                            convertCreditCardType(payment.getInstrument().getPaymentMethod().getId()),
+                            piBl.getStringMetaFieldByType(payment.getInstrument(), MetaFieldType.PAYMENT_CARD_NUMBER),
+                            convertCreditCardExpiration(piBl.getDateMetaFieldByType(payment.getInstrument(), MetaFieldType.DATE)),
+                            null);
     }
 
     private static Payer convertPayer(PaymentDTOEx payment) {
@@ -277,11 +286,12 @@ public class PaymentPaypalExternalTask extends PaymentTaskWithTimeout implements
     }
 
     private Result doRefund(PaymentDTOEx payment) throws PluggableTaskException {
+    	PaymentInformationBL piBl = new PaymentInformationBL();
         try {
             PaypalApi api = getApi();
 
             PaypalResult result = api.refundTransaction(
-                    payment.getAuthorization().getTransactionId(),
+                    piBl.getStringMetaFieldByType(payment.getInstrument(), MetaFieldType.GATEWAY_KEY),
                     formatDollarAmount(payment.getAmount()),
                     RefundType.FULL);
 
@@ -298,9 +308,10 @@ public class PaymentPaypalExternalTask extends PaymentTaskWithTimeout implements
     }
 
     private Result doPaymentWithStoredCreditCard(PaymentDTOEx payment, PaymentAction paymentAction) throws PluggableTaskException {
+    	PaymentInformationBL piBl = new PaymentInformationBL();
         try {
             PaypalResult result = getApi().doReferenceTransaction(
-                    payment.getAuthorization().getTransactionId(),
+            		piBl.getStringMetaFieldByType(payment.getInstrument(), MetaFieldType.GATEWAY_KEY),
                     paymentAction,
                     new Payment(formatDollarAmount(payment.getAmount()), "USD"));
 
@@ -416,7 +427,7 @@ public class PaymentPaypalExternalTask extends PaymentTaskWithTimeout implements
             LOG.warn("The processor of the pre-auth is not " + getProcessorName() + ", is " + auth.getProcessor());
         }
 
-        CreditCardDTO card = payment.getCreditCard();
+        PaymentInformationDTO card = payment.getInstrument();
         if (card == null) {
             throw new PluggableTaskException("Credit card is required, capturing payment: " + payment.getId());
         }
@@ -431,15 +442,16 @@ public class PaymentPaypalExternalTask extends PaymentTaskWithTimeout implements
         return doCapture(payment, auth).shouldCallOtherProcessors();
     }
 
-    public String storeCreditCard(ContactDTO contact, CreditCardDTO creditCard, AchDTO ach) {
+    public String storeCreditCard(ContactDTO contact, PaymentInformationDTO creditCard) {
         LOG.debug("Storing creadit card info within " + getProcessorName() + " gateway");
         UserDTO user;
         if (contact != null) {
             UserBL bl = new UserBL(contact.getUserId());
             user = bl.getEntity();
-            creditCard = bl.getCreditCard();
-        } else if (creditCard != null && !creditCard.getBaseUsers().isEmpty()) {
-            user = creditCard.getBaseUsers().iterator().next();
+            // can not get credit card from db as there may be many
+            creditCard = creditCard;
+        } else if (creditCard != null && creditCard.getUser() != null) {
+            user = creditCard.getUser();
         } else {
             LOG.error("Could not determine user id for external credit card storage");
             return null;
@@ -462,17 +474,17 @@ public class PaymentPaypalExternalTask extends PaymentTaskWithTimeout implements
         payment.setCurrency(user.getCurrency());
         payment.setAmount(CommonConstants.BIGDECIMAL_ONE_CENT);
         payment.setCreditCard(creditCard);
-        payment.setPaymentMethod(new PaymentMethodDAS().find(Util.getPaymentMethod(creditCard.getNumber())));
+        payment.setPaymentMethod(new PaymentMethodDAS().find(Util.getPaymentMethod(new PaymentInformationBL().getStringMetaFieldByType(creditCard, MetaFieldType.PAYMENT_CARD_NUMBER))));
         payment.setIsRefund(0);
-        payment.setIsPreauth(0);
-        payment.setDeleted(0);
+        payment.setIsPreauth(1);
+        payment.setDeleted(1);
         payment.setAttempt(1);
         payment.setPaymentDate(new Date());
         payment.setCreateDatetime(new Date());
 
         PaymentDTOEx paymentEx = new PaymentDTOEx(new PaymentDAS().save(payment));
         try {
-            doProcess(paymentEx, PaymentAction.SALE, false /* updateKey */);
+            doProcess(paymentEx, PaymentAction.AUTHORIZATION, false /* updateKey */);
             doVoid(paymentEx);
 
             PaymentAuthorizationDTO auth = paymentEx.getAuthorization();
@@ -486,7 +498,7 @@ public class PaymentPaypalExternalTask extends PaymentTaskWithTimeout implements
     /**
      *
      */
-    public String deleteCreditCard(ContactDTO contact, CreditCardDTO creditCard, AchDTO ach) {
+    public String deleteCreditCard(ContactDTO contact, PaymentInformationDTO instrument) {
         //noop
         return null;
     }

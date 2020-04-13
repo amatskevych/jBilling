@@ -7,6 +7,7 @@
 		<defaultValueExpression><![CDATA[""]]></defaultValueExpression>
 	</parameter>
 	<parameter name="entity_id" class="java.lang.Integer"/>
+	<parameter name="child_entities" class="java.util.List"/>
 	<queryString>
 		<![CDATA[select
             u.id as user_id,
@@ -21,21 +22,18 @@
             max(i.create_datetime) as last_billing_date,
             max(p.create_datetime) as last_payment_date,
             (
-                (select coalesce(sum(i.balance), 0) from invoice i where i.deleted = 0 and i.status_id != 26 and i.is_review != 1 and i.user_id = u.id)
+                (select coalesce(sum(i.balance), 0) from invoice i where i.deleted = 0 and i.status_id != 28 and i.is_review != 1 and i.user_id = u.id)
                 - (select coalesce(sum(p.balance), 0) from payment p where p.deleted = 0 and p.user_id = u.id)
             ) as current_balance
         from
             base_user u
             inner join customer cu on cu.user_id = u.id
-            inner join contact co on co.user_id = u.id
-            left join payment p on p.user_id = u.id
-            left join invoice i on i.user_id = u.id
+            left join contact co on co.user_id = u.id
+            left join payment p on p.user_id = u.id and p.deleted = 0
+            left join invoice i on i.user_id = u.id and i.deleted = 0 and i.is_review = 0
         where
-            u.entity_id = $P{entity_id}
+            (u.entity_id = $P{entity_id} or $X{IN,u.entity_id,child_entities})  
             and u.deleted = 0
-            and p.deleted = 0
-            and i.deleted = 0
-            and i.is_review = 0
         group by
             u.id,
             u.user_name,

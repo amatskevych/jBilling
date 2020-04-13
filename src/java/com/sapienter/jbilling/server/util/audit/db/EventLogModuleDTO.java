@@ -19,6 +19,7 @@
  */
 package com.sapienter.jbilling.server.util.audit.db;
 
+import java.io.Serializable;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -62,9 +63,6 @@ public class EventLogModuleDTO  implements java.io.Serializable {
     public Set<EventLogDTO> getEventLogs() {
         return this.eventLogs;
     }
-    
-
-
 
 }
 

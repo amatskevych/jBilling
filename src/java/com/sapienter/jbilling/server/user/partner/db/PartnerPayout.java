@@ -20,23 +20,12 @@
 package com.sapienter.jbilling.server.user.partner.db;
 
 
+import com.sapienter.jbilling.server.payment.db.PaymentDTO;
+
+import javax.persistence.*;
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.Date;
-
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
-import javax.persistence.Table;
-import javax.persistence.TableGenerator;
-import javax.persistence.Transient;
-import javax.persistence.Version;
-
-import com.sapienter.jbilling.server.payment.db.PaymentDTO;
 
 @Entity
 @TableGenerator(
@@ -52,7 +41,7 @@ public class PartnerPayout  implements java.io.Serializable {
 
     private int id;
     private PaymentDTO payment;
-    private Partner partner;
+    private PartnerDTO partner;
     private Date startingDate;
     private Date endingDate;
     private BigDecimal paymentsAmount;
@@ -76,7 +65,7 @@ public class PartnerPayout  implements java.io.Serializable {
         this.balanceLeft = balanceLeft;
     }
 
-    public PartnerPayout(int id, PaymentDTO payment, Partner partner, Date startingDate, Date endingDate,
+    public PartnerPayout(int id, PaymentDTO payment, PartnerDTO partner, Date startingDate, Date endingDate,
                          BigDecimal paymentsAmount, BigDecimal refundsAmount, BigDecimal balanceLeft) {
         this.id = id;
         this.payment = payment;
@@ -110,11 +99,11 @@ public class PartnerPayout  implements java.io.Serializable {
 
     @ManyToOne(fetch=FetchType.LAZY)
     @JoinColumn(name="partner_id")
-    public Partner getPartner() {
+    public PartnerDTO getPartner() {
         return this.partner;
     }
 
-    public void setPartner(Partner partner) {
+    public void setPartner(PartnerDTO partner) {
         this.partner = partner;
     }
 
@@ -201,6 +190,7 @@ public class PartnerPayout  implements java.io.Serializable {
             getPayment().getCurrency();
         }
     }
+
 }
 
 

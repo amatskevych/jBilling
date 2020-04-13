@@ -30,6 +30,7 @@ import com.sapienter.jbilling.server.pluggableTask.TaskException;
  * (price * quantity), thus it requires the BasicLineTotalTask to be configured, typically after
  *
  */
+@Deprecated
 public class RulesLineTotalTask2 extends RulesItemManager2
         implements OrderProcessingTask {
     

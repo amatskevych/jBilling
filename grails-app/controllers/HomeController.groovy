@@ -18,7 +18,7 @@
  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import grails.plugins.springsecurity.Secured
+import grails.plugin.springsecurity.annotation.Secured
 import jbilling.Breadcrumb
 
 /**
@@ -30,13 +30,13 @@ import jbilling.Breadcrumb
  * @since  22-11-2010
  */
 class HomeController {
-
+	static scope = "prototype"
     def recentItemService
     def breadcrumbService
 
     @Secured(["isAuthenticated()"])
-    def index = {        
-        def breadcrumb = Breadcrumb.findByUserId(session['user_id'], [sort:'id', order:'desc'])
+    def index () {
+        def breadcrumb = breadcrumbService.getLastBreadcrumb()
 
         if (breadcrumb) {
             // show last page viewed

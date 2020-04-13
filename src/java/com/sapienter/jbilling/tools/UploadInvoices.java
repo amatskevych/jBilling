@@ -33,11 +33,12 @@ import java.util.Properties;
 
 import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.invoice.IInvoiceSessionBean;
-import com.sapienter.jbilling.server.invoice.NewInvoiceDTO;
+import com.sapienter.jbilling.server.invoice.NewInvoiceContext;
 import com.sapienter.jbilling.server.invoice.db.InvoiceLineDTO;
 import com.sapienter.jbilling.server.invoice.db.InvoiceLineTypeDTO;
 import com.sapienter.jbilling.server.item.db.ItemDAS;
 import com.sapienter.jbilling.server.item.db.ItemDTO;
+import com.sapienter.jbilling.server.util.RemoteContext;
 import com.sapienter.jbilling.server.util.db.CurrencyDAS;
 import com.sapienter.jbilling.server.util.db.CurrencyDTO;
 import java.math.BigDecimal;
@@ -112,7 +113,7 @@ public class UploadInvoices {
                 String fields[] = record.split("\t");
                 
                 // get the user object ready
-                NewInvoiceDTO invoice = new NewInvoiceDTO();
+                NewInvoiceContext invoice = new NewInvoiceContext();
                 Integer userId = null;
                 
                 if (number >= 0) {
@@ -169,7 +170,7 @@ public class UploadInvoices {
         } 
     }
     
-    public static void readInvoiceLines(NewInvoiceDTO invoice, String fileName) 
+    public static void readInvoiceLines(NewInvoiceContext invoice, String fileName) 
             throws FileNotFoundException, IOException {
         BufferedReader file = new BufferedReader(new FileReader(fileName + "_lines"));
         String header = file.readLine(); // just ignore it

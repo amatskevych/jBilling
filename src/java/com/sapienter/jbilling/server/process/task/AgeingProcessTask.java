@@ -20,6 +20,7 @@
 
 package com.sapienter.jbilling.server.process.task;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
 import com.sapienter.jbilling.server.process.IBillingProcessSessionBean;
@@ -28,6 +29,7 @@ import org.apache.log4j.Logger;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import org.quartz.SimpleTrigger;
+import org.quartz.impl.triggers.SimpleTriggerImpl;
 
 import java.util.Date;
 
@@ -39,12 +41,12 @@ import java.util.Date;
  */
 public class AgeingProcessTask extends AbstractBackwardSimpleScheduledTask {
 
-    private static final Logger LOG = Logger.getLogger(AgeingProcessTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(AgeingProcessTask.class));
 
     private static final String PROPERTY_RUN_AGEING = "process.run_ageing";
 
     public String getTaskName() {
-        return "ageing process: entity " + getEntityId() + ", " + getScheduleString();
+        return "ageing process: , entity id " + getEntityId() + ", taskId " + getTaskId();
     }
 
     public void execute(JobExecutionContext context) throws JobExecutionException {
@@ -76,7 +78,7 @@ public class AgeingProcessTask extends AbstractBackwardSimpleScheduledTask {
         // parameters have been explicitly set to define the ageing schedule
         if (useProperties()) {
             LOG.debug("Scheduling ageing process from jbilling.properties ...");
-            trigger= setTriggerFromProperties(trigger);
+            trigger= setTriggerFromProperties((SimpleTriggerImpl)trigger);
         } else {
             LOG.debug("Scheduling ageing process using plug-in parameters ...");
         }

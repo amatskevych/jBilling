@@ -29,7 +29,10 @@ import java.util.GregorianCalendar;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
+import com.sapienter.jbilling.server.process.db.BillingProcessDTO;
+import com.sapienter.jbilling.server.user.UserBL;
 import com.sapienter.jbilling.server.process.BillingProcessBL;
 import com.sapienter.jbilling.server.process.db.BillingProcessDTO;
 import com.sapienter.jbilling.server.util.Constants;
@@ -42,21 +45,22 @@ import org.springframework.dao.EmptyResultDataAccessException;
  */
 public class OrderFilterAnticipatedTask extends BasicOrderFilterTask {
     
-    private static final Logger LOG = Logger.getLogger(OrderFilterAnticipatedTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(OrderFilterAnticipatedTask.class));
     
     public boolean isApplicable(OrderDTO order, 
             BillingProcessDTO process) throws TaskException {
         // by default, keep it in null 
         billingUntil = null;
         try {
-            PreferenceBL preference = new PreferenceBL();
+            int preferenceUseOrderAnticipation = 0;
             try {
-                preference.set(process.getEntity().getId(), 
-                        Constants.PREFERENCE_USE_ORDER_ANTICIPATION);
+                preferenceUseOrderAnticipation = 
+                	PreferenceBL.getPreferenceValueAsIntegerOrZero(
+                		process.getEntity().getId(), Constants.PREFERENCE_USE_ORDER_ANTICIPATION);
             } catch (EmptyResultDataAccessException e) {
                 // I like the default
             }
-            if (preference.getInt() == 0 ) {
+            if (preferenceUseOrderAnticipation == 0 ) {
                 LOG.warn("OrderAnticipated task is called, but this " +
                         "entity has the preference off");
             } else if (order.getAnticipatePeriods() != null && 
@@ -65,7 +69,10 @@ public class OrderFilterAnticipatedTask extends BasicOrderFilterTask {
                         billingUntil + " ant periods " + 
                         order.getAnticipatePeriods());
                 // calculate an extended end of billing process
-                billingUntil = BillingProcessBL.getEndOfProcessPeriod(process);
+                UserBL userBL = new UserBL(order.getUser());
+                billingUntil = userBL.getBillingUntilDate(
+                		userBL.getDto().getCustomer().getNextInvoiceDate(),
+                		process.getBillingDate());
                 
                 // move it forward by the number of ant months
                 GregorianCalendar cal = new GregorianCalendar();

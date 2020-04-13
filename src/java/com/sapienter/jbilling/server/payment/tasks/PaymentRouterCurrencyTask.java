@@ -25,13 +25,11 @@ import java.util.Map;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDTO;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
 import com.sapienter.jbilling.server.pluggableTask.PaymentTask;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
-import com.sapienter.jbilling.server.user.ContactBL;
-import com.sapienter.jbilling.server.user.ContactDTOEx;
-import com.sapienter.jbilling.server.user.contact.db.ContactFieldDTO;
 
 /**
  * Routes payments to other processor plug-ins based on currency. 
@@ -39,8 +37,8 @@ import com.sapienter.jbilling.server.user.contact.db.ContactFieldDTO;
  * code and the parameter value to the processor plug-in id.
  */
 public class PaymentRouterCurrencyTask extends AbstractPaymentRouterTask {
-    private static final Logger LOG = Logger.getLogger(
-            PaymentRouterCurrencyTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(
+            PaymentRouterCurrencyTask.class));
 
     @Override
     protected PaymentTask selectDelegate(PaymentDTOEx paymentInfo)

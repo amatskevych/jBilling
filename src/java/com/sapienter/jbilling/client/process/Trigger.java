@@ -24,29 +24,31 @@
  */
 package com.sapienter.jbilling.client.process;
 
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
-
 import org.apache.log4j.Logger;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 import org.quartz.Job;
-import org.quartz.JobDetail;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import org.quartz.Scheduler;
 import org.quartz.SchedulerException;
 import org.quartz.SimpleTrigger;
+import org.quartz.impl.JobDetailImpl;
+import org.quartz.impl.triggers.SimpleTriggerImpl;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.common.Util;
 import com.sapienter.jbilling.server.invoice.IInvoiceSessionBean;
 import com.sapienter.jbilling.server.order.IOrderSessionBean;
 import com.sapienter.jbilling.server.process.IBillingProcessSessionBean;
-import com.sapienter.jbilling.server.provisioning.IProvisioningProcessSessionBean;
 import com.sapienter.jbilling.server.user.IUserSessionBean;
 import com.sapienter.jbilling.server.util.Context;
+import org.quartz.impl.JobDetailImpl;
+import org.quartz.impl.triggers.SimpleTriggerImpl;
 
 /**
  * @author Emil
@@ -54,7 +56,7 @@ import com.sapienter.jbilling.server.util.Context;
  */
 public class Trigger implements Job {
 
-    private static final Logger LOG = Logger.getLogger(Trigger.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(Trigger.class));
 
     /**
      * Initialize tool Trigger. Load properties from jbilling.properties and set up Quartz job/trigger
@@ -111,32 +113,28 @@ public class Trigger implements Job {
             cal.add(Calendar.MINUTE, interval);
             startTime = Util.truncateDate(cal.getTime());
         } else { // Its normal one
-            SimpleDateFormat df = new SimpleDateFormat("yyyyMMdd-HHmm");
+            DateTimeFormatter df = DateTimeFormat.forPattern("yyyyMMdd-HHmm");
             try {
                 interval = Integer.parseInt(frequency);
                 if (interval == 0) {
                     LOG.info("The frequency can not be zero when time is specified.");
                     return;
                 }
-                startTime = df.parse(time);
-            } catch (ParseException e) {
+                startTime = df.parseDateTime(time).toDate();
+            }
+            catch (IllegalArgumentException e) { // This block catches both NumberFormatException and IllegalArgumentException in case of invalid parsing
                 LOG.debug(e);
                 LOG.info("Error:" + e.getMessage() + " Schedule does not start.");
                 // Leave
-                return;
-            } catch (NumberFormatException e) {
-                LOG.debug(e);
-                LOG.info("Error:" + e.getMessage() + " Schedule does not start.");
-                //Leave
                 return;
             }
         }
 
         // set up trigger
         try {
-            JobDetail jbillingJob = new JobDetail("jbilling", Scheduler.DEFAULT_GROUP, Trigger.class);
+            JobDetailImpl jbillingJob = new JobDetailImpl("jbilling", Scheduler.DEFAULT_GROUP, Trigger.class);
 
-            SimpleTrigger trigger = new SimpleTrigger("jbillingTrigger",
+            SimpleTriggerImpl trigger = new SimpleTriggerImpl("jbillingTrigger",
                     Scheduler.DEFAULT_GROUP,
                     startTime,
                     null,
@@ -167,9 +165,6 @@ public class Trigger implements Job {
                     Context.Name.ORDER_SESSION);
             IInvoiceSessionBean remoteInvoice = (IInvoiceSessionBean) 
                     Context.getBean(Context.Name.INVOICE_SESSION);
-            IProvisioningProcessSessionBean remoteProvisioningProcess = 
-                    (IProvisioningProcessSessionBean) Context.getBean(
-                    Context.Name.PROVISIONING_PROCESS_SESSION);
             
             // determine the date for this run
             Date today = Calendar.getInstance().getTime();
@@ -189,40 +184,23 @@ public class Trigger implements Job {
 
             // now the ageing process
             if (firstOfToday) {
-                if (Util.getSysPropBooleanTrue("process.run_partner")) {
-                    // now the partner payout process
-                    LOG.info("Starting partner process at " + Calendar.getInstance().getTime());
-                    remoteUser.processPayouts(today);
-                    LOG.info("Ended partner process at " + Calendar.getInstance().getTime());
-                }
-
                 if (Util.getSysPropBooleanTrue("process.run_order_expire")) {
                     // finally the orders about to expire notification
-                    LOG.info("Starting order notification at " + Calendar.getInstance().getTime());
+                    LOG.info("Starting order notification at %s", Calendar.getInstance().getTime());
                     remoteOrder.reviewNotifications(today);
                     LOG.info("Ended order notification at " + Calendar.getInstance().getTime());
                 }
                 if (Util.getSysPropBooleanTrue("process.run_invoice_reminder")) {
                     // the invoice reminders
-                    LOG.info("Starting invoice reminders at " + Calendar.getInstance().getTime());
+                    LOG.info("Starting invoice reminders at %s", Calendar.getInstance().getTime());
                     remoteInvoice.sendReminders(today);
-                    LOG.info("Ended invoice reminders at " + Calendar.getInstance().getTime());
+                    LOG.info("Ended invoice reminders at %s", Calendar.getInstance().getTime());
                 }
                 if (Util.getSysPropBooleanTrue("process.run_cc_expire")) {
                     // send credit card expiration emails
-                    LOG.info("Starting credit card expiration at " + Calendar.getInstance().getTime());
+                    LOG.info("Starting credit card expiration at %s", Calendar.getInstance().getTime());
                     remoteUser.notifyCreditCardExpiration(today);
-                    LOG.info("Ended credit card expiration at " + Calendar.getInstance().getTime());
-                }
-             // run the provisioning process
-                if (Util.getSysPropBooleanTrue("process.run_provisioning")) {
-                    LOG.info("Running trigger for " + today);
-                    LOG.info("Starting provisioning process at " + 
-                            Calendar.getInstance().getTime());
-                    remoteProvisioningProcess.trigger();
-                    LOG.info("Ended provisioning process at " + 
-                            Calendar.getInstance().getTime());
-                    
+                    LOG.info("Ended credit card expiration at %s", Calendar.getInstance().getTime());
                 }
             }
 

@@ -22,17 +22,12 @@ package com.sapienter.jbilling.server.user.tasks;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.List;
 
 import com.sapienter.jbilling.server.item.PricingField;
 import com.sapienter.jbilling.server.item.db.ItemDTO;
 import com.sapienter.jbilling.server.pluggableTask.PluggableTask;
 import com.sapienter.jbilling.server.pluggableTask.TaskException;
 import com.sapienter.jbilling.server.user.ValidatePurchaseWS;
-import com.sapienter.jbilling.server.user.balance.IUserBalanceValidation;
-import com.sapienter.jbilling.server.user.balance.ValidatorCreditLimit;
-import com.sapienter.jbilling.server.user.balance.ValidatorNone;
-import com.sapienter.jbilling.server.user.balance.ValidatorPrePaid;
 import com.sapienter.jbilling.server.user.db.CustomerDTO;
 import com.sapienter.jbilling.server.util.Constants;
 
@@ -67,21 +62,9 @@ public class UserBalanceValidatePurchaseTask extends PluggableTask
             // go up one level
             customer =  customer.getParent();
         }
-
-        IUserBalanceValidation validator;
-        // simple factory ...
-        if (customer.getBalanceType() == Constants.BALANCE_NO_DYNAMIC || (amount.compareTo(BigDecimal.ZERO) == 0)) {
-            validator = new ValidatorNone();
-        } else if (customer.getBalanceType() == Constants.BALANCE_CREDIT_LIMIT) {
-            validator = new ValidatorCreditLimit();
-        } else {
-            validator = new ValidatorPrePaid();
-        }
-
-        BigDecimal quantity = validator.validate(customer, amount).setScale(Constants.BIGDECIMAL_SCALE, Constants.BIGDECIMAL_ROUND);
-        
+        BigDecimal quantity = customer.getCreditLimit().add(customer.getDynamicBalance()).divide(amount,Constants.BIGDECIMAL_SCALE, Constants.BIGDECIMAL_ROUND);
         if (quantity.compareTo(BigDecimal.ZERO) <= 0)
-            result.setAuthorized(false);
+        result.setAuthorized(false);
 
         result.setQuantity(quantity);
         return result;

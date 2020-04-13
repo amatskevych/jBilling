@@ -20,7 +20,7 @@
 
 package jbilling
 
-import grails.plugins.springsecurity.Secured
+import grails.plugin.springsecurity.annotation.Secured
 import com.sapienter.jbilling.server.user.contact.db.ContactTypeDTO
 import com.sapienter.jbilling.server.user.contact.db.ContactDTO
 import com.sapienter.jbilling.server.user.db.CompanyDTO
@@ -36,9 +36,9 @@ import com.sapienter.jbilling.common.SessionInternalError
  * @author Brian Cowdery
  * @since 27-Jan-2011
  */
-@Secured(["MENU_99"])
+@Secured(["isAuthenticated()"])
 class ContactTypeConfigController {
-
+	static scope = "prototype"
     static pagination = [ max: 10, offset: 0 ]
 
     def webServicesSession
@@ -46,19 +46,19 @@ class ContactTypeConfigController {
     def recentItemService
     def breadcrumbService
 
-    def index = {
-        redirect action: list, params: params
+    def index () {
+        list()
     }
 
-    def list = {
+    def list () {
         params.max = params?.max?.toInteger() ?: pagination.max
         params.offset = params?.offset?.toInteger() ?: pagination.offset
-
+		def company_id = session['company_id']
         def types = ContactTypeDTO.createCriteria().list(
                 max:    params.max,
                 offset: params.offset
         ) {
-            eq('entity', new CompanyDTO(session['company_id']))
+            eq('entity', new CompanyDTO(company_id))
             order('id', 'asc')
         }
 
@@ -66,13 +66,13 @@ class ContactTypeConfigController {
 
         breadcrumbService.addBreadcrumb(controllerName, actionName, null, params.int('id'))
 
-        [ types: types, selected: selected, languages: languages ]
+        render view: 'list', model: [ types: types, selected: selected, languages: languages ]
     }
 
     /**
      * Shows details of the selected contact type.
      */
-    def show = {
+    def show () {
         def selected = ContactTypeDTO.get(params.int('id'))
         breadcrumbService.addBreadcrumb(controllerName, 'list', null, params.int('id'))
 
@@ -82,31 +82,57 @@ class ContactTypeConfigController {
     /**
      * Show the "_edit.gsp" panel to create a new contact.
      */
-    def edit = {
+    def edit () {
         render template: 'edit', model: [ languages: languages ]
     }
 
     /**
      * Saves a new contact type.
      */
-    def save = {
+    def save () {
         def contactType = new ContactTypeWS()
         contactType.companyId = session['company_id']
         contactType.primary = params.int('isPrimary')
 
         params.language.each { id, value ->
-            contactType.descriptions.add(new InternationalDescriptionWS(id as Integer, value))
+            if (id && value) {
+            	contactType.descriptions.add(new InternationalDescriptionWS(id as Integer, value))
+            }
         }
 
         try {
             log.debug("creating new contact type ${contactType}")
             contactType.id = webServicesSession.createContactTypeWS(contactType)
+			
+			flash.message = 'contact.type.created'
+			flash.args = [  contactType.id as String ]
 
         } catch (SessionInternalError e) {
             viewUtils.resolveException(flash, session.locale, e)
+            chain action: 'contactType', model: [ contactType: contactType, languages: languages ]
+            return
         }
 
-        redirect action: list, id: contactType.id
+        chain action: 'list', params: [ id: contactType.id ]
+    }
+    
+    def contactType () {
+    
+    	params.max = params?.max?.toInteger() ?: pagination.max
+        params.offset = params?.offset?.toInteger() ?: pagination.offset
+		def company_id = session['company_id']
+        def types = ContactTypeDTO.createCriteria().list(
+                max:    params.max,
+                offset: params.offset
+        ) {
+            eq('entity', new CompanyDTO(company_id))
+            order('id', 'asc')
+        }
+
+        def contactType = chainModel?.contactType
+        def languages = chainModel?.languages
+
+        [ languages: languages, types: types, contactType: contactType  ]
     }
 
     def getLanguages() {

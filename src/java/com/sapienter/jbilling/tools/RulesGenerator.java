@@ -19,6 +19,7 @@
  */
 package com.sapienter.jbilling.tools;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.util.Util;
 import org.apache.log4j.Logger;
 import org.apache.velocity.VelocityContext;
@@ -34,7 +35,7 @@ import java.util.Map;
  */
 public class RulesGenerator {
 
-    private final static Logger log = Logger.getLogger(RulesGenerator.class);
+    private final static FormatLogger log = new FormatLogger(Logger.getLogger(RulesGenerator.class));
 
     public static void main(String[] args) throws IOException {
         if (args.length < 2) {

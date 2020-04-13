@@ -19,19 +19,18 @@
  */
 package com.sapienter.jbilling.server.pluggableTask;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.metafields.MetaFieldType;
 import com.sapienter.jbilling.server.payment.PaymentDTOEx;
+import com.sapienter.jbilling.server.payment.PaymentInformationBL;
 import com.sapienter.jbilling.server.payment.db.PaymentAuthorizationDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.payment.db.PaymentResultDAS;
 import com.sapienter.jbilling.server.pluggableTask.admin.ParameterDescription;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskDTO;
 import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskException;
-import com.sapienter.jbilling.server.user.db.AchDTO;
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
 import com.sapienter.jbilling.server.util.Constants;
 
 /**
@@ -82,7 +81,7 @@ public class PaymentFakeTask extends PaymentTaskBase implements PaymentTask {
     private boolean acceptAch;
     
     private Filter myFilter = Filter.ACCEPT_ALL;
-    private static final Logger LOG = Logger.getLogger(PaymentFakeTask.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(PaymentFakeTask.class));
 
     public void failure(Integer userId, Integer retry) {
     // nothing to do -- ageing process would probably started by real
@@ -102,20 +101,55 @@ public class PaymentFakeTask extends PaymentTaskBase implements PaymentTask {
     }
 
     public boolean process(PaymentDTOEx paymentInfo) throws PluggableTaskException {
-        LOG.debug("processing " + paymentInfo + " cc number is " + paymentInfo.getCreditCard().getNumber());
+        LOG.debug("Processing payment: " + paymentInfo);
         Result result = doFakeAuthorization(paymentInfo, null);
-        LOG.debug("result " + result);
+    	LOG.debug("Fake result: " + result);
+        
         return result.shouldCallOtherProcessors();
     }
 
-    public boolean preAuth(PaymentDTOEx paymentInfo)
-            throws PluggableTaskException {
-        LOG.debug("preAuth payment " + paymentInfo);
+    /**
+     * Fake pre-authorization of a payment. If using a credit card with a CVV security code, the
+     * pre-authorization result will be "Successful" if CVV is an even number, or "Failed" if the
+     * CVV is an odd number. If the card does not have a CVV security code then the normal
+     * PaymentFakeTask payment result logic applies (result based off of the credit card number).
+     *
+     *
+     * @param paymentInfo payment information to pre-auth
+     * @return pre-authorization result
+     * @throws PluggableTaskException
+     */
+    public boolean preAuth(PaymentDTOEx paymentInfo) throws PluggableTaskException {
+        LOG.debug("Pre-authorization payment: " + paymentInfo);
         String transactionId = generatePreAuthTransactionId();
-        Result result = doFakeAuthorization(paymentInfo, transactionId);
+        PaymentInformationDTO creditCardInstrument = paymentInfo.getInstrument();
+        
+//        if (paymentInfo.findCreditCard() != null && !StringUtils.isBlank(paymentInfo.findCreditCard().getSecurityCode())) {
+//            // pre-auth result using credit card CVV
+//            LOG.debug("Processing pre-authorization, generating result from card CVV security code.");
+//
+//            String cvv = paymentInfo.findCreditCard().getSecurityCode();
+//            Integer resultId = getProcessResultId(cvv);
+//
+//            paymentInfo.setPaymentResult(new PaymentResultDAS().find(resultId));
+//            PaymentAuthorizationDTO authInfo = createAuthorizationDTO(resultId, transactionId);
+//            storeProcessedAuthorization(paymentInfo, authInfo);
+//
+//            LOG.debug("Pre-authorization result: " + authInfo);
+//
+//            boolean wasProcessed = (Constants.RESULT_FAIL.equals(resultId) || Constants.RESULT_OK.equals(resultId));
+//            return !wasProcessed && !myShouldBlockOtherProcessors;
+//
+//        } else {
+            // pre-auth result using credit card number
+            LOG.debug("Processing pre-authorization, generating using card number & amount purchased.");
 
-        LOG.debug("result " + result);
-        return result.shouldCallOtherProcessors();
+            Result result = doFakeAuthorization(paymentInfo, transactionId);
+
+            LOG.debug("Pre-authorization result: " + result.getAuthorizationData());
+
+            return result.shouldCallOtherProcessors();
+//        }
     }
 
     public boolean confirmPreAuth(PaymentAuthorizationDTO auth, PaymentDTOEx paymentInfo)
@@ -137,30 +171,27 @@ public class PaymentFakeTask extends PaymentTaskBase implements PaymentTask {
     }
 
     private Result doFakeAuthorization(PaymentDTOEx payment, String transactionId) throws PluggableTaskException {
-        CreditCardDTO creditCard = payment.getCreditCard();
-        AchDTO ach = payment.getAch();
-        boolean isAch = false;
-        
-        if (creditCard == null || !myFilter.accept(creditCard)) {
-            //give real processors a chance
-            if (!acceptAch || ach == null) {
-                return new Result(null, true);
-            }
-            isAch = true;
-        }
-
-        Integer resultId;
-        if (!isAch) {
-            resultId = getProcessResultId(creditCard);
-        } else {
-            String val = payment.getAmount().toPlainString();
-            resultId = (Integer.parseInt(val.substring(val.length() - 1)) % 2 == 0) ? 
+    	Integer resultId = null;
+    	PaymentInformationBL piBl = new PaymentInformationBL();
+    	LOG.debug("Instrument for processing is: " + payment.getInstrument());
+    	if(piBl.isCreditCard(payment.getInstrument())) {
+    		resultId = getProcessResultId(piBl.getStringMetaFieldByType(payment.getInstrument(), MetaFieldType.PAYMENT_CARD_NUMBER));
+        } else if(piBl.isACH(payment.getInstrument())) {
+        	String val = payment.getAmount().toPlainString();
+        	resultId = (Integer.parseInt(val.substring(val.length() - 1)) % 2 == 0) ? 
                     Constants.RESULT_OK : Constants.RESULT_FAIL;
         }
+
+    	if(null == resultId) {
+    		return new Result(null, true);
+    	}
+    	
         payment.setPaymentResult(new PaymentResultDAS().find(resultId));
         PaymentAuthorizationDTO authInfo = createAuthorizationDTO(resultId, transactionId);
         storeProcessedAuthorization(payment, authInfo);
 
+        //boolean wasProcessed = (Constants.RESULT_FAIL.equals(resultId) || Constants.RESULT_OK.equals(resultId));
+        // will be considered processed only if instruments are exhausted or payment result is ok
         boolean wasProcessed = (Constants.RESULT_FAIL.equals(resultId) || Constants.RESULT_OK.equals(resultId));
         boolean shouldCallOthers = !wasProcessed && !myShouldBlockOtherProcessors;
         return new Result(authInfo, shouldCallOthers);
@@ -178,10 +209,17 @@ public class PaymentFakeTask extends PaymentTaskBase implements PaymentTask {
         return transactionId != null && transactionId.startsWith(PREAUTH_TRANSACTION_PREFIX);
     }
 
-    private Integer getProcessResultId(CreditCardDTO card) {
-        String cardNumber = card.getNumber();
-        char last = (cardNumber.length() == 0) ? ' ' : cardNumber.charAt(cardNumber.length() - 1);
-
+    /**
+     * Returns a result ID based on the last digit of the given number. Even digits will
+     * return RESULT_OK, odd digits will return RESULT_FAIL. A zero or non-numerical digit
+     * will return RESULT_UNAVAILABLE.
+     *
+     * @param number number to parse
+     * @return process result id based off of the last digit of the given number (even = pass, odd = fail)
+     */
+    private Integer getProcessResultId(String number) {
+        char last = (number.length() == 0) ? ' ' : number.charAt(number.length() - 1);
+        LOG.debug("Last character is: " + last);
         switch (last) {
             case '2':
             case '4':
@@ -247,10 +285,10 @@ public class PaymentFakeTask extends PaymentTaskBase implements PaymentTask {
      */
     private static interface Filter {
 
-        public boolean accept(CreditCardDTO card);
+        public boolean accept(PaymentInformationDTO card);
         public static Filter ACCEPT_ALL = new Filter() {
 
-            public boolean accept(CreditCardDTO card) {
+            public boolean accept(PaymentInformationDTO card) {
                 return true;
             }
 
@@ -269,8 +307,8 @@ public class PaymentFakeTask extends PaymentTaskBase implements PaymentTask {
             myPrefix = prefix;
         }
 
-        public boolean accept(CreditCardDTO card) {
-            String name = card.getName();
+        public boolean accept(PaymentInformationDTO card) {
+        	String name = new PaymentInformationBL().getStringMetaFieldByType(card, MetaFieldType.TITLE);
             return name != null && name.startsWith(myPrefix);
         }
 

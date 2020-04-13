@@ -24,7 +24,7 @@ import org.apache.log4j.Logger;
 public class InvalidArgumentException extends RuntimeException {
     private final Integer code;
     private final Exception e;
-    private static final Logger LOG = Logger.getLogger(InvalidArgumentException.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(InvalidArgumentException.class));
     
     public InvalidArgumentException(String message, Integer code, Exception e) {
         super(message);

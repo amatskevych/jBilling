@@ -19,6 +19,7 @@
  */
 package com.sapienter.jbilling.server.payment.event;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.invoice.db.InvoiceDAS;
 import javax.jms.MapMessage;
 import javax.jms.Message;
@@ -35,7 +36,7 @@ import com.sapienter.jbilling.server.util.Context;
  */
 public class ProcessPaymentMDB implements MessageListener {
     
-    private final Logger LOG = Logger.getLogger(ProcessPaymentMDB.class);
+    private final FormatLogger LOG = new FormatLogger(Logger.getLogger(ProcessPaymentMDB.class));
 
     public void onMessage(Message message) {
         try {

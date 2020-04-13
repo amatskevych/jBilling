@@ -1,24 +1,25 @@
 %{--
-  jBilling - The Enterprise Open Source Billing System
-  Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
+     jBilling - The Enterprise Open Source Billing System
+   Copyright (C) 2003-2011 Enterprise jBilling Software Ltd. and Emiliano Conde
 
-  This file is part of jbilling.
-
-  jbilling is free software: you can redistribute it and/or modify
-  it under the terms of the GNU Affero General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  jbilling is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU Affero General Public License for more details.
-
-  You should have received a copy of the GNU Affero General Public License
-  along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+   This file is part of jbilling.
+   
+   jbilling is free software: you can redistribute it and/or modify
+   it under the terms of the GNU Affero General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+   
+   jbilling is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU Affero General Public License for more details.
+   
+   You should have received a copy of the GNU Affero General Public License
+   along with jbilling.  If not, see <http://www.gnu.org/licenses/>.
+ 
   --}%
 
-<%@ page import="com.sapienter.jbilling.server.user.contact.db.ContactDTO" contentType="text/html;charset=UTF-8" %>
+<%@ page import="org.apache.commons.lang.StringEscapeUtils; com.sapienter.jbilling.server.user.contact.db.ContactDTO" contentType="text/html;charset=UTF-8" %>
 
 <%--
   Shows a list of internal users.
@@ -40,32 +41,32 @@
 
         <tbody>
             <g:each var="user" in="${users}">
-                <g:set var="contact" value="${ContactDTO.findByUserId(user.id)}"/>
+                <g:set var="_contact" value="${ContactDTO.findByUserId(user.id)}"/>
 
                 <tr id="user-${user.id}" class="${selected?.id == user.id ? 'active' : ''}">
                     <td>
-                        <g:remoteLink class="cell double" action="show" id="${user.id}" before="register(this);" onSuccess="render(data, next);">
-                            <strong>${user.userName}</strong>
-                            <em><g:message code="table.id.format" args="[user.id]"/></em>
+                        <g:remoteLink class="cell double" action="show" id="${user.id}" before="register(this);" onSuccess="render(data, next);" params="[partial:true]">
+                            <strong>${StringEscapeUtils.escapeHtml(user?.userName)}</strong>
+                            <em><g:message code="table.id.format" args="[user.id as String]"/></em>
                         </g:remoteLink>
                     </td>
 
                     <td>
-                        <g:remoteLink class="cell" action="show" id="${user.id}" before="register(this);" onSuccess="render(data, next);">
-                            ${contact.firstName} ${contact.lastName}
+                        <g:remoteLink class="cell" action="show" id="${user.id}" before="register(this);" onSuccess="render(data, next);" params="[partial:true]">
+                            ${StringEscapeUtils.escapeHtml(_contact.firstName)} ${StringEscapeUtils.escapeHtml(_contact.lastName)}
                         </g:remoteLink>
                     </td>
 
                     <td>
-                        <g:remoteLink class="cell" action="show" id="${user.id}" before="register(this);" onSuccess="render(data, next);">
-                            ${contact.organizationName}
+                        <g:remoteLink class="cell" action="show" id="${user.id}" before="register(this);" onSuccess="render(data, next);" params="[partial:true]">
+                            ${StringEscapeUtils.escapeHtml(_contact.organizationName)}
                         </g:remoteLink>
                     </td>
 
                     <td class="small">
-                        <g:remoteLink class="cell" action="show" id="${user.id}" before="register(this);" onSuccess="render(data, next);">
+                        <g:remoteLink class="cell" action="show" id="${user.id}" before="register(this);" onSuccess="render(data, next);" params="[partial:true]">
                             <g:if test="${user.roles}">
-                                ${user.roles.asList().first()?.getTitle(session['language_id'])}
+                                ${StringEscapeUtils.escapeHtml(user?.roles?.asList()?.first()?.getTitle(session['language_id']))}
                             </g:if>
                             <g:else>
                                 -
@@ -87,7 +88,7 @@
     </div>
 
     <div class="row">
-        <util:remotePaginate controller="user" action="list" params="[applyFilter: true]" total="${users?.totalCount ?: 0}" update="column1"/>
+        <util:remotePaginate controller="user" action="list" params="${sortableParams(params: [partial: true])}" total="${users?.totalCount ?: 0}" update="column1"/>
     </div>
 </div>
 

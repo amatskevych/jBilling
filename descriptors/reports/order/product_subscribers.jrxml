@@ -5,21 +5,23 @@
 	<property name="ireport.y" value="0"/>
 	<parameter name="item_id" class="java.lang.Integer"/>
 	<parameter name="entity_id" class="java.lang.Integer"/>
+	<parameter name="child_entities" class="java.util.List"/>
 	<queryString>
 		<![CDATA[select
             u.id,
             u.user_name,
             o.active_since,
             o.create_datetime,
-            sum(l.quantity) quantity
+            sum(l.quantity) as quantity
         from
             order_line l
             inner join purchase_order o on o.id = l.order_id
             inner join base_user u on u.id = o.user_id
+            join order_status os on os.id = o.status_id
         where
-            u.entity_id = $P{entity_id}
+            (u.entity_id = $P{entity_id} or $X{IN,u.entity_id,child_entities}) 
             and o.deleted = 0
-            and o.status_id = 16 -- active orders
+            and os.order_status_flag = 0 -- active orders -- active orders
             and o.period_id != 0 -- recurring orders
             and l.deleted = 0
             and l.item_id = $P{item_id}

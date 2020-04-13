@@ -53,7 +53,7 @@ class DownloadHelper {
         setResponseHeader(response, filename)
 
         response.setContentType(contentType)
-        response.setContentLength(bytes.length)
+        response.setContentLength(bytes?.length)
         response.outputStream << bytes
     }
 }

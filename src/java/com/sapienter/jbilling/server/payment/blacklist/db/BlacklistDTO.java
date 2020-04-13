@@ -35,11 +35,13 @@ import javax.persistence.Table;
 import javax.persistence.TableGenerator;
 import javax.persistence.Version;
 
+import com.sapienter.jbilling.common.FormatLogger;
+import com.sapienter.jbilling.server.metafields.db.MetaFieldValue;
 import org.apache.log4j.Logger;
 
 import com.sapienter.jbilling.server.user.contact.db.ContactDTO;
 import com.sapienter.jbilling.server.user.db.CompanyDTO;
-import com.sapienter.jbilling.server.user.db.CreditCardDTO;
+import com.sapienter.jbilling.server.payment.db.PaymentInformationDTO;
 import com.sapienter.jbilling.server.user.db.UserDTO;
 
 @Entity
@@ -71,7 +73,7 @@ public class BlacklistDTO implements Serializable {
     public static final Integer SOURCE_USER_STATUS_CHANGE = new Integer(3);
     public static final Integer SOURCE_BILLING_PROCESS = new Integer(4);
 
-    private static final Logger LOG = Logger.getLogger(BlacklistDTO.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(BlacklistDTO.class));
 
     // mapped columns
     
@@ -93,7 +95,7 @@ public class BlacklistDTO implements Serializable {
 
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name="credit_card_id")
-    private CreditCardDTO creditCard;
+    private PaymentInformationDTO creditCard;
 
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name="contact_id")
@@ -103,6 +105,10 @@ public class BlacklistDTO implements Serializable {
     @JoinColumn(name="user_id")
     private UserDTO user;
 
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name="meta_field_value_id")
+    private MetaFieldValue metaFieldValue;
+
     @Version
     @Column(name="OPTLOCK")
     private Integer versionNum;
@@ -111,8 +117,8 @@ public class BlacklistDTO implements Serializable {
     }
 
     public BlacklistDTO(Integer id, CompanyDTO company, Date createDate, 
-            Integer type, Integer source, CreditCardDTO creditCard,
-            ContactDTO contact, UserDTO user) {
+            Integer type, Integer source, PaymentInformationDTO creditCard,
+            ContactDTO contact, UserDTO user, MetaFieldValue metaFieldValue) {
         this.id = id;
         this.company = company;
         this.createDate = createDate;
@@ -121,6 +127,7 @@ public class BlacklistDTO implements Serializable {
         this.creditCard = creditCard;
         this.contact = contact;
         this.user = user;
+        this.metaFieldValue = metaFieldValue;
     }
 
     public void setId(Integer id) {
@@ -163,11 +170,11 @@ public class BlacklistDTO implements Serializable {
         return source;
     }
 
-    public void setCreditCard(CreditCardDTO creditCard) {
+    public void setCreditCard(PaymentInformationDTO creditCard) {
         this.creditCard = creditCard;
     }
 
-    public CreditCardDTO getCreditCard() {
+    public PaymentInformationDTO getCreditCard() {
         return creditCard;
     }
 
@@ -185,9 +192,22 @@ public class BlacklistDTO implements Serializable {
 
     public UserDTO getUser() {
         return user;
-    } 
-
-    protected int getVersionNum() { 
-        return versionNum; 
     }
+
+    public MetaFieldValue getMetaFieldValue() {
+        return metaFieldValue;
+    }
+
+    public void setMetaFieldValue(MetaFieldValue metaFieldValue) {
+        this.metaFieldValue = metaFieldValue;
+    }
+
+    public Integer getVersionNum() {
+        return versionNum;
+    }
+
+    public void setVersionNum(Integer versionNum) {
+        this.versionNum = versionNum;
+    }
+
 }

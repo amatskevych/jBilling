@@ -20,6 +20,7 @@
 
 package com.sapienter.jbilling.server.order.db;
 
+import com.sapienter.jbilling.server.order.OrderStatusFlag;
 import com.sapienter.jbilling.server.order.Usage;
 import com.sapienter.jbilling.server.util.Context;
 import org.hibernate.Query;
@@ -28,6 +29,7 @@ import org.hibernate.transform.Transformers;
 import org.springframework.orm.hibernate3.support.HibernateDaoSupport;
 
 import java.util.Date;
+import java.util.List;
 
 /**
  * @author Brian Cowdery
@@ -48,15 +50,23 @@ public class UsageDAS extends HibernateDaoSupport {
             + "from "
             + " order_line ol"
             + " join purchase_order o on o.id = ol.order_id "
+            + " join order_status os on o.status_id = os.id "
             + "where "
             + " o.deleted = 0 "
             + " and ol.deleted = 0 "          // order and line not deleted
-            + " and o.status_id in (16, 17) " // active or finished
-            + " and o.user_id = :user_id "
+            + " and os.order_status_flag in ("+OrderStatusFlag.INVOICE.ordinal()+", "+OrderStatusFlag.FINISHED.ordinal()+") " // invoice or finished
+            + " and o.user_id in (:user_ids) "
             + " and ol.item_id = :item_id "
-            + " and ol.create_datetime between :start_date and :end_date";
+            + " and  ( "
+            + "		    (o.active_since between :start_date and :end_date) or "
+            + "		    ( "
+            + "			    (o.active_until >=:start_date or o.active_until is null) and "
+            + "		    	o.active_since <= :end_date and o.period_id <> 1 " // Constants.ORDER_PERIOD_ONCE
+            + "		    ) "
+            + "	    ) ";
 
-    public Usage findUsageByItem(Integer excludedOrderId, Integer itemId, Integer userId, Date startDate, Date endDate) {
+
+    public Usage findUsageByItem(Integer excludedOrderId, Integer itemId, Integer owner, List<Integer> userIds, Date startDate, Date endDate) {
         String sql = excludedOrderId != null
                      ? USAGE_BY_ITEM_ID_SQL + EXCLUDE_ORDER_ID_CLAUSE
                      : USAGE_BY_ITEM_ID_SQL;
@@ -66,7 +76,7 @@ public class UsageDAS extends HibernateDaoSupport {
                 .addScalar("quantity")
                 .setResultTransformer(Transformers.aliasToBean(Usage.class));
 
-        query.setParameter("user_id", userId);
+        query.setParameterList("user_ids", userIds);
         query.setParameter("item_id", itemId);
         query.setParameter("start_date", startDate);
         query.setParameter("end_date", endDate);
@@ -75,7 +85,7 @@ public class UsageDAS extends HibernateDaoSupport {
             query.setParameter("excluded_order_id", excludedOrderId);
 
         Usage usage = (Usage) query.uniqueResult();
-        usage.setUserId(userId);
+        usage.setUserId(owner);
         usage.setItemId(itemId);
         usage.setStartDate(startDate);
         usage.setEndDate(endDate);
@@ -90,10 +100,11 @@ public class UsageDAS extends HibernateDaoSupport {
             + "from "
             + "  order_line ol "
             + "  join purchase_order o on o.id = ol.order_id "
+            + " join order_status os on o.status_id = os.id "
             + "where "
             + " o.deleted = 0 "
             + " and ol.deleted = 0 "          // order and line not deleted
-            + " and o.status_id in (16, 17) " // active or finished
+            + " and os.order_status_flag in ("+OrderStatusFlag.INVOICE.ordinal()+", "+OrderStatusFlag.FINISHED.ordinal()+") " // invoice or finished
             + " and ol.item_id = :item_id "
             + " and ( "
             + "  o.user_id = :user_id "
@@ -143,10 +154,11 @@ public class UsageDAS extends HibernateDaoSupport {
             + " order_line ol "
             + " join purchase_order o on o.id = ol.order_id "
             + " join item_type_map tm on tm.item_id = ol.item_id "
+            + " join order_status os on o.status_id = os.id "
             + "where "
             + " o.deleted = 0 "
             + " and ol.deleted = 0 "          // order and line not deleted
-            + " and o.status_id in (16, 17) " // active or finished
+            + " and os.order_status_flag in ("+OrderStatusFlag.INVOICE.ordinal()+", "+OrderStatusFlag.FINISHED.ordinal()+") " // invoice or finished
             + " and o.user_id = :user_id "
             + " and tm.type_id = :item_type_id"
             + " and ol.create_datetime between :start_date and :end_date";
@@ -188,10 +200,11 @@ public class UsageDAS extends HibernateDaoSupport {
             + " order_line ol "
             + " join purchase_order o on o.id = ol.order_id "
             + " join item_type_map tm on tm.item_id = ol.item_id "
+            + " join order_status os on o.status_id = os.id "
             + "where "
             + " o.deleted = 0 "
             + " and ol.deleted = 0 "          // order and line not deleted
-            + " and o.status_id in (16, 17) " // active or finished
+            + " and os.order_status_flag in ("+OrderStatusFlag.INVOICE.ordinal()+", "+OrderStatusFlag.FINISHED.ordinal()+") " // invoice or finished
             + " and tm.type_id = :item_type_id "
             + " and ( "
             + "  o.user_id = :user_id "

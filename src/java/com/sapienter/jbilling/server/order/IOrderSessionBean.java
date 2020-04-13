@@ -21,10 +21,14 @@
 package com.sapienter.jbilling.server.order;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.Date;
+import java.util.List;
+import java.util.Set;
 
 import com.sapienter.jbilling.common.SessionInternalError;
 import com.sapienter.jbilling.server.item.ItemDecimalsException;
+import com.sapienter.jbilling.server.order.db.OrderChangeDTO;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
 import com.sapienter.jbilling.server.order.db.OrderPeriodDTO;
 
@@ -72,8 +76,6 @@ public interface IOrderSessionBean {
 
     public Boolean deletePeriod(Integer periodId) throws SessionInternalError;
 
-    public OrderDTO getMainOrder(Integer userId) throws SessionInternalError;
-
     public OrderDTO addItem(Integer itemID, BigDecimal quantity, OrderDTO order,
             Integer languageId, Integer userId, Integer entityId) 
             throws SessionInternalError, ItemDecimalsException;
@@ -85,9 +87,17 @@ public interface IOrderSessionBean {
     public OrderDTO recalculate(OrderDTO modifiedOrder, Integer entityId) 
             throws ItemDecimalsException;
 
-    public Integer createUpdate(Integer entityId, Integer executorId, 
-            OrderDTO order, Integer languageId) throws SessionInternalError;
+    public Integer createUpdate(Integer entityId, Integer executorId, Integer languageId,
+            OrderDTO order,  Collection<OrderChangeDTO> orderChanges, Collection<Integer> deletedChanges) throws SessionInternalError;
 
-     public Long getCountWithDecimals(Integer itemId) 
-             throws SessionInternalError;    
+    public Long getCountWithDecimals(Integer itemId)
+             throws SessionInternalError;
+
+    public void applyChangesToOrders(Collection<Integer> orderChangeIdsForHierarchy, Date onDate, Integer entityId) throws SessionInternalError;
+
+    public void applyOrderChangesToOrders(Collection<OrderChangeDTO> orderChanges, Collection<OrderDTO> ordersForUpdate, Date onDate, Integer entityId,
+                                          boolean throwOnError)
+            throws SessionInternalError;
+
+    void markOrderChangesAsApplyError(Integer entityId, Collection<Integer> orderChangeIds, Date onDate, String errorCode, String errorMessage);
 }

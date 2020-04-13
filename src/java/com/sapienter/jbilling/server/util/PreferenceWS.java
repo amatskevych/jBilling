@@ -22,11 +22,11 @@ package com.sapienter.jbilling.server.util;
 import java.io.Serializable;
 import java.math.BigDecimal;
 
+import javax.validation.constraints.Digits;
 import javax.validation.constraints.Min;
+import javax.validation.constraints.Size;
 
 import com.sapienter.jbilling.server.util.api.validation.UpdateValidationGroup;
-import com.sapienter.jbilling.server.util.db.PreferenceDTO;
-import com.sapienter.jbilling.server.util.db.PreferenceTypeDTO;
 
 public class PreferenceWS implements Serializable {
 
@@ -34,21 +34,17 @@ public class PreferenceWS implements Serializable {
     private PreferenceTypeWS preferenceType;
     private Integer tableId;
     private Integer foreignId;
+    @Size(min=0, max=200, message="validation.error.max,200")
     private String value;
+    @Digits(integer=12, fraction=0, message="validation.error.not.a.number.12.integer")
+    private String intValue;
 
     public PreferenceWS() {
     }
 
-    public PreferenceWS(PreferenceTypeDTO preferenceType) {
-        this.preferenceType = new PreferenceTypeWS(preferenceType);
-    }
-
-    public PreferenceWS(PreferenceDTO dto) {
-        this.id = dto.getId();
-        this.preferenceType = dto.getPreferenceType() != null ? new PreferenceTypeWS(dto.getPreferenceType()) : null;
-        this.tableId = dto.getJbillingTable() != null ? dto.getJbillingTable().getId() : null;
-        this.foreignId = dto.getForeignId();
-        this.value = dto.getValue();
+    public PreferenceWS(PreferenceTypeWS preferenceType, String value) {
+        this.preferenceType = preferenceType;
+        this.value = value;
     }
 
     public Integer getId() {

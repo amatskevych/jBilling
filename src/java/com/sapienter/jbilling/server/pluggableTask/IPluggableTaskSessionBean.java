@@ -36,6 +36,9 @@ import com.sapienter.jbilling.server.pluggableTask.admin.PluggableTaskParameterD
  **/
 public interface IPluggableTaskSessionBean {
 
+    public PluggableTaskDTO getDTO(Integer id)
+            throws SessionInternalError;
+
     public PluggableTaskDTO getDTO(Integer typeId, Integer entityId) 
             throws SessionInternalError;
 

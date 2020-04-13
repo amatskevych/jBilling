@@ -23,7 +23,6 @@ package com.sapienter.jbilling.server.item.tasks;
 import java.math.BigDecimal;
 import java.util.Date;
 
-import com.sapienter.jbilling.server.mediation.task.MediationResult;
 import com.sapienter.jbilling.server.order.OrderBL;
 import com.sapienter.jbilling.server.order.db.OrderDTO;
 import com.sapienter.jbilling.server.order.db.OrderLineDTO;
@@ -54,10 +53,6 @@ public class SubscriptionResult extends Result {
 
     public SubscriptionResult(OrderDTO order, Integer itemId) {
         this(order.getUserId(), itemId);
-    }
-
-    public SubscriptionResult(MediationResult result, Integer itemId) {
-        this(result.getUserId(), itemId);
     }
 
     public SubscriptionResult(PricingResult result, Integer itemId) {

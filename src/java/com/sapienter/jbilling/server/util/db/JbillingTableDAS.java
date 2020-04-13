@@ -21,6 +21,7 @@ package com.sapienter.jbilling.server.util.db;
 
 import org.hibernate.criterion.Restrictions;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.common.SessionInternalError;
 import org.apache.log4j.Logger;
 import org.springmodules.cache.provider.CacheProviderFacade;
@@ -31,7 +32,7 @@ public class JbillingTableDAS extends AbstractDAS<JbillingTable> {
     private CacheProviderFacade cache;
     private CachingModel cacheModel;
 
-    private static final Logger LOG = Logger.getLogger(JbillingTableDAS.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(JbillingTableDAS.class));
 
     protected JbillingTableDAS() {
         super();
@@ -46,8 +47,7 @@ public class JbillingTableDAS extends AbstractDAS<JbillingTable> {
             if (table == null) {
                 throw new SessionInternalError("Can not find table " + name);
             } else {
-                cache.putInCache("JbillingTable" + name, cacheModel, table);
-
+            	cache.putInCache("JbillingTable" + name, cacheModel, table);
             }
         }
         return table;

@@ -20,6 +20,17 @@
 
 package com.sapienter.jbilling.server.util.db;
 
+import com.sapienter.jbilling.server.order.db.OrderDTO;
+import org.hibernate.criterion.Restrictions;
+import org.hibernate.Criteria;
+
 public class CurrencyDAS extends AbstractDAS<CurrencyDTO> {
 
+	public boolean findAssociationExistsForCurrency(Integer currencyId, Class associationClass, String currencyFieldName) {
+		
+		Criteria criteria =getSession().createCriteria(associationClass)
+                            .add(Restrictions.eq(currencyFieldName + ".id", currencyId));
+        
+        return findFirst(criteria) != null;
+	}
 }

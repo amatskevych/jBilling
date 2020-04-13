@@ -21,7 +21,10 @@
 package com.sapienter.jbilling.server.pluggableTask;
 
 import com.sapienter.jbilling.server.notification.MessageDTO;
+import com.sapienter.jbilling.server.notification.NotificationMediumType;
 import com.sapienter.jbilling.server.user.db.UserDTO;
+
+import java.util.List;
 
 /*
  * Each task is resposaible of verifying if it should run or not,
@@ -32,7 +35,7 @@ import com.sapienter.jbilling.server.user.db.UserDTO;
  * provided.   
  */
 public interface NotificationTask {
-    public void deliver(UserDTO user, MessageDTO sections)
+    public boolean deliver(UserDTO user, MessageDTO sections)
             throws TaskException;
     
     /**
@@ -42,4 +45,10 @@ public interface NotificationTask {
      * @return
      */
     public int getSections();
+
+    /**
+     * Return the list of medium this task handle
+     * @return
+     */
+    public List<NotificationMediumType> mediumHandled();
 }

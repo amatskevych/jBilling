@@ -27,12 +27,13 @@ import org.hibernate.Query;
 import org.hibernate.criterion.Order;
 import org.hibernate.criterion.Restrictions;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.util.audit.EventLogger;
 import com.sapienter.jbilling.server.util.db.AbstractDAS;
 
 public class EventLogDAS extends AbstractDAS<EventLogDTO> {
     
-    private static final Logger LOG = Logger.getLogger(EventLogDAS.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(EventLogDAS.class));
     
     // QUERIES
     private static final String findLastTransition =

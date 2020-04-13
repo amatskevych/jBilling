@@ -21,13 +21,14 @@ package com.sapienter.jbilling.server.payment.event;
 
 import org.apache.log4j.Logger;
 
+import com.sapienter.jbilling.common.FormatLogger;
 import com.sapienter.jbilling.server.pluggableTask.ProcessorAlarm;
 import com.sapienter.jbilling.server.system.event.Event;
 import com.sapienter.jbilling.server.system.event.EventProcessor;
 import com.sapienter.jbilling.server.util.Constants;
 
 public class GatewayAlarmEventProcessor extends EventProcessor<ProcessorAlarm> {
-    private static final Logger LOG = Logger.getLogger(GatewayAlarmEventProcessor.class);
+    private static final FormatLogger LOG = new FormatLogger(Logger.getLogger(GatewayAlarmEventProcessor.class));
     
     @Override
     public void process(Event event) {

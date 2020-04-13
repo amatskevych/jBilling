@@ -20,24 +20,26 @@
 
 package com.sapienter.jbilling.server.user;
 
+
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import com.sapienter.jbilling.common.Util;
 
 /**
  * Result object for validatePurchase API method.
  */
 public class ValidatePurchaseWS implements Serializable {
 
-    private Boolean success;
-    private String[] message;
-    private Boolean authorized;
-    private String quantity;
+    private Boolean success = true;
+    private Boolean authorized = true;
+    private String quantity = "0.0";
+    private List<String> message = new ArrayList<String>();
 
     public ValidatePurchaseWS() {
-        success = true;
-        message = null;
-        authorized = true;
-        quantity = "0.0";
     }
 
     public Boolean getSuccess() {
@@ -46,14 +48,6 @@ public class ValidatePurchaseWS implements Serializable {
 
     public void setSuccess(Boolean success) {
         this.success = success;
-    }
-
-    public String[] getMessage() {
-        return message;
-    }
-
-    public void setMessage(String[] message) {
-        this.message = message;
     }
 
     public Boolean getAuthorized() {
@@ -69,7 +63,7 @@ public class ValidatePurchaseWS implements Serializable {
     }
 
     public BigDecimal getQuantityAsDecimal() {
-        return quantity == null ? null : new BigDecimal(quantity);
+        return Util.string2decimal(quantity);
     }
 
     public void setQuantity(String quantity) {
@@ -82,5 +76,26 @@ public class ValidatePurchaseWS implements Serializable {
 
     public void setQuantity(BigDecimal quantity) {
         this.quantity = (quantity != null ? quantity.toString() : null);
+    }
+
+    public String[] getMessage() {
+        return message.toArray(new String[message.size()]);
+    }
+
+    public void setMessage(String[] message) {
+        this.message = Arrays.asList(message);
+    }
+
+    public void addMessage(String message) {
+        this.message.add(message);
+    }
+
+    @Override
+    public String toString() {
+        return "ValidatePurchaseWS{" +
+                "success=" + success +
+                ", authorized=" + authorized +
+                ", quantity='" + quantity + '\'' +
+                '}';
     }
 }
